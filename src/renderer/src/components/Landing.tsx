@@ -69,6 +69,12 @@ export default function Landing({
         <section className="home-section">
           <h3 className="home-heading">Sessions</h3>
           <div className="session-table">
+            <div className="session-thead">
+              <span className="thead-project">Project</span>
+              <span className="thead-agent">Agent</span>
+              <span className="thead-status">Status</span>
+              <span className="thead-actions" />
+            </div>
             {sessions.map((s) => (
               <div key={s.id} className="session-row" data-session-id={s.id}>
                 <span className="dot" data-status={s.status} />
@@ -177,20 +183,6 @@ export default function Landing({
           )}
         </div>
       </section>
-      <div className="empty-legend">
-        <span className="legend-item">
-          <span className="legend-dot legend-working" /> working
-        </span>
-        <span className="legend-item">
-          <span className="legend-dot legend-needs-you" /> needs you
-        </span>
-        <span className="legend-item">
-          <span className="legend-dot legend-idle" /> done
-        </span>
-        <span className="legend-item">
-          <span className="legend-dot legend-running" /> running (no status feed)
-        </span>
-      </div>
     </div>
   )
 }

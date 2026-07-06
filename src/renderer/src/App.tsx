@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import TerminalPane from './components/TerminalPane'
+import EmptyState from './components/EmptyState'
 import type { SessionInfo } from '../../shared/types'
 
 export default function App(): React.JSX.Element {
@@ -51,22 +52,30 @@ export default function App(): React.JSX.Element {
     <>
       <div className="toolbar">
         <h1>localflow</h1>
-        <button className="new-session" onClick={() => void createSession()}>
-          + New session
-        </button>
+        {/* The hero CTA owns .new-session in the empty state so exactly one
+            exists at a time (the e2e locator relies on that). */}
+        {sessions.length > 0 && (
+          <button className="new-session" onClick={() => void createSession()}>
+            + New session
+          </button>
+        )}
       </div>
-      <div className="grid">
-        {sessions.map((s) => (
-          <TerminalPane
-            key={s.id}
-            session={s}
-            enlarged={enlarged === s.id}
-            onToggleEnlarge={() => setEnlarged((cur) => (cur === s.id ? null : s.id))}
-            onRestart={() => void restart(s.id)}
-            onClose={() => void close(s.id)}
-          />
-        ))}
-      </div>
+      {sessions.length === 0 ? (
+        <EmptyState onCreate={() => void createSession()} />
+      ) : (
+        <div className="grid">
+          {sessions.map((s) => (
+            <TerminalPane
+              key={s.id}
+              session={s}
+              enlarged={enlarged === s.id}
+              onToggleEnlarge={() => setEnlarged((cur) => (cur === s.id ? null : s.id))}
+              onRestart={() => void restart(s.id)}
+              onClose={() => void close(s.id)}
+            />
+          ))}
+        </div>
+      )}
     </>
   )
 }

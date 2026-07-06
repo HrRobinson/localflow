@@ -147,3 +147,222 @@ body {
   padding: 8px 16px;
   cursor: pointer;
 }
+
+/* Empty state — three ghost panes replay the real session state machine,
+   staggered, so the landing view demos the product before first use. */
+.empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 24px;
+  text-align: center;
+}
+.ghost-grid {
+  display: flex;
+  gap: 14px;
+  margin-bottom: 10px;
+}
+.ghost-pane {
+  width: 150px;
+  height: 104px;
+  border: 2px solid var(--exited);
+  border-radius: 8px;
+  background: var(--pane-bg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: ghost-cycle 12s infinite;
+}
+.ghost-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+.ghost-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--exited);
+  animation: ghost-cycle-dot 12s infinite;
+}
+.ghost-title {
+  width: 46px;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.14);
+}
+.ghost-body {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px;
+}
+.ghost-line {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.09);
+  animation: ghost-line-fill 12s infinite;
+  transform-origin: left;
+}
+.ghost-line:nth-child(1) {
+  width: 82%;
+}
+.ghost-line:nth-child(2) {
+  width: 58%;
+  animation-delay: 0.35s;
+}
+.ghost-line:nth-child(3) {
+  width: 70%;
+  animation-delay: 0.7s;
+}
+.ghost-line:nth-child(4) {
+  width: 40%;
+  animation-delay: 1.05s;
+}
+.ghost-pane:nth-child(2),
+.ghost-pane:nth-child(2) .ghost-dot,
+.ghost-pane:nth-child(2) .ghost-line {
+  animation-delay: -4s;
+}
+.ghost-pane:nth-child(3),
+.ghost-pane:nth-child(3) .ghost-dot,
+.ghost-pane:nth-child(3) .ghost-line {
+  animation-delay: -8s;
+}
+.ghost-pane:nth-child(2) .ghost-line:nth-child(2) {
+  animation-delay: -3.65s;
+}
+.ghost-pane:nth-child(2) .ghost-line:nth-child(3) {
+  animation-delay: -3.3s;
+}
+.ghost-pane:nth-child(2) .ghost-line:nth-child(4) {
+  animation-delay: -2.95s;
+}
+.ghost-pane:nth-child(3) .ghost-line:nth-child(2) {
+  animation-delay: -7.65s;
+}
+.ghost-pane:nth-child(3) .ghost-line:nth-child(3) {
+  animation-delay: -7.3s;
+}
+
+/* idle(green) -> working(blue, output fills) -> needs-you(yellow) -> idle */
+@keyframes ghost-cycle {
+  0%,
+  8% {
+    border-color: var(--idle);
+  }
+  14%,
+  52% {
+    border-color: var(--working);
+  }
+  58%,
+  84% {
+    border-color: var(--needs-you);
+  }
+  92%,
+  100% {
+    border-color: var(--idle);
+  }
+}
+@keyframes ghost-cycle-dot {
+  0%,
+  8% {
+    background: var(--idle);
+  }
+  14%,
+  52% {
+    background: var(--working);
+  }
+  58%,
+  84% {
+    background: var(--needs-you);
+  }
+  92%,
+  100% {
+    background: var(--idle);
+  }
+}
+@keyframes ghost-line-fill {
+  0%,
+  12% {
+    transform: scaleX(0.25);
+    opacity: 0.4;
+  }
+  50%,
+  100% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+.empty-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.empty-cta {
+  font-size: 14px;
+  padding: 10px 20px;
+}
+.empty-hint {
+  margin: 0;
+  font-size: 13px;
+  color: #9ca3af;
+}
+.empty-legend {
+  display: flex;
+  gap: 18px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #9ca3af;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.legend-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+.legend-working {
+  background: var(--working);
+}
+.legend-needs-you {
+  background: var(--needs-you);
+}
+.legend-idle {
+  background: var(--idle);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ghost-pane,
+  .ghost-dot,
+  .ghost-line {
+    animation: none;
+  }
+  .ghost-pane:nth-child(1) {
+    border-color: var(--working);
+  }
+  .ghost-pane:nth-child(1) .ghost-dot {
+    background: var(--working);
+  }
+  .ghost-pane:nth-child(2) {
+    border-color: var(--needs-you);
+  }
+  .ghost-pane:nth-child(2) .ghost-dot {
+    background: var(--needs-you);
+  }
+  .ghost-pane:nth-child(3) {
+    border-color: var(--idle);
+  }
+  .ghost-pane:nth-child(3) .ghost-dot {
+    background: var(--idle);
+  }
+}

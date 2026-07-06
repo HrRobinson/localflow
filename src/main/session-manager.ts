@@ -87,10 +87,11 @@ export class SessionManager {
     return info
   }
 
-  restart(id: string): SessionInfo {
+  /** Relaunch a dead session. `fresh` skips the agent's resume args. */
+  restart(id: string, fresh = false): SessionInfo {
     const rec = this.sessions.get(id)
     if (!rec || rec.info.status !== 'exited') throw new Error(`cannot restart session ${id}`)
-    return this.spawn(id, rec.info.cwd, rec.spec, true)
+    return this.spawn(id, rec.info.cwd, rec.spec, !fresh)
   }
 
   private spawn(id: string, cwd: string, spec: SpawnSpec, resume: boolean): SessionInfo {

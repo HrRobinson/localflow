@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import TerminalPane from './components/TerminalPane'
 import Landing from './components/Landing'
-import Brand from './components/Brand'
+import Sidebar from './components/Sidebar'
 import type { AgentId, SessionInfo } from '../../shared/types'
 
 export default function App(): React.JSX.Element {
   const [sessions, setSessions] = useState<SessionInfo[]>([])
   const [enlarged, setEnlarged] = useState<string | null>(null)
-  const [homeRequested, setHomeRequested] = useState(false)
+  // The app opens on the home overview; terminals are entered explicitly.
+  const [view, setView] = useState<'home' | 'terminals'>('home')
 
   const refresh = useCallback(async () => {
     setSessions(await window.localflow.listSessions())
@@ -26,7 +27,7 @@ export default function App(): React.JSX.Element {
         e.preventDefault()
         setEnlarged((cur) => {
           if (cur !== null) return null
-          setHomeRequested(true)
+          setView('home')
           return cur
         })
       }
@@ -48,12 +49,12 @@ export default function App(): React.JSX.Element {
   const createSession = async (agentId: AgentId, customCommand?: string): Promise<void> => {
     const created = await window.localflow.createSession(agentId, undefined, customCommand)
     if (created) {
-      setHomeRequested(false)
+      setView('terminals')
       await refresh()
     }
   }
-  const restart = async (id: string): Promise<void> => {
-    await window.localflow.restartSession(id)
+  const restart = async (id: string, fresh: boolean): Promise<void> => {
+    await window.localflow.restartSession(id, fresh)
     await refresh()
   }
   const close = async (id: string): Promise<void> => {
@@ -61,41 +62,61 @@ export default function App(): React.JSX.Element {
     setEnlarged((cur) => (cur === id ? null : cur))
     await refresh()
   }
+  const openSession = (id: string): void => {
+    setView('terminals')
+    setEnlarged(sessions.length > 1 ? id : null)
+  }
 
-  const showHome = sessions.length === 0 || homeRequested
+  const showTerminals = view === 'terminals' && sessions.length > 0
 
   return (
-    <>
-      <div className="toolbar">
-        <Brand />
-        <span className="toolbar-spacer" />
-        {sessions.length > 0 && showHome && (
-          <button className="toolbar-btn" onClick={() => setHomeRequested(false)}>
-            back to sessions
-          </button>
+    <div className="app-shell">
+      <Sidebar
+        sessions={sessions}
+        view={showTerminals ? 'terminals' : 'home'}
+        activeSession={enlarged}
+        onHome={() => setView('home')}
+        onTerminals={() => setView('terminals')}
+        onOpenSession={openSession}
+      />
+      <main className="content">
+        <header className="content-head">
+          <h2>{showTerminals ? 'Terminals' : 'Overview'}</h2>
+          {showTerminals ? (
+            <button className="toolbar-btn" onClick={() => setView('home')} title="cmd+esc">
+              home
+            </button>
+          ) : (
+            sessions.length > 0 && (
+              <button className="toolbar-btn" onClick={() => setView('terminals')}>
+                open terminals
+              </button>
+            )
+          )}
+        </header>
+        {showTerminals ? (
+          <div className="grid">
+            {sessions.map((s) => (
+              <TerminalPane
+                key={s.id}
+                session={s}
+                enlarged={enlarged === s.id}
+                onToggleEnlarge={() => setEnlarged((cur) => (cur === s.id ? null : s.id))}
+                onRestart={(fresh) => void restart(s.id, fresh)}
+                onClose={() => void close(s.id)}
+              />
+            ))}
+          </div>
+        ) : (
+          <Landing
+            sessions={sessions}
+            onCreate={(agentId, cmd) => void createSession(agentId, cmd)}
+            onOpen={openSession}
+            onResume={(id, fresh) => void restart(id, fresh)}
+            onRemove={(id) => void close(id)}
+          />
         )}
-        {sessions.length > 0 && !showHome && (
-          <button className="toolbar-btn" onClick={() => setHomeRequested(true)} title="cmd+esc">
-            + new session
-          </button>
-        )}
-      </div>
-      {showHome ? (
-        <Landing onCreate={(agentId, cmd) => void createSession(agentId, cmd)} />
-      ) : (
-        <div className="grid">
-          {sessions.map((s) => (
-            <TerminalPane
-              key={s.id}
-              session={s}
-              enlarged={enlarged === s.id}
-              onToggleEnlarge={() => setEnlarged((cur) => (cur === s.id ? null : s.id))}
-              onRestart={() => void restart(s.id)}
-              onClose={() => void close(s.id)}
-            />
-          ))}
-        </div>
-      )}
-    </>
+      </main>
+    </div>
   )
 }

@@ -5,7 +5,7 @@ import type { AgentId, SessionStatus } from '../shared/types'
 const api: LocalflowApi = {
   createSession: (agentId: AgentId, cwd?: string, customCommand?: string) =>
     ipcRenderer.invoke('session:create', agentId, cwd, customCommand),
-  restartSession: (id: string) => ipcRenderer.invoke('session:restart', id),
+  restartSession: (id: string, fresh?: boolean) => ipcRenderer.invoke('session:restart', id, fresh),
   killSession: (id: string) => ipcRenderer.invoke('session:kill', id),
   listSessions: () => ipcRenderer.invoke('session:list'),
   listAgents: () => ipcRenderer.invoke('agents:list'),

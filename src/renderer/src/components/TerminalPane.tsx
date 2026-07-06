@@ -8,7 +8,8 @@ interface Props {
   session: SessionInfo
   enlarged: boolean
   onToggleEnlarge: () => void
-  onRestart: () => void
+  /** Relaunch the agent; `fresh` starts a new conversation instead of resuming. */
+  onRestart: (fresh: boolean) => void
   onClose: () => void
 }
 
@@ -74,7 +75,10 @@ export default function TerminalPane({
       ) : (
         <div className="restart-overlay">
           {session.message && <p className="restart-message">{session.message}</p>}
-          <button onClick={onRestart}>Restart (resume) session</button>
+          <div className="restart-actions">
+            <button onClick={() => onRestart(false)}>Resume conversation</button>
+            <button onClick={() => onRestart(true)}>Start fresh</button>
+          </div>
         </div>
       )}
     </div>

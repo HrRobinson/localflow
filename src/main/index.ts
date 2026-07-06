@@ -103,7 +103,9 @@ app.whenReady().then(async () => {
       return manager.create(dir, specFor(agentId, customCommand?.trim()))
     }
   )
-  ipcMain.handle('session:restart', (_e, id: string) => manager.restart(id))
+  ipcMain.handle('session:restart', (_e, id: string, fresh?: boolean) =>
+    manager.restart(id, fresh === true)
+  )
   ipcMain.handle('session:kill', (_e, id: string) => manager.kill(id))
   ipcMain.handle('session:list', () => manager.list())
   ipcMain.on('session:write', (_e, id: string, data: string) => manager.write(id, data))

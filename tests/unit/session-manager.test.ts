@@ -104,6 +104,14 @@ describe('SessionManager', () => {
     expect(spawnCalls[1].args).toContain('--continue')
   })
 
+  it('fresh restart skips resume args (new conversation)', () => {
+    const info = mgr.create('/p', claudeSpec)
+    ptys[0].exitCb?.()
+    mgr.restart(info.id, true)
+    expect(spawnCalls[1].args).not.toContain('--continue')
+    expect(spawnCalls[1].args[0]).toBe('--settings')
+  })
+
   it('restart of a non-hook agent uses its own resume args and no settings', () => {
     const info = mgr.create('/p', codexSpec)
     ptys[0].exitCb?.()

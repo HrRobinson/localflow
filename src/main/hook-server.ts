@@ -50,6 +50,13 @@ export function startHookServer(onEvent: (e: HookEvent) => void): Promise<HookEn
     }
     let body = ''
     let responded = false
+    // A mid-body connection reset emits 'error' on the request stream. With no
+    // listener, that 'error' event is unhandled and crashes the main process.
+    // Mark responded so 'data'/'end' (which may still be queued) never attempt
+    // to write to the now-dead socket.
+    req.on('error', () => {
+      responded = true
+    })
     req.on('data', (chunk: Buffer) => {
       if (responded) return
       body += chunk.toString()

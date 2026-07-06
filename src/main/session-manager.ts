@@ -131,7 +131,13 @@ export class SessionManager {
     pty.onData((d) => {
       if (this.sessions.has(id)) this.dataCbs.forEach((cb) => cb(id, d))
     })
-    pty.onExit(() => this.setStatus(id, transition(this.status(id), 'pty-exit')))
+    pty.onExit(() => {
+      // Drop the pty reference first: its fd is gone, and any late
+      // write/resize against it would throw EBADF in the main process.
+      const rec = this.sessions.get(id)
+      if (rec) rec.pty = null
+      this.setStatus(id, transition(this.status(id), 'pty-exit'))
+    })
     this.changedCbs.forEach((cb) => cb())
     return info
   }
@@ -142,18 +148,32 @@ export class SessionManager {
     this.setStatus(e.paneId, transition(rec.info.status, e.event))
   }
 
+  // The pty's fd can die at any moment (process exit races these calls),
+  // so treat write/resize/kill errors as "session already gone" no-ops.
   write(id: string, data: string): void {
-    this.sessions.get(id)?.pty?.write(data)
+    try {
+      this.sessions.get(id)?.pty?.write(data)
+    } catch {
+      /* dead pty */
+    }
   }
 
   resize(id: string, cols: number, rows: number): void {
-    this.sessions.get(id)?.pty?.resize(cols, rows)
+    try {
+      this.sessions.get(id)?.pty?.resize(cols, rows)
+    } catch {
+      /* dead pty */
+    }
   }
 
   kill(id: string): void {
     const rec = this.sessions.get(id)
     if (!rec) return
-    rec.pty?.kill()
+    try {
+      rec.pty?.kill()
+    } catch {
+      /* dead pty */
+    }
     this.sessions.delete(id)
     this.changedCbs.forEach((cb) => cb())
   }

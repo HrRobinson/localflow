@@ -157,6 +157,24 @@ describe('SessionManager', () => {
     expect(messages).toEqual([])
   })
 
+  it('resize and write after pty exit never reach the dead pty', () => {
+    const info = mgr.create('/p', claudeSpec)
+    ptys[0].exitCb?.()
+    expect(() => {
+      mgr.resize(info.id, 120, 40)
+      mgr.write(info.id, 'ls\n')
+    }).not.toThrow()
+    expect(ptys[0].written).toEqual([])
+  })
+
+  it('resize survives a pty whose fd died mid-call', () => {
+    const info = mgr.create('/p', claudeSpec)
+    ptys[0].resize = () => {
+      throw new Error('ioctl(2) failed, EBADF')
+    }
+    expect(() => mgr.resize(info.id, 120, 40)).not.toThrow()
+  })
+
   it('restart of a restored session with an invalid id does not throw and reports failure', () => {
     mgr.restore('bad/id', '/p', claudeSpec)
     const messages: string[] = []

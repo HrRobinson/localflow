@@ -21,7 +21,8 @@
     "check": "npm run lint && npm run typecheck && npm run test",
     "package": "electron-vite build && electron-builder --dir",
     "dist": "electron-vite build && electron-builder --mac --publish never",
-    "postinstall": "electron-builder install-app-deps"
+    "postinstall": "electron-builder install-app-deps",
+    "prepare": "husky"
   },
   "dependencies": {
     "@xterm/addon-fit": "^0.11.0",
@@ -31,6 +32,8 @@
     "react-dom": "^19.2.7"
   },
   "devDependencies": {
+    "@commitlint/cli": "^21.2.0",
+    "@commitlint/config-conventional": "^21.2.0",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.61.1",
     "@types/node": "^26.1.0",
@@ -42,6 +45,7 @@
     "electron-vite": "^5.0.0",
     "eslint": "^10.6.0",
     "eslint-plugin-react-hooks": "^7.1.1",
+    "husky": "^9.1.7",
     "prettier": "^3.9.4",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.62.1",

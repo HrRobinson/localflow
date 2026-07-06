@@ -377,13 +377,6 @@ body {
   display: block;
   opacity: 0.9;
 }
-.brand-name {
-  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: #9ca3af;
-}
 .toolbar-spacer {
   flex: 1;
 }

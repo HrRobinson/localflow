@@ -7,7 +7,6 @@ export default function Brand(): React.JSX.Element {
         <rect x="9.5" y="0" width="7" height="16" rx="2" fill="var(--needs-you)" />
         <rect x="19" y="4" width="7" height="10" rx="2" fill="var(--idle)" />
       </svg>
-      <span className="brand-name">localflow</span>
     </div>
   )
 }

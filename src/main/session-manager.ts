@@ -78,15 +78,15 @@ export class SessionManager {
   }
 
   private spawn(id: string, cwd: string, extraArgs: string[]): SessionInfo {
-    const settingsFile = writeHookSettings(
-      this.opts.settingsDir,
-      id,
-      this.opts.port,
-      this.opts.token
-    )
     const info: SessionInfo = { id, cwd, status: 'idle' }
     let pty: PtyLike
     try {
+      const settingsFile = writeHookSettings(
+        this.opts.settingsDir,
+        id,
+        this.opts.port,
+        this.opts.token
+      )
       pty = (this.opts.spawnFn ?? defaultSpawn)(
         this.opts.claudeBin,
         ['--settings', settingsFile, ...extraArgs],
@@ -105,7 +105,9 @@ export class SessionManager {
       return info
     }
     this.sessions.set(id, { info, pty })
-    pty.onData((d) => this.dataCbs.forEach((cb) => cb(id, d)))
+    pty.onData((d) => {
+      if (this.sessions.has(id)) this.dataCbs.forEach((cb) => cb(id, d))
+    })
     pty.onExit(() => this.setStatus(id, transition(this.status(id), 'pty-exit')))
     this.changedCbs.forEach((cb) => cb())
     return info

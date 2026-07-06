@@ -106,4 +106,25 @@ describe('SessionManager', () => {
     expect(ptys[0].killed).toBe(true)
     expect(mgr.list()).toHaveLength(0)
   })
+
+  it('does not forward late data from a killed session', () => {
+    const info = mgr.create('/p')
+    const messages: string[] = []
+    mgr.onData((_id, d) => messages.push(d))
+    mgr.kill(info.id)
+    ptys[0].dataCb?.('late buffered output')
+    expect(messages).toEqual([])
+  })
+
+  it('restart of a restored session with an invalid id does not throw and reports failure', () => {
+    mgr.restore('bad/id', '/p')
+    const messages: string[] = []
+    mgr.onData((_id, d) => messages.push(d))
+    let restarted: ReturnType<typeof mgr.restart> | undefined
+    expect(() => {
+      restarted = mgr.restart('bad/id')
+    }).not.toThrow()
+    expect(restarted?.status).toBe('exited')
+    expect(messages.join('')).toContain('Could not start')
+  })
 })

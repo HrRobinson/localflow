@@ -6,6 +6,9 @@
   "type": "module",
   "license": "MIT",
   "author": "HrRobinson",
+  "engines": {
+    "node": ">=20"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/HrRobinson/localflow.git"

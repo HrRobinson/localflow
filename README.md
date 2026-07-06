@@ -22,6 +22,8 @@ finished, and gray means the process has exited.
 Download the `.dmg` from [Releases](https://github.com/HrRobinson/localflow/releases).
 Builds are currently unsigned, so on first launch you'll need to
 right-click the app and choose **Open** instead of double-clicking it.
+The prebuilt macOS artifacts are Apple Silicon (arm64) only for now; Intel
+Macs should build from source below.
 
 Or build from source:
 

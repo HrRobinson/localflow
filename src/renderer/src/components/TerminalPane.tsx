@@ -59,8 +59,12 @@ export default function TerminalPane({
         <span className="cwd" title={session.cwd}>
           {name}
         </span>
-        <button onClick={onToggleEnlarge}>{enlarged ? 'shrink' : 'enlarge'}</button>
-        <button onClick={onClose}>close</button>
+        <button onClick={onToggleEnlarge} onDoubleClick={(e) => e.stopPropagation()}>
+          {enlarged ? 'shrink' : 'enlarge'}
+        </button>
+        <button onClick={onClose} onDoubleClick={(e) => e.stopPropagation()}>
+          close
+        </button>
       </div>
       {alive ? (
         <div className="term-host" ref={hostRef} />

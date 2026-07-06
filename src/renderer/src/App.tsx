@@ -20,6 +20,11 @@ export default function App(): React.JSX.Element {
       if (e.key === 'Escape') setEnlarged(null)
     }
     window.addEventListener('keydown', onKey)
+    // Session state arrives via two paths: pushed onStatus events (fast path
+    // for status transitions) and this 1s poll (catches everything else,
+    // e.g. sessions created/removed elsewhere). Both write into the same
+    // `sessions` state, so they must stay reconcilable — poll results should
+    // never regress a status a pushed event has already advanced past.
     const iv = setInterval(() => void refresh(), 1000)
     return () => {
       offStatus()

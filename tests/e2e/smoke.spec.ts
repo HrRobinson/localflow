@@ -29,6 +29,12 @@ test('panes render and hook events change status colors', async () => {
       ).localflow.createSession('claude', cwd),
     userData
   )
+  // The app opens on the home overview: the created session appears as a
+  // table row, and clicking "open" enters the terminal grid.
+  const row = win.locator(`[data-session-id="${info!.id}"]`)
+  await expect(row).toBeVisible()
+  await row.locator('.row-open').click()
+
   const pane = win.locator(`[data-pane-id="${info!.id}"]`)
   await expect(pane).toBeVisible()
   await expect(pane).toHaveAttribute('data-status', 'idle')

@@ -7,7 +7,8 @@ export interface LocalflowApi {
    * picker. `customCommand` is required when agentId is 'custom'.
    */
   createSession(agentId: AgentId, cwd?: string, customCommand?: string): Promise<SessionInfo | null>
-  restartSession(id: string): Promise<SessionInfo>
+  /** Relaunch a dead session; `fresh` starts a new conversation instead of resuming. */
+  restartSession(id: string, fresh?: boolean): Promise<SessionInfo>
   killSession(id: string): Promise<void>
   listSessions(): Promise<SessionInfo[]>
   listAgents(): Promise<AgentInfo[]>

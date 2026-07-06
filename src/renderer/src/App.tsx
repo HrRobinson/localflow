@@ -7,7 +7,8 @@ import type { AgentId, SessionInfo } from '../../shared/types'
 export default function App(): React.JSX.Element {
   const [sessions, setSessions] = useState<SessionInfo[]>([])
   const [enlarged, setEnlarged] = useState<string | null>(null)
-  const [homeRequested, setHomeRequested] = useState(false)
+  // The app opens on the home overview; the grid is entered explicitly.
+  const [homeRequested, setHomeRequested] = useState(true)
 
   const refresh = useCallback(async () => {
     setSessions(await window.localflow.listSessions())
@@ -52,8 +53,8 @@ export default function App(): React.JSX.Element {
       await refresh()
     }
   }
-  const restart = async (id: string): Promise<void> => {
-    await window.localflow.restartSession(id)
+  const restart = async (id: string, fresh: boolean): Promise<void> => {
+    await window.localflow.restartSession(id, fresh)
     await refresh()
   }
   const close = async (id: string): Promise<void> => {
@@ -62,7 +63,7 @@ export default function App(): React.JSX.Element {
     await refresh()
   }
 
-  const showHome = sessions.length === 0 || homeRequested
+  const showHome = homeRequested || sessions.length === 0
 
   return (
     <>
@@ -71,17 +72,26 @@ export default function App(): React.JSX.Element {
         <span className="toolbar-spacer" />
         {sessions.length > 0 && showHome && (
           <button className="toolbar-btn" onClick={() => setHomeRequested(false)}>
-            back to sessions
+            open terminals
           </button>
         )}
         {sessions.length > 0 && !showHome && (
           <button className="toolbar-btn" onClick={() => setHomeRequested(true)} title="cmd+esc">
-            + new session
+            home
           </button>
         )}
       </div>
       {showHome ? (
-        <Landing onCreate={(agentId, cmd) => void createSession(agentId, cmd)} />
+        <Landing
+          sessions={sessions}
+          onCreate={(agentId, cmd) => void createSession(agentId, cmd)}
+          onOpen={(id) => {
+            setHomeRequested(false)
+            setEnlarged(sessions.length > 1 ? id : null)
+          }}
+          onResume={(id, fresh) => void restart(id, fresh)}
+          onRemove={(id) => void close(id)}
+        />
       ) : (
         <div className="grid">
           {sessions.map((s) => (
@@ -90,7 +100,7 @@ export default function App(): React.JSX.Element {
               session={s}
               enlarged={enlarged === s.id}
               onToggleEnlarge={() => setEnlarged((cur) => (cur === s.id ? null : s.id))}
-              onRestart={() => void restart(s.id)}
+              onRestart={(fresh) => void restart(s.id, fresh)}
               onClose={() => void close(s.id)}
             />
           ))}

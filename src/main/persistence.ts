@@ -1,0 +1,23 @@
+import { readFileSync, writeFileSync } from 'node:fs'
+
+export interface SavedSession {
+  id: string
+  cwd: string
+}
+
+export function loadSavedSessions(file: string): SavedSession[] {
+  try {
+    const data: unknown = JSON.parse(readFileSync(file, 'utf8'))
+    if (!Array.isArray(data)) return []
+    return data.filter(
+      (s): s is SavedSession =>
+        typeof s === 'object' && s !== null && typeof s.id === 'string' && typeof s.cwd === 'string'
+    )
+  } catch {
+    return []
+  }
+}
+
+export function saveSessions(file: string, sessions: SavedSession[]): void {
+  writeFileSync(file, JSON.stringify(sessions, null, 2))
+}

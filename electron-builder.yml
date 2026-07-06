@@ -1,0 +1,11 @@
+appId: dev.hrrobinson.localflow
+productName: localflow
+directories:
+  output: dist
+files:
+  - out/**
+mac:
+  target:
+    - dmg
+    - zip
+  identity: null

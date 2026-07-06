@@ -1,6 +1,6 @@
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { randomUUID } from 'node:crypto'
+import { randomUUID, createHash, timingSafeEqual } from 'node:crypto'
 import type { HookEvent } from '../shared/types'
 
 export interface HookEndpoint {
@@ -10,6 +10,16 @@ export interface HookEndpoint {
 }
 
 const EVENT_NAMES = ['UserPromptSubmit', 'Notification', 'Stop'] as const
+const MAX_BODY_BYTES = 4096
+
+function sha256(input: string): Buffer {
+  return createHash('sha256').update(input).digest()
+}
+
+function tokensMatch(provided: unknown, expected: string): boolean {
+  if (typeof provided !== 'string') return false
+  return timingSafeEqual(sha256(provided), sha256(expected))
+}
 
 export function parseHookBody(raw: string): HookEvent | null {
   try {
@@ -32,15 +42,27 @@ export function startHookServer(onEvent: (e: HookEvent) => void): Promise<HookEn
     if (
       req.method !== 'POST' ||
       req.url !== '/event' ||
-      req.headers['x-localflow-token'] !== token
+      !tokensMatch(req.headers['x-localflow-token'], token)
     ) {
       res.writeHead(403)
       res.end()
       return
     }
     let body = ''
-    req.on('data', (chunk: Buffer) => (body += chunk.toString()))
+    let responded = false
+    req.on('data', (chunk: Buffer) => {
+      if (responded) return
+      body += chunk.toString()
+      if (body.length > MAX_BODY_BYTES) {
+        responded = true
+        res.writeHead(400)
+        res.end()
+        req.destroy()
+      }
+    })
     req.on('end', () => {
+      if (responded) return
+      responded = true
       const event = parseHookBody(body)
       if (!event) {
         res.writeHead(400)

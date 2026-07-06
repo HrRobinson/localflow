@@ -51,4 +51,23 @@ describe('startHookServer', () => {
     expect(badBody.status).toBe(400)
     expect(received).toHaveLength(1)
   })
+
+  it('rejects oversized request bodies', async () => {
+    const received: HookEvent[] = []
+    endpoint = await startHookServer((e) => received.push(e))
+    const url = `http://127.0.0.1:${endpoint.port}/event`
+    const oversized = JSON.stringify({
+      paneId: 'p1',
+      event: 'Notification',
+      padding: 'x'.repeat(5000)
+    })
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Localflow-Token': endpoint.token },
+      body: oversized
+    })
+    expect(res.status).toBe(400)
+    expect(received).toHaveLength(0)
+  })
 })

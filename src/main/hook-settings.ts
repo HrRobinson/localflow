@@ -41,6 +41,8 @@ export function writeHookSettings(
   assertSafeToken(token, 'token')
   assertValidPort(port)
   const file = join(dir, `localflow-hooks-${paneId}.json`)
-  writeFileSync(file, JSON.stringify(buildHookSettings(paneId, port, token), null, 2))
+  writeFileSync(file, JSON.stringify(buildHookSettings(paneId, port, token), null, 2), {
+    mode: 0o600
+  })
   return file
 }

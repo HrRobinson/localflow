@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { buildHookSettings, writeHookSettings } from '../../src/main/hook-settings'
@@ -27,6 +27,12 @@ describe('writeHookSettings', () => {
     expect(file).toBe(join(dir, 'localflow-hooks-p2.json'))
     const parsed = JSON.parse(readFileSync(file, 'utf8'))
     expect(parsed.hooks.Stop).toBeDefined()
+  })
+
+  it('writes the file with owner-only permissions (0600)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'localflow-test-'))
+    const file = writeHookSettings(dir, 'p3', 1234, 'tok3')
+    expect(statSync(file).mode & 0o777).toBe(0o600)
   })
 
   it('throws when paneId attempts path traversal', () => {

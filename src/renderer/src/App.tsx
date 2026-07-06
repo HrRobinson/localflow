@@ -20,9 +20,11 @@ export default function App(): React.JSX.Element {
       if (e.key === 'Escape') setEnlarged(null)
     }
     window.addEventListener('keydown', onKey)
+    const iv = setInterval(() => void refresh(), 1000)
     return () => {
       offStatus()
       window.removeEventListener('keydown', onKey)
+      clearInterval(iv)
     }
   }, [refresh])
 

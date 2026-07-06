@@ -28,4 +28,26 @@ describe('writeHookSettings', () => {
     const parsed = JSON.parse(readFileSync(file, 'utf8'))
     expect(parsed.hooks.Stop).toBeDefined()
   })
+
+  it('throws when paneId attempts path traversal', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'localflow-test-'))
+    expect(() => writeHookSettings(dir, '../escape', 1234, 'tok2')).toThrow()
+  })
+})
+
+describe('input validation', () => {
+  it('throws when paneId contains a single quote', () => {
+    expect(() => buildHookSettings("p'; rm -rf /tmp/x'", 4242, 'tok')).toThrow()
+  })
+
+  it('throws when token contains a single quote', () => {
+    expect(() => buildHookSettings('p1', 4242, "tok'; rm -rf /tmp/x'")).toThrow()
+  })
+
+  it('throws when port is not a positive integer <= 65535', () => {
+    expect(() => buildHookSettings('p1', 0, 'tok')).toThrow()
+    expect(() => buildHookSettings('p1', -1, 'tok')).toThrow()
+    expect(() => buildHookSettings('p1', 65536, 'tok')).toThrow()
+    expect(() => buildHookSettings('p1', 1.5, 'tok')).toThrow()
+  })
 })

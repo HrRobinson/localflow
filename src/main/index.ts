@@ -1,13 +1,17 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import { join } from 'node:path'
 import { writeFileSync } from 'node:fs'
+import type { AgentId } from '../shared/types'
 import { startHookServer } from './hook-server'
-import { SessionManager } from './session-manager'
+import { SessionManager, type SpawnSpec } from './session-manager'
 import { loadSavedSessions, saveSessions } from './persistence'
+import { AgentRegistry } from './agent-registry'
 
 if (process.env['LOCALFLOW_USER_DATA']) {
   app.setPath('userData', process.env['LOCALFLOW_USER_DATA'])
 }
+
+const VALID_AGENTS: AgentId[] = ['claude', 'codex', 'gemini', 'custom']
 
 let win: BrowserWindow | null = null
 
@@ -36,6 +40,12 @@ app.whenReady().then(async () => {
   const userData = app.getPath('userData')
   const sessionsFile = join(userData, 'sessions.json')
 
+  const registry = new AgentRegistry(
+    join(userData, 'config.json'),
+    undefined,
+    process.env['LOCALFLOW_CLAUDE_BIN']
+  )
+
   const endpoint = await startHookServer((e) => manager.applyHookEvent(e))
   if (process.env['LOCALFLOW_E2E'] === '1') {
     writeFileSync(
@@ -48,8 +58,14 @@ app.whenReady().then(async () => {
   const manager = new SessionManager({
     settingsDir: userData,
     port: endpoint.port,
-    token: endpoint.token,
-    claudeBin: process.env['LOCALFLOW_CLAUDE_BIN'] ?? 'claude'
+    token: endpoint.token
+  })
+
+  const specFor = (agentId: AgentId, customCommand?: string): SpawnSpec => ({
+    agentId,
+    command: registry.commandFor(agentId, customCommand),
+    resumeArgs: registry.argsFor(agentId, true),
+    useHooks: registry.useHooks(agentId)
   })
 
   manager.onData((id, data) => win?.webContents.send('session:data', id, data))
@@ -57,26 +73,36 @@ app.whenReady().then(async () => {
   manager.onSessionsChanged(() =>
     saveSessions(
       sessionsFile,
-      manager.list().map(({ id, cwd }) => ({ id, cwd }))
+      manager.list().map(({ id, cwd, agentId, command }) => ({ id, cwd, agentId, command }))
     )
   )
 
   for (const saved of loadSavedSessions(sessionsFile)) {
-    manager.restore(saved.id, saved.cwd)
+    const agentId = VALID_AGENTS.includes(saved.agentId as AgentId)
+      ? (saved.agentId as AgentId)
+      : 'claude'
+    // A saved custom session keeps its stored command verbatim.
+    const spec = agentId === 'custom' ? specFor(agentId, saved.command ?? '') : specFor(agentId)
+    manager.restore(saved.id, saved.cwd, spec)
   }
 
-  ipcMain.handle('session:create', async (_e, cwd?: string) => {
-    let dir = process.env['LOCALFLOW_E2E'] === '1' ? cwd : undefined
-    if (!dir) {
-      const result = await dialog.showOpenDialog(win!, {
-        properties: ['openDirectory', 'createDirectory'],
-        title: 'Choose a project folder for the new Claude session'
-      })
-      if (result.canceled || result.filePaths.length === 0) return null
-      dir = result.filePaths[0]
+  ipcMain.handle(
+    'session:create',
+    async (_e, agentId: AgentId, cwd?: string, customCommand?: string) => {
+      if (!VALID_AGENTS.includes(agentId)) return null
+      if (agentId === 'custom' && !customCommand?.trim()) return null
+      let dir = process.env['LOCALFLOW_E2E'] === '1' ? cwd : undefined
+      if (!dir) {
+        const result = await dialog.showOpenDialog(win!, {
+          properties: ['openDirectory', 'createDirectory'],
+          title: 'Choose a project folder for the new session'
+        })
+        if (result.canceled || result.filePaths.length === 0) return null
+        dir = result.filePaths[0]
+      }
+      return manager.create(dir, specFor(agentId, customCommand?.trim()))
     }
-    return manager.create(dir)
-  })
+  )
   ipcMain.handle('session:restart', (_e, id: string) => manager.restart(id))
   ipcMain.handle('session:kill', (_e, id: string) => manager.kill(id))
   ipcMain.handle('session:list', () => manager.list())
@@ -84,6 +110,18 @@ app.whenReady().then(async () => {
   ipcMain.on('session:resize', (_e, id: string, cols: number, rows: number) =>
     manager.resize(id, cols, rows)
   )
+
+  ipcMain.handle('agents:list', () => registry.list())
+  ipcMain.handle('agents:setPath', async (_e, agentId: AgentId) => {
+    if (!VALID_AGENTS.includes(agentId) || agentId === 'custom') return null
+    const result = await dialog.showOpenDialog(win!, {
+      properties: ['openFile'],
+      title: 'Locate the agent executable'
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+    registry.setPath(agentId, result.filePaths[0])
+    return registry.list()
+  })
 
   createWindow()
 })

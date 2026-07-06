@@ -23,8 +23,10 @@ test('panes render and hook events change status colors', async () => {
   const info = await win.evaluate(
     (cwd) =>
       (
-        window as unknown as { localflow: { createSession(c: string): Promise<{ id: string }> } }
-      ).localflow.createSession(cwd),
+        window as unknown as {
+          localflow: { createSession(a: string, c: string): Promise<{ id: string }> }
+        }
+      ).localflow.createSession('claude', cwd),
     userData
   )
   const pane = win.locator(`[data-pane-id="${info!.id}"]`)

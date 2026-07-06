@@ -3,6 +3,10 @@ import { readFileSync, writeFileSync } from 'node:fs'
 export interface SavedSession {
   id: string
   cwd: string
+  /** Agent preset id; older files may lack it (treated as claude). */
+  agentId?: string
+  /** Spawned command, needed to restore custom sessions verbatim. */
+  command?: string
 }
 
 export function loadSavedSessions(file: string): SavedSession[] {

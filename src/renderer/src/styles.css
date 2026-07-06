@@ -366,3 +366,167 @@ body {
     background: var(--idle);
   }
 }
+
+/* Toolbar identity + navigation */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.brand-mark {
+  display: block;
+  opacity: 0.9;
+}
+.brand-name {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #9ca3af;
+}
+.toolbar-spacer {
+  flex: 1;
+}
+.toolbar-btn {
+  background: rgba(255, 255, 255, 0.06);
+  color: #d1d5db;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.toolbar-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: white;
+}
+
+/* Running (alive, but agent has no status feed) */
+:root {
+  --running: #8b5cf6;
+}
+.pane[data-status='running'] {
+  border-color: var(--running);
+}
+.pane[data-status='running'] .dot {
+  background: var(--running);
+}
+.legend-running {
+  background: var(--running);
+}
+.pane-agent {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 10px;
+  color: #9ca3af;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+/* Landing */
+.landing {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 24px;
+  text-align: center;
+  overflow: auto;
+}
+.agent-cards {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 14px;
+  max-width: 760px;
+}
+.agent-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 220px;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: var(--pane-bg);
+  text-align: left;
+}
+.agent-card.missing {
+  opacity: 0.75;
+}
+.agent-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.agent-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+.agent-badge {
+  font-size: 10px;
+  color: var(--idle);
+  border: 1px solid color-mix(in srgb, var(--idle) 50%, transparent);
+  border-radius: 999px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+.agent-detect {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 11px;
+  color: #9ca3af;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.detect-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--exited);
+}
+.detect-dot.found {
+  background: var(--idle);
+}
+.agent-start {
+  font-size: 13px;
+  padding: 8px 0;
+  width: 100%;
+}
+.agent-start-alt {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e5e7eb;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 8px 0;
+  width: 100%;
+  font-size: 13px;
+  cursor: pointer;
+}
+.agent-start-alt:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.14);
+}
+.agent-start-alt:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.agent-input {
+  background: var(--bg);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  color: #e5e7eb;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 12px;
+  padding: 8px 10px;
+  outline: none;
+}
+.agent-input:focus {
+  border-color: var(--working);
+}

@@ -1,4 +1,4 @@
-export type SessionStatus = 'idle' | 'working' | 'needs-you' | 'exited'
+export type SessionStatus = 'idle' | 'working' | 'needs-you' | 'running' | 'exited'
 
 export type HookEventName = 'UserPromptSubmit' | 'Notification' | 'Stop'
 
@@ -7,9 +7,25 @@ export interface HookEvent {
   event: HookEventName
 }
 
+export type AgentId = 'claude' | 'codex' | 'gemini' | 'custom'
+
 export interface SessionInfo {
   id: string
   cwd: string
   status: SessionStatus
+  agentId: AgentId
+  command: string
   message?: string
+}
+
+/** What the renderer needs to render an agent card. */
+export interface AgentInfo {
+  id: AgentId
+  label: string
+  /** Command that will be spawned (preset binary or user-configured path). */
+  command: string
+  /** Absolute path if the command was found on this machine, null otherwise. */
+  resolvedPath: string | null
+  /** True when sessions of this agent report status via hooks (exact colors). */
+  hasStatusFeed: boolean
 }

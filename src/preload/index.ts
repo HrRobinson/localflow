@@ -1,12 +1,15 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import type { LocalflowApi } from '../shared/api'
-import type { SessionStatus } from '../shared/types'
+import type { AgentId, SessionStatus } from '../shared/types'
 
 const api: LocalflowApi = {
-  createSession: (cwd?: string) => ipcRenderer.invoke('session:create', cwd),
+  createSession: (agentId: AgentId, cwd?: string, customCommand?: string) =>
+    ipcRenderer.invoke('session:create', agentId, cwd, customCommand),
   restartSession: (id: string) => ipcRenderer.invoke('session:restart', id),
   killSession: (id: string) => ipcRenderer.invoke('session:kill', id),
   listSessions: () => ipcRenderer.invoke('session:list'),
+  listAgents: () => ipcRenderer.invoke('agents:list'),
+  setAgentPath: (agentId: AgentId) => ipcRenderer.invoke('agents:setPath', agentId),
   write: (id: string, data: string) => ipcRenderer.send('session:write', id, data),
   resize: (id: string, cols: number, rows: number) =>
     ipcRenderer.send('session:resize', id, cols, rows),

@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import TerminalPane from './components/TerminalPane'
-import EmptyState from './components/EmptyState'
-import type { SessionInfo } from '../../shared/types'
+import Landing from './components/Landing'
+import Brand from './components/Brand'
+import type { AgentId, SessionInfo } from '../../shared/types'
 
 export default function App(): React.JSX.Element {
   const [sessions, setSessions] = useState<SessionInfo[]>([])
   const [enlarged, setEnlarged] = useState<string | null>(null)
+  const [homeRequested, setHomeRequested] = useState(false)
 
   const refresh = useCallback(async () => {
     setSessions(await window.localflow.listSessions())
@@ -18,7 +20,16 @@ export default function App(): React.JSX.Element {
       setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, status } : s)))
     })
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') setEnlarged(null)
+      // Bare Escape belongs to the agents (Claude uses it to interrupt);
+      // cmd-esc is localflow's "go up": shrink if enlarged, else go home.
+      if (e.key === 'Escape' && e.metaKey) {
+        e.preventDefault()
+        setEnlarged((cur) => {
+          if (cur !== null) return null
+          setHomeRequested(true)
+          return cur
+        })
+      }
     }
     window.addEventListener('keydown', onKey)
     // Session state arrives via two paths: pushed onStatus events (fast path
@@ -34,9 +45,12 @@ export default function App(): React.JSX.Element {
     }
   }, [refresh])
 
-  const createSession = async (): Promise<void> => {
-    const created = await window.localflow.createSession()
-    if (created) await refresh()
+  const createSession = async (agentId: AgentId, customCommand?: string): Promise<void> => {
+    const created = await window.localflow.createSession(agentId, undefined, customCommand)
+    if (created) {
+      setHomeRequested(false)
+      await refresh()
+    }
   }
   const restart = async (id: string): Promise<void> => {
     await window.localflow.restartSession(id)
@@ -48,20 +62,26 @@ export default function App(): React.JSX.Element {
     await refresh()
   }
 
+  const showHome = sessions.length === 0 || homeRequested
+
   return (
     <>
       <div className="toolbar">
-        <h1>localflow</h1>
-        {/* The hero CTA owns .new-session in the empty state so exactly one
-            exists at a time (the e2e locator relies on that). */}
-        {sessions.length > 0 && (
-          <button className="new-session" onClick={() => void createSession()}>
-            + New session
+        <Brand />
+        <span className="toolbar-spacer" />
+        {sessions.length > 0 && showHome && (
+          <button className="toolbar-btn" onClick={() => setHomeRequested(false)}>
+            back to sessions
+          </button>
+        )}
+        {sessions.length > 0 && !showHome && (
+          <button className="toolbar-btn" onClick={() => setHomeRequested(true)} title="cmd+esc">
+            + new session
           </button>
         )}
       </div>
-      {sessions.length === 0 ? (
-        <EmptyState onCreate={() => void createSession()} />
+      {showHome ? (
+        <Landing onCreate={(agentId, cmd) => void createSession(agentId, cmd)} />
       ) : (
         <div className="grid">
           {sessions.map((s) => (

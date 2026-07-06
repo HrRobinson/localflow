@@ -48,6 +48,8 @@ export default function TerminalPane({
   }, [session.id, alive])
 
   const name = session.cwd.split('/').filter(Boolean).pop() ?? session.cwd
+  const agentLabel =
+    session.agentId === 'custom' ? session.command.split('/').pop() : session.agentId
   return (
     <div
       className={`pane${enlarged ? ' enlarged' : ''}`}
@@ -59,6 +61,7 @@ export default function TerminalPane({
         <span className="cwd" title={session.cwd}>
           {name}
         </span>
+        <span className="pane-agent">{agentLabel}</span>
         <button onClick={onToggleEnlarge} onDoubleClick={(e) => e.stopPropagation()}>
           {enlarged ? 'shrink' : 'enlarge'}
         </button>

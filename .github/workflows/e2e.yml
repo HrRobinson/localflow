@@ -1,0 +1,36 @@
+name: e2e
+on:
+  pull_request:
+    paths:
+      [
+        'src/**',
+        'tests/**',
+        'package.json',
+        'package-lock.json',
+        'electron.vite.config.ts',
+        'playwright.config.ts'
+      ]
+  push:
+    branches: [main]
+    paths:
+      [
+        'src/**',
+        'tests/**',
+        'package.json',
+        'package-lock.json',
+        'electron.vite.config.ts',
+        'playwright.config.ts'
+      ]
+
+jobs:
+  e2e:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - run: npm run e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with: { name: playwright-traces, path: test-results/ }

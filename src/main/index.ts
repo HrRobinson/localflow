@@ -40,7 +40,8 @@ app.whenReady().then(async () => {
   if (process.env['LOCALFLOW_E2E'] === '1') {
     writeFileSync(
       join(userData, 'endpoint.json'),
-      JSON.stringify({ port: endpoint.port, token: endpoint.token })
+      JSON.stringify({ port: endpoint.port, token: endpoint.token }),
+      { mode: 0o600 }
     )
   }
 
@@ -65,7 +66,7 @@ app.whenReady().then(async () => {
   }
 
   ipcMain.handle('session:create', async (_e, cwd?: string) => {
-    let dir = cwd
+    let dir = process.env['LOCALFLOW_E2E'] === '1' ? cwd : undefined
     if (!dir) {
       const result = await dialog.showOpenDialog(win!, {
         properties: ['openDirectory', 'createDirectory'],

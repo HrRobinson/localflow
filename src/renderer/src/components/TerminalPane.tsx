@@ -66,6 +66,7 @@ export default function TerminalPane({
         <div className="term-host" ref={hostRef} />
       ) : (
         <div className="restart-overlay">
+          {session.message && <p className="restart-message">{session.message}</p>}
           <button onClick={onRestart}>Restart (resume) session</button>
         </div>
       )}

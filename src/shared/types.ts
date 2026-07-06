@@ -11,4 +11,5 @@ export interface SessionInfo {
   id: string
   cwd: string
   status: SessionStatus
+  message?: string
 }

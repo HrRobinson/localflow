@@ -126,8 +126,18 @@ body {
 .restart-overlay {
   display: flex;
   flex: 1;
+  flex-direction: column;
+  gap: 12px;
   align-items: center;
   justify-content: center;
+}
+.restart-message {
+  margin: 0;
+  padding: 0 16px;
+  max-width: 80%;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 13px;
 }
 .restart-overlay button {
   background: #374151;

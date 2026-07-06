@@ -98,6 +98,7 @@ describe('SessionManager', () => {
     const info = failing.create('/p')
     expect(info.status).toBe('exited')
     expect(messages.join('')).toContain('Could not start')
+    expect(info.message).toContain('Could not start')
   })
 
   it('kill removes the session and kills the pty', () => {
@@ -126,5 +127,6 @@ describe('SessionManager', () => {
     }).not.toThrow()
     expect(restarted?.status).toBe('exited')
     expect(messages.join('')).toContain('Could not start')
+    expect(restarted?.message).toContain('Could not start')
   })
 })

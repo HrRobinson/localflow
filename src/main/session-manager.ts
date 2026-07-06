@@ -93,15 +93,12 @@ export class SessionManager {
         { cwd, cols: 80, rows: 24, name: 'xterm-256color', env: process.env }
       )
     } catch {
+      const message = `Could not start '${this.opts.claudeBin}'. Is Claude Code installed and on your PATH?`
       info.status = 'exited'
+      info.message = message
       this.sessions.set(id, { info, pty: null })
       this.changedCbs.forEach((cb) => cb())
-      this.dataCbs.forEach((cb) =>
-        cb(
-          id,
-          `\r\nCould not start '${this.opts.claudeBin}'. Is Claude Code installed and on your PATH?\r\n`
-        )
-      )
+      this.dataCbs.forEach((cb) => cb(id, `\r\n${message}\r\n`))
       return info
     }
     this.sessions.set(id, { info, pty })

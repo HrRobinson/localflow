@@ -1,7 +1,13 @@
 import { execFile } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import type { AgentId, AgentInfo, LastAgent } from '../shared/types'
-import { AGENT_PRESETS, presetFor, type AgentPreset } from '../shared/agents'
+import {
+  AGENT_PRESETS,
+  presetFor,
+  hasHookAdapter,
+  type AgentPreset,
+  type HookAdapterKind
+} from '../shared/agents'
 
 export interface AgentConfig {
   /** User-configured absolute paths per agent, overriding PATH lookup. */
@@ -113,8 +119,8 @@ export class AgentRegistry {
     return presetFor(agentId)?.resumeArgs ?? []
   }
 
-  useHooks(agentId: AgentId): boolean {
-    return presetFor(agentId)?.useHooks ?? false
+  hookAdapter(agentId: AgentId): HookAdapterKind {
+    return presetFor(agentId)?.hookAdapter ?? 'none'
   }
 
   setPath(agentId: AgentId, path: string): void {
@@ -143,7 +149,7 @@ export class AgentRegistry {
         label: preset.label,
         command,
         resolvedPath: await this.resolve(preset, command),
-        hasStatusFeed: preset.useHooks
+        hasStatusFeed: hasHookAdapter(preset.hookAdapter)
       })
     }
     return infos

@@ -1,4 +1,5 @@
 import type { AgentId, AgentInfo, SessionInfo, SessionStatus } from './types'
+import type { KeyAction } from './keybindings'
 
 export interface LocalflowApi {
   /**
@@ -18,5 +19,5 @@ export interface LocalflowApi {
   resize(id: string, cols: number, rows: number): void
   onData(cb: (id: string, data: string) => void): () => void
   onStatus(cb: (id: string, status: SessionStatus) => void): () => void
-  getKeybindings(): Promise<Record<string, string>>
+  getKeybindings(): Promise<Record<KeyAction, string>>
 }

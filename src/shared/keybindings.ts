@@ -27,6 +27,16 @@ export const DEFAULT_BINDINGS: Record<KeyAction, string> = {
   'go-up': 'cmd+escape'
 }
 
+/**
+ * Typed `Object.entries` for a bindings record: every key of a
+ * `Record<KeyAction, string>` is by construction a known `KeyAction`, but
+ * `Object.entries` always widens keys to `string` — this centralizes the one
+ * cast that fact requires instead of scattering `as KeyAction` at call sites.
+ */
+export function bindingEntries(bindings: Record<KeyAction, string>): [KeyAction, string][] {
+  return Object.entries(bindings) as [KeyAction, string][]
+}
+
 export interface ParsedBinding {
   cmd: boolean
   ctrl: boolean

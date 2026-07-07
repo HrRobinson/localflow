@@ -7,6 +7,7 @@ import { pickNeighbor, swapInOrder, type PaneRect, type Direction } from './lib/
 import {
   parseBinding,
   eventMatches,
+  bindingEntries,
   type KeyAction,
   type ParsedBinding
 } from '../../shared/keybindings'
@@ -115,9 +116,9 @@ export default function App(): React.JSX.Element {
     const bindings: [KeyAction, ParsedBinding][] = []
     void (async () => {
       const raw = await window.localflow.getKeybindings()
-      for (const [action, binding] of Object.entries(raw)) {
+      for (const [action, binding] of bindingEntries(raw)) {
         const parsed = parseBinding(binding)
-        if (parsed) bindings.push([action as KeyAction, parsed])
+        if (parsed) bindings.push([action, parsed])
       }
     })()
 

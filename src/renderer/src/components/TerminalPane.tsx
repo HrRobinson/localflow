@@ -61,7 +61,7 @@ export default function TerminalPane({
     if (active && alive) termRef.current?.focus()
   }, [active, alive])
 
-  const name = session.cwd.split('/').filter(Boolean).pop() ?? session.cwd
+  const name = session.name
   const agentLabel =
     session.agentId === 'custom' ? session.command.split('/').pop() : session.agentId
   const paneHeaderBtn =

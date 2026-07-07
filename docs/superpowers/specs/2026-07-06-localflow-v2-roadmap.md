@@ -55,6 +55,15 @@ Research (2026-07-06) confirmed both have Claude-like hooks systems:
   palettes). Layout preferences (density, pane sizing) belong here too —
   customization is a first-class feature, not an afterthought.
 
+## Overview stats (fold into M7 or ship earlier as a small PR)
+
+- Stat strip on the Overview page: sessions by status (working / needs you /
+  done / dead), oldest unattended needs-you ("waiting 12m"), sessions per
+  project/agent.
+- Later, once hook events are logged per session: turns per session, average
+  time-to-attention, busiest projects — the "how did my agents do today" view.
+- Keep it glanceable numbers, not charts, until there's real demand.
+
 ## M7 — Abstract activity view (for non-technical "vibe coders")
 
 - An alternative to raw terminals: a plain-language activity feed / flow

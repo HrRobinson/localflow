@@ -171,20 +171,30 @@ export class SessionManager {
       this.dataCbs.forEach((cb) => cb(id, `\r\n${message}\r\n`))
       return info
     }
-    this.sessions.set(id, { info, spec, pty, spawnedAt: this.now(), tail: '' })
+    // Capture THIS call's record so the closures below can detect a
+    // respawn (restart() replaces the map entry for `id` with a new
+    // Record_ object). Without this, a stale pty's onData/onExit — which
+    // can fire well after kill() (SIGHUP is not synchronous) — would look
+    // up the record by id, find the NEW one, and clobber it: nulling its
+    // live pty (orphaning the resumed agent — unreachable by
+    // write/delete/disposeAll) and forcing it back to exited with a bogus
+    // "Exited right away" message.
+    const rec: Record_ = { info, spec, pty, spawnedAt: this.now(), tail: '' }
+    this.sessions.set(id, rec)
     pty.onData((d) => {
       if (this.disposed) return
-      const rec = this.sessions.get(id)
-      if (!rec) return
+      if (this.sessions.get(id) !== rec) return
       rec.tail = (rec.tail + d).slice(-500)
       this.dataCbs.forEach((cb) => cb(id, d))
     })
     pty.onExit(() => {
       if (this.disposed) return
+      // Bail unless this record is still the live one for `id` — a stale
+      // exit from a pty that was replaced by restart() must not touch the
+      // new record.
+      if (this.sessions.get(id) !== rec) return
       // Drop the pty reference first: its fd is gone, and any late
       // write/resize against it would throw EBADF in the main process.
-      const rec = this.sessions.get(id)
-      if (!rec) return
       if (rec.closedByUser) {
         // closeTerminal() already transitioned this session; the pty's
         // own exit event arrived late (kill() is not synchronous) and

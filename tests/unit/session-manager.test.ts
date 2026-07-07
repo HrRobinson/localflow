@@ -347,6 +347,41 @@ describe('SessionManager', () => {
     expect(() => mgr.resize(info.id, 120, 40)).not.toThrow()
   })
 
+  it('stale exit from a pty killed by closeTerminal+restart does not clobber the new record', () => {
+    const info = mgr.create('/p', claudeSpec)
+    const oldPty = ptys[0]
+    mgr.closeTerminal(info.id)
+    mgr.restart(info.id)
+    const newPty = ptys[1]
+    expect(newPty).not.toBe(oldPty)
+    // The old pty's real onExit arrives late (SIGHUP is not synchronous) —
+    // it must be a no-op against the already-replaced record.
+    oldPty.exitCb?.()
+    const after = mgr.list().find((s) => s.id === info.id)
+    expect(after?.status).not.toBe('exited')
+    expect(after?.message).toBeUndefined()
+    // The new pty must still be reachable through the manager.
+    mgr.write(info.id, 'hello\n')
+    expect(newPty.written).toContain('hello\n')
+  })
+
+  it('stale data from a pty killed by closeTerminal+restart is not forwarded or tailed', () => {
+    const info = mgr.create('/p', claudeSpec)
+    const oldPty = ptys[0]
+    mgr.closeTerminal(info.id)
+    mgr.restart(info.id)
+    const newPty = ptys[1]
+    const messages: string[] = []
+    mgr.onData((_id, d) => messages.push(d))
+    oldPty.dataCb?.('OLD STALE DATA')
+    expect(messages).toEqual([])
+    newPty.dataCb?.('new data')
+    newPty.exitCb?.()
+    const msg = mgr.list().find((s) => s.id === info.id)?.message
+    expect(msg).toContain('new data')
+    expect(msg).not.toContain('OLD STALE DATA')
+  })
+
   it('restart of a restored session with an invalid id does not throw and reports failure', () => {
     mgr.restore('bad/id', '/p', claudeSpec)
     const messages: string[] = []

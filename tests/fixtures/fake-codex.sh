@@ -57,9 +57,22 @@ for arg in "$@"; do
             # the Stop transition below is a real change rather than the
             # untouched idle default — wait_for_go guarantees that POST
             # (and its assertion) happened before this hook ever fires.
+            #
+            # $cmd is now a `case "$0$1" in *agent-turn-complete*) curl
+            # ...;; esac` guard (src/main/codex-hooks.ts's notify tier),
+            # so it can no longer be `eval`'d bare in this shell's own
+            # context — that would inspect fake-codex.sh's OWN $0/$1, not
+            # a notification payload, and the guard would never match.
+            # Real Codex invokes the configured `["sh","-c",script]`
+            # program array with the notification JSON appended as a
+            # single extra argv element, which POSIX assigns to `$0`
+            # (verified in tests/unit/codex-hooks.test.ts's executing
+            # tests) — so reproduce that exact invocation shape here via
+            # a real nested `sh -c` with a realistic agent-turn-complete
+            # payload as the one extra arg, rather than eval'ing in-place.
             (
               wait_for_go
-              eval "$cmd"
+              sh -c "$cmd" '{"type":"agent-turn-complete","turn_id":"e2e"}'
             ) &
           fi
           ;;

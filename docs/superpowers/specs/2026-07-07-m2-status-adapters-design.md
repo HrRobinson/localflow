@@ -242,13 +242,14 @@ judgment call made *now*, to be corrected by the manual verification step
 |---|---|---|
 | `claude` | `settings-file` | Unchanged, already shipped and verified. |
 | `gemini` | `env-settings-file` | Single mechanism, high-confidence per research; worst case is a silently-missing needs-you color, never a stuck/misleading one. |
-| `codex` | `cli-args-notify` | The *safe* tier, not the optimistic one. Shipping `cli-args-full` unverified risks the worse failure mode: if `-c` silently drops/ignores an unsupported nested hook table, the pane would sit at `idle` (which we can no longer distinguish from "genuinely done") **forever**, which actively misleads more than the honest "unknown" violet it replaces. `cli-args-notify`'s only failure mode if wrong is falling back to no signal at all (tier `'none'`) — never a wrong-but-confident one. |
+| `codex` | `cli-args-notify` | The *safe* tier, not the optimistic one. Shipping `cli-args-full` unverified risks the worse failure mode: if `-c` silently drops/ignores an unsupported nested hook table, the pane would sit at `idle` (which we can no longer distinguish from "genuinely done") **forever**, which actively misleads more than the honest "unknown" violet it replaces. `cli-args-notify`'s failure modes — the legacy `notify=[...]` grammar itself being wrong, or the payload-gating `case` guard's assumed positional-arg slot (`$0` vs `$1`) or notification-type string needing correction — all degrade to no signal at all (tier `'none'`'s behavior); none of them produce a wrong-but-confident state. |
 | `custom` | *(no preset — `AgentRegistry.hookAdapter` returns `'none'` for any agent id without a preset)* | Unchanged — a hand-typed command has no known hook mechanism to target. |
 
-This means Codex ships hooked (idle/exited real, working/needs-you not
-claimed) rather than either the risky optimistic tier or the previous
-"still violet" tier. Upgrading Codex to `cli-args-full` is a one-line
-preset change (`hookAdapter: 'cli-args-full'`) gated on the manual
+This means Codex ships hooked (idle accurate as of the last
+turn-complete, working/needs-you not claimed) rather than either the
+risky optimistic tier or the previous "still violet" tier. Upgrading
+Codex to `cli-args-full` is a one-line preset change (`hookAdapter:
+'cli-args-full'`) gated on the manual
 verification step below actually confirming the nested-table `-c` syntax
 against a real `codex` binary — this spec ships the generator for that
 tier now (fully unit-testable in isolation) so the upgrade, once verified,
@@ -368,4 +369,3 @@ testing cannot be automated. The split:
   Until performed, the shipped defaults are the tiers with the smallest,
   most self-contained failure modes (see table above) — never a tier
   whose only evidence is "the roadmap's research notes said so."
-</content>

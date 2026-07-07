@@ -942,6 +942,23 @@ verification can happen later without blocking anything.
 - [ ] If nothing beyond legacy `notify` works: leave the shipped default at
   `'cli-args-notify'` and file a follow-up issue noting `'cli-args-full'`
   is unreachable until Codex adds real per-invocation hook-table support.
+- [ ] Confirm which `notify` invocations Codex actually fires (e.g. does it
+  only invoke `notify` for a completed turn, or also for approval prompts,
+  errors, etc.?) and the exact notification-type string each one carries
+  (`buildCodexHookArgs`'s `notifyCommand` in `src/main/codex-hooks.ts`
+  currently gates on the payload containing `agent-turn-complete` — a
+  best-effort guess, not a confirmed fact). Correct the `case "$0$1" in
+  *...*)` pattern if the real string/casing differs.
+- [ ] Confirm the exact positional-arg semantics of how Codex invokes the
+  `notify` program array (`["sh","-c",script]`) with the notification
+  JSON: does it append exactly one extra argv element (landing in `$0`,
+  per a real `sh -c 'script' extraArg` probe — see
+  `tests/unit/codex-hooks.test.ts`'s executing tests), or does it prepend
+  a conventional program-name arg first (landing the payload in `$1`
+  instead)? The shipped `case "$0$1" in *agent-turn-complete*)` guard is
+  written to match either position, but a real invocation may reveal a
+  third shape (e.g. multiple args, or the payload split across several)
+  that needs a different guard entirely.
 
 ### Gemini notification payload shape
 
@@ -1035,4 +1052,3 @@ verification can happen later without blocking anything.
   the receiving-side hook pipeline, no attempt to merge with a user's own
   pre-existing Codex/Gemini hook config on disk (all per spec's
   "Non-goals").
-</content>

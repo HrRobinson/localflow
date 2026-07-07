@@ -1,14 +1,36 @@
-import { test, expect, _electron as electron } from '@playwright/test'
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { test, expect, _electron as electron, type ElectronApplication } from '@playwright/test'
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
-test('panes render and hook events change status colors', async () => {
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
-  const app = await electron.launch({
+/**
+ * Launch the app against a userData dir. Pre-seeds/merges config.json with
+ * absolute, nonexistent paths for the agents we don't fake (codex, gemini)
+ * so their detection short-circuits through existsSync instead of racing a
+ * real (slow) login-shell `command -v` lookup against expect()'s timeouts.
+ * Merges rather than overwrites so a relaunch against the same userData
+ * (e.g. to check lastAgent persistence) doesn't clobber what was saved.
+ */
+function launchApp(userData: string): Promise<ElectronApplication> {
+  const configFile = join(userData, 'config.json')
+  const existing: { agentPaths?: Record<string, string> } = existsSync(configFile)
+    ? JSON.parse(readFileSync(configFile, 'utf8'))
+    : {}
+  writeFileSync(
+    configFile,
+    JSON.stringify({
+      ...existing,
+      agentPaths: {
+        ...existing.agentPaths,
+        codex: '/nonexistent/codex',
+        gemini: '/nonexistent/gemini'
+      }
+    })
+  )
+  return electron.launch({
     args: ['.'],
     env: {
       ...process.env,
@@ -17,6 +39,11 @@ test('panes render and hook events change status colors', async () => {
       LOCALFLOW_CLAUDE_BIN: join(here, '../fixtures/fake-claude.sh')
     }
   })
+}
+
+test('panes render and hook events change status colors', async () => {
+  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const app = await launchApp(userData)
   const win = await app.firstWindow()
   await expect(win.locator('.new-session')).toBeVisible()
 
@@ -59,15 +86,7 @@ test('panes render and hook events change status colors', async () => {
 
 test('keyboard nav: focus moves, enlarge toggle, bare keys fall through', async () => {
   const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
-  const app = await electron.launch({
-    args: ['.'],
-    env: {
-      ...process.env,
-      LOCALFLOW_E2E: '1',
-      LOCALFLOW_USER_DATA: userData,
-      LOCALFLOW_CLAUDE_BIN: join(here, '../fixtures/fake-claude.sh')
-    }
-  })
+  const app = await launchApp(userData)
   const win = await app.firstWindow()
   // Two panes must land side by side (auto-fit columns, min 460px) for
   // Meta+l/Meta+h to be an unambiguous left/right pair — the default
@@ -138,18 +157,8 @@ test('keyboard nav: focus moves, enlarge toggle, bare keys fall through', async 
 
 test('Settings nav, unresolved-agent disabling, lastAgent persists restart', async () => {
   const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
-  const launch = (): ReturnType<typeof electron.launch> =>
-    electron.launch({
-      args: ['.'],
-      env: {
-        ...process.env,
-        LOCALFLOW_E2E: '1',
-        LOCALFLOW_USER_DATA: userData,
-        LOCALFLOW_CLAUDE_BIN: join(here, '../fixtures/fake-claude.sh')
-      }
-    })
 
-  const app = await launch()
+  const app = await launchApp(userData)
   const win = await app.firstWindow()
   await expect(win.locator('.new-session')).toHaveCount(1)
 
@@ -164,8 +173,9 @@ test('Settings nav, unresolved-agent disabling, lastAgent persists restart', asy
   await expect(select).toHaveValue('claude')
   await expect(win.locator('.new-session')).toBeEnabled()
 
-  // codex isn't faked in this fixture, so it resolves to nothing and the
-  // "Configure in Settings" hint takes over new-session creation.
+  // codex is pre-seeded with a nonexistent absolute path in config.json, so
+  // it resolves to nothing and the "Configure in Settings" hint takes over
+  // new-session creation.
   await select.selectOption('codex')
   await expect(win.locator('.new-session')).toBeDisabled()
   await expect(win.getByText('Configure in Settings')).toBeVisible()
@@ -198,7 +208,7 @@ test('Settings nav, unresolved-agent disabling, lastAgent persists restart', asy
 
   // Relaunch against the SAME userData dir and confirm lastAgent survived
   // a real restart, not just in-memory state.
-  const app2 = await launch()
+  const app2 = await launchApp(userData)
   const win2 = await app2.firstWindow()
 
   const lastAgent = await win2.evaluate(() =>

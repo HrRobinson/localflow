@@ -205,6 +205,22 @@ export class SessionManager {
     this.changedCbs.forEach((cb) => cb())
   }
 
+  /**
+   * Quit-time cleanup: kill every live pty and drop the handles so late
+   * stream events can't fire into a tearing-down app. Sessions stay in the
+   * map (and thus in sessions.json) so they restore on next launch.
+   */
+  disposeAll(): void {
+    for (const rec of this.sessions.values()) {
+      try {
+        rec.pty?.kill()
+      } catch {
+        /* dead pty */
+      }
+      rec.pty = null
+    }
+  }
+
   list(): SessionInfo[] {
     return [...this.sessions.values()].map((r) => ({ ...r.info }))
   }

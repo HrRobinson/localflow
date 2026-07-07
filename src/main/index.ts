@@ -15,6 +15,7 @@ if (process.env['LOCALFLOW_USER_DATA']) {
 const VALID_AGENTS: AgentId[] = ['claude', 'codex', 'gemini', 'custom']
 
 let win: BrowserWindow | null = null
+let managerRef: SessionManager | null = null
 
 function createWindow(): void {
   win = new BrowserWindow({
@@ -104,6 +105,7 @@ app.whenReady().then(async () => {
     port: endpoint.port,
     token: endpoint.token
   })
+  managerRef = manager
 
   const specFor = (agentId: AgentId, customCommand?: string): SpawnSpec => ({
     agentId,
@@ -112,8 +114,14 @@ app.whenReady().then(async () => {
     useHooks: registry.useHooks(agentId)
   })
 
-  manager.onData((id, data) => win?.webContents.send('session:data', id, data))
-  manager.onStatus((id, status) => win?.webContents.send('session:status', id, status))
+  // A destroyed BrowserWindow still non-null: guard every send, because pty
+  // output keeps streaming while the app tears down (crash: "Object has been
+  // destroyed" dialogs during quit/reload otherwise).
+  const sendToWindow = (channel: string, ...args: unknown[]): void => {
+    if (win && !win.isDestroyed()) win.webContents.send(channel, ...args)
+  }
+  manager.onData((id, data) => sendToWindow('session:data', id, data))
+  manager.onStatus((id, status) => sendToWindow('session:status', id, status))
   manager.onSessionsChanged(() =>
     saveSessions(
       sessionsFile,
@@ -175,6 +183,12 @@ app.whenReady().then(async () => {
   })
 
   createWindow()
+})
+
+app.on('before-quit', () => {
+  // Stop pty streams before windows die — their late output must never
+  // reach a destroyed window.
+  managerRef?.disposeAll()
 })
 
 app.on('window-all-closed', () => {

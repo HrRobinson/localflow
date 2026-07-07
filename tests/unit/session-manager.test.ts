@@ -184,6 +184,19 @@ describe('SessionManager', () => {
     expect(info.message).toContain('Could not start')
   })
 
+  it('disposeAll kills every pty, keeps sessions, silences late data', () => {
+    const a = mgr.create('/p1', claudeSpec)
+    mgr.create('/p2', codexSpec)
+    const messages: string[] = []
+    mgr.onData((_id, d) => messages.push(d))
+    mgr.disposeAll()
+    expect(ptys[0].killed).toBe(true)
+    expect(ptys[1].killed).toBe(true)
+    expect(mgr.list()).toHaveLength(2)
+    expect(() => mgr.write(a.id, 'x')).not.toThrow()
+    expect(ptys[0].written).toEqual([])
+  })
+
   it('kill removes the session and kills the pty', () => {
     const info = mgr.create('/p', claudeSpec)
     mgr.kill(info.id)

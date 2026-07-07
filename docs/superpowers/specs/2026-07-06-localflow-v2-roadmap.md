@@ -84,6 +84,12 @@ Research (2026-07-06) confirmed both have Claude-like hooks systems:
 
 - Keybindings editor (click binding, press keys).
 - Agent management (paths, extra args, default agent).
+- **Provider tokens (user request 2026-07-07):** connect agents via API
+  tokens/keys per provider (e.g. ANTHROPIC_API_KEY, OPENAI_API_KEY,
+  GEMINI_API_KEY) configured in Settings and injected into that agent's
+  spawn env. Storage MUST use the OS keychain via Electron `safeStorage` —
+  never plain-text config.json. Config-as-code story: the config file keeps
+  a reference/alias, the secret itself lives in the keychain.
 - **Themes** (added 2026-07-07): app + terminal color themes, switchable in
   settings. Theme = a JSON/CSS-token file (the Tailwind `@theme` tokens and
   xterm palette make this natural), so the community can develop and share

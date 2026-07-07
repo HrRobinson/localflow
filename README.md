@@ -19,6 +19,26 @@ finished, and gray means the process has exited.
   `127.0.0.1` only.
 - No telemetry. Nothing leaves your machine.
 
+### Status adapters
+
+Codex and Gemini CLI sessions get real status colors too, not just the
+permanent "running" fallback — each agent's own hook/notification system is
+adapted onto the same three-state model, per-agent fidelity tier:
+
+| Agent       | Mechanism                                     | Fidelity                                                                                                   |
+| ----------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Claude Code | `--settings` file                             | Full: working / needs-you / idle                                                                           |
+| Gemini CLI  | `GEMINI_CLI_SYSTEM_SETTINGS_PATH` env + hooks | Full: working / needs-you / idle                                                                           |
+| Codex       | inline `-c` CLI overrides (legacy `notify`)   | Conservative: turn-complete only — idle/exited are accurate, working/needs-you are not (yet) distinguished |
+| Custom      | none                                          | Permanent "running" (unchanged)                                                                            |
+
+Codex ships on the deliberately conservative tier pending manual
+verification of its `-c` hook-injection grammar against a real install;
+Gemini ships full three-state fidelity pending the same kind of
+verification for its notification payload shape. See the
+[design spec](docs/superpowers/specs/2026-07-07-m2-status-adapters-design.md)
+for the full rationale and fallback tiers.
+
 ## Install
 
 Download the `.dmg` from [Releases](https://github.com/HrRobinson/localflow/releases).
@@ -126,7 +146,7 @@ changes to take effect — there's no live reload yet.
 ```bash
 npm run dev      # run the app
 npm run check    # lint + typecheck + unit tests
-npm run e2e      # end-to-end tests, using a fake claude fixture (no API access needed)
+npm run e2e      # end-to-end tests, using fake claude/codex/gemini fixtures (no API access needed)
 ```
 
 ## Contributing

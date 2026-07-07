@@ -9,6 +9,12 @@ export interface HookEvent {
 
 export type AgentId = 'claude' | 'codex' | 'gemini' | 'custom'
 
+export interface LastAgent {
+  agentId: AgentId
+  /** Only present when agentId === 'custom'. */
+  customCommand?: string
+}
+
 export interface SessionInfo {
   id: string
   cwd: string

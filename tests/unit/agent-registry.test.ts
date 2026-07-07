@@ -23,6 +23,109 @@ describe('agent config persistence', () => {
     })
     expect(loadAgentConfig(file)).toEqual({ agentPaths: { claude: '/a/claude' } })
   })
+
+  it('round-trips lastAgent for preset id', () => {
+    const file = tmpConfig()
+    saveAgentConfig(file, {
+      agentPaths: { codex: '/opt/bin/codex' },
+      lastAgent: { agentId: 'claude' }
+    })
+    expect(loadAgentConfig(file)).toEqual({
+      agentPaths: { codex: '/opt/bin/codex' },
+      lastAgent: { agentId: 'claude' }
+    })
+  })
+
+  it('round-trips lastAgent for custom with customCommand', () => {
+    const file = tmpConfig()
+    saveAgentConfig(file, {
+      agentPaths: {},
+      lastAgent: { agentId: 'custom', customCommand: 'aider' }
+    })
+    expect(loadAgentConfig(file)).toEqual({
+      agentPaths: {},
+      lastAgent: { agentId: 'custom', customCommand: 'aider' }
+    })
+  })
+
+  it('drops malformed lastAgent while preserving agentPaths', () => {
+    const file = tmpConfig()
+    saveAgentConfig(file, {
+      agentPaths: { gemini: '/opt/gemini' },
+      lastAgent: {} as never
+    })
+    expect(loadAgentConfig(file)).toEqual({
+      agentPaths: { gemini: '/opt/gemini' }
+    })
+  })
+
+  it('drops lastAgent with unknown agentId', () => {
+    const file = tmpConfig()
+    saveAgentConfig(file, {
+      agentPaths: { claude: '/opt/claude' },
+      lastAgent: { agentId: 'gpt4' } as never
+    })
+    expect(loadAgentConfig(file)).toEqual({
+      agentPaths: { claude: '/opt/claude' }
+    })
+  })
+
+  it('drops lastAgent as non-object', () => {
+    const file = tmpConfig()
+    saveAgentConfig(file, {
+      agentPaths: { codex: '/opt/codex' },
+      lastAgent: 'claude' as never
+    })
+    expect(loadAgentConfig(file)).toEqual({
+      agentPaths: { codex: '/opt/codex' }
+    })
+
+    saveAgentConfig(file, {
+      agentPaths: { codex: '/opt/codex' },
+      lastAgent: 42 as never
+    })
+    expect(loadAgentConfig(file)).toEqual({
+      agentPaths: { codex: '/opt/codex' }
+    })
+
+    saveAgentConfig(file, {
+      agentPaths: { codex: '/opt/codex' },
+      lastAgent: null as never
+    })
+    expect(loadAgentConfig(file)).toEqual({
+      agentPaths: { codex: '/opt/codex' }
+    })
+  })
+
+  it('drops custom lastAgent with missing customCommand', () => {
+    const file = tmpConfig()
+    saveAgentConfig(file, {
+      agentPaths: {},
+      lastAgent: { agentId: 'custom' } as never
+    })
+    expect(loadAgentConfig(file)).toEqual({
+      agentPaths: {}
+    })
+  })
+
+  it('drops custom lastAgent with empty customCommand', () => {
+    const file = tmpConfig()
+    saveAgentConfig(file, {
+      agentPaths: {},
+      lastAgent: { agentId: 'custom', customCommand: '' }
+    })
+    expect(loadAgentConfig(file)).toEqual({
+      agentPaths: {}
+    })
+
+    saveAgentConfig(file, {
+      agentPaths: {},
+      lastAgent: { agentId: 'custom', customCommand: '   ' }
+    })
+    expect(loadAgentConfig(file)).toEqual({
+      agentPaths: {}
+    })
+  })
 })
 
 describe('AgentRegistry', () => {
@@ -63,5 +166,33 @@ describe('AgentRegistry', () => {
 
     reg.setPath('codex', '/somewhere/codex')
     expect(loadAgentConfig(file).agentPaths.codex).toBe('/somewhere/codex')
+  })
+
+  it('getLastAgent returns null on fresh config', () => {
+    const file = tmpConfig()
+    const reg = new AgentRegistry(file, async () => null)
+    expect(reg.getLastAgent()).toBeNull()
+  })
+
+  it('recordLastAgent and getLastAgent round-trip preset id', () => {
+    const file = tmpConfig()
+    const reg = new AgentRegistry(file, async () => null)
+    reg.recordLastAgent('codex')
+    expect(reg.getLastAgent()).toEqual({ agentId: 'codex' })
+    expect(loadAgentConfig(file)).toEqual({
+      agentPaths: {},
+      lastAgent: { agentId: 'codex' }
+    })
+  })
+
+  it('recordLastAgent and getLastAgent round-trip custom with customCommand', () => {
+    const file = tmpConfig()
+    const reg = new AgentRegistry(file, async () => null)
+    reg.recordLastAgent('custom', 'aider')
+    expect(reg.getLastAgent()).toEqual({ agentId: 'custom', customCommand: 'aider' })
+    expect(loadAgentConfig(file)).toEqual({
+      agentPaths: {},
+      lastAgent: { agentId: 'custom', customCommand: 'aider' }
+    })
   })
 })

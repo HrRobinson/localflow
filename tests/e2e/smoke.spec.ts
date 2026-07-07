@@ -135,3 +135,89 @@ test('keyboard nav: focus moves, enlarge toggle, bare keys fall through', async 
 
   await app.close()
 })
+
+test('Settings nav, unresolved-agent disabling, lastAgent persists restart', async () => {
+  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const launch = (): ReturnType<typeof electron.launch> =>
+    electron.launch({
+      args: ['.'],
+      env: {
+        ...process.env,
+        LOCALFLOW_E2E: '1',
+        LOCALFLOW_USER_DATA: userData,
+        LOCALFLOW_CLAUDE_BIN: join(here, '../fixtures/fake-claude.sh')
+      }
+    })
+
+  const app = await launch()
+  const win = await app.firstWindow()
+  await expect(win.locator('.new-session')).toHaveCount(1)
+
+  // Settings nav item leaves the session-creation UI entirely.
+  await win.getByRole('button', { name: 'Settings', exact: true }).click()
+  await expect(win.getByText('Agents', { exact: true })).toBeVisible()
+  await expect(win.locator('.new-session')).toHaveCount(0)
+
+  // Back to Overview: the agent select gates .new-session on resolution.
+  await win.getByRole('button', { name: 'Overview', exact: true }).click()
+  const select = win.locator('.landing select')
+  await expect(select).toHaveValue('claude')
+  await expect(win.locator('.new-session')).toBeEnabled()
+
+  // codex isn't faked in this fixture, so it resolves to nothing and the
+  // "Configure in Settings" hint takes over new-session creation.
+  await select.selectOption('codex')
+  await expect(win.locator('.new-session')).toBeDisabled()
+  await expect(win.getByText('Configure in Settings')).toBeVisible()
+
+  await select.selectOption('claude')
+  await expect(win.locator('.new-session')).toBeEnabled()
+  await expect(win.getByText('Configure in Settings')).not.toBeVisible()
+
+  // Create a session directly via the API (bypassing the folder picker, as
+  // the other tests do) with a custom agent/command — custom works
+  // headlessly and doesn't need the fake-claude binary. `cat` (rather than
+  // a real shell like zsh/bash) is deliberate: a real login shell sources
+  // the user's dotfiles, which can spawn detached background jobs that
+  // outlive the shell and hold the pty open, hanging Electron's shutdown
+  // on app.close() below — reproduced locally, so keep this inert.
+  const created = await win.evaluate(
+    (cwd) =>
+      (
+        window as unknown as {
+          localflow: {
+            createSession(a: string, c: string, cmd: string): Promise<{ id: string } | null>
+          }
+        }
+      ).localflow.createSession('custom', cwd, 'cat'),
+    userData
+  )
+  expect(created).not.toBeNull()
+
+  await app.close()
+
+  // Relaunch against the SAME userData dir and confirm lastAgent survived
+  // a real restart, not just in-memory state.
+  const app2 = await launch()
+  const win2 = await app2.firstWindow()
+
+  const lastAgent = await win2.evaluate(() =>
+    (
+      window as unknown as {
+        localflow: { getLastAgent(): Promise<{ agentId: string; customCommand?: string } | null> }
+      }
+    ).localflow.getLastAgent()
+  )
+  expect(lastAgent).toEqual({ agentId: 'custom', customCommand: 'cat' })
+
+  // The Overview select preselects the persisted custom command too.
+  const select2 = win2.locator('.landing select')
+  await expect(select2).toHaveValue('custom')
+  await expect(win2.locator('.landing input[placeholder="e.g. aider"]')).toHaveValue('cat')
+
+  // The config file itself is the contract — assert its on-disk shape too.
+  const config = JSON.parse(readFileSync(join(userData, 'config.json'), 'utf8'))
+  expect(config.lastAgent).toEqual({ agentId: 'custom', customCommand: 'cat' })
+
+  await app2.close()
+})

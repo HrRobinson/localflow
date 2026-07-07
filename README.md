@@ -46,6 +46,12 @@ press `cmd+escape` to shrink it back (bare Escape always goes to the agent).
 If a session has exited, its **Restart** button resumes it with
 `claude --continue`, so you don't lose context.
 
+The Overview page is intentionally minimal: your latest sessions plus a
+single "New session" control. Agent detection, configured paths, and (later)
+keybindings/themes live on the **Settings** page, reachable from the
+sidebar. localflow remembers the last agent you launched and preselects it
+the next time you open Overview.
+
 ## Keyboard
 
 The Terminals view is fully keyboard-drivable: exactly one pane is always

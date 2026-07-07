@@ -23,7 +23,8 @@ Download the `.dmg` from [Releases](https://github.com/HrRobinson/localflow/rele
 Builds are currently unsigned, so on first launch you'll need to
 right-click the app and choose **Open** instead of double-clicking it.
 The prebuilt macOS artifacts are Apple Silicon (arm64) only for now; Intel
-Macs should build from source below.
+Macs should build from source below. Linux users can grab the `.AppImage`
+or `.deb` from the same [Releases](https://github.com/HrRobinson/localflow/releases) page.
 
 Or build from source:
 

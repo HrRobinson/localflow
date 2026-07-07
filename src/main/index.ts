@@ -160,7 +160,9 @@ app.whenReady().then(async () => {
         dir = result.filePaths[0]
       }
       const created = manager.create(dir, specFor(agentId, customCommand?.trim()))
-      registry.recordLastAgent(agentId, customCommand?.trim())
+      if (created.status !== 'exited') {
+        registry.recordLastAgent(agentId, customCommand?.trim())
+      }
       return created
     }
   )

@@ -7,6 +7,11 @@ export interface AgentConfig {
   /** User-configured absolute paths per agent, overriding PATH lookup. */
   agentPaths: Partial<Record<AgentId, string>>
   lastAgent?: LastAgent
+  /**
+   * Unknown top-level keys found in config.json, preserved verbatim so
+   * hand-added config-as-code entries survive a save round-trip.
+   */
+  extra?: Record<string, unknown>
 }
 
 function parseLastAgent(raw: unknown): LastAgent | null {
@@ -23,21 +28,34 @@ function parseLastAgent(raw: unknown): LastAgent | null {
   return { agentId: agentId as AgentId }
 }
 
+const KNOWN_TOP_LEVEL_KEYS = new Set(['agentPaths', 'lastAgent'])
+
 export function loadAgentConfig(file: string): AgentConfig {
   try {
     const data: unknown = JSON.parse(readFileSync(file, 'utf8'))
     if (typeof data !== 'object' || data === null) return { agentPaths: {} }
-    const paths = (data as { agentPaths?: unknown }).agentPaths
-    if (typeof paths !== 'object' || paths === null) return { agentPaths: {} }
+    const obj = data as Record<string, unknown>
+    const paths = obj.agentPaths
     const agentPaths: AgentConfig['agentPaths'] = {}
-    for (const preset of AGENT_PRESETS) {
-      const value = (paths as Record<string, unknown>)[preset.id]
-      if (typeof value === 'string' && value.length > 0) agentPaths[preset.id] = value
+    if (typeof paths === 'object' && paths !== null) {
+      for (const preset of AGENT_PRESETS) {
+        const value = (paths as Record<string, unknown>)[preset.id]
+        if (typeof value === 'string' && value.length > 0) agentPaths[preset.id] = value
+      }
     }
     const config: AgentConfig = { agentPaths }
-    const lastAgent = parseLastAgent((data as { lastAgent?: unknown }).lastAgent)
+    const lastAgent = parseLastAgent(obj.lastAgent)
     if (lastAgent !== null) {
       config.lastAgent = lastAgent
+    }
+    // Preserve any hand-added top-level keys (config-as-code) so they
+    // survive a later saveAgentConfig call untouched.
+    const extra: Record<string, unknown> = {}
+    for (const key of Object.keys(obj)) {
+      if (!KNOWN_TOP_LEVEL_KEYS.has(key)) extra[key] = obj[key]
+    }
+    if (Object.keys(extra).length > 0) {
+      config.extra = extra
     }
     return config
   } catch {
@@ -46,7 +64,10 @@ export function loadAgentConfig(file: string): AgentConfig {
 }
 
 export function saveAgentConfig(file: string, config: AgentConfig): void {
-  writeFileSync(file, JSON.stringify(config, null, 2))
+  // Unknown keys go first so the known, typed fields always win on conflict.
+  const { extra, ...known } = config
+  const out = { ...extra, ...known }
+  writeFileSync(file, JSON.stringify(out, null, 2))
 }
 
 /**

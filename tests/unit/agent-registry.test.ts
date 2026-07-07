@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { AgentRegistry, loadAgentConfig, saveAgentConfig } from '../../src/main/agent-registry'
@@ -126,6 +126,23 @@ describe('agent config persistence', () => {
       agentPaths: {}
     })
   })
+
+  it('preserves unknown top-level keys across a save round-trip', () => {
+    const file = tmpConfig()
+    writeFileSync(
+      file,
+      JSON.stringify({ myCustomKey: { a: 1 }, agentPaths: { codex: '/opt/bin/codex' } })
+    )
+    const config = loadAgentConfig(file)
+    expect(config.agentPaths).toEqual({ codex: '/opt/bin/codex' })
+    saveAgentConfig(file, {
+      ...config,
+      agentPaths: { ...config.agentPaths, gemini: '/opt/gemini' }
+    })
+    const onDisk = JSON.parse(readFileSync(file, 'utf8'))
+    expect(onDisk.myCustomKey).toEqual({ a: 1 })
+    expect(onDisk.agentPaths).toEqual({ codex: '/opt/bin/codex', gemini: '/opt/gemini' })
+  })
 })
 
 describe('AgentRegistry', () => {
@@ -194,5 +211,20 @@ describe('AgentRegistry', () => {
       agentPaths: {},
       lastAgent: { agentId: 'custom', customCommand: 'aider' }
     })
+  })
+
+  it('preserves a hand-added unknown key across setPath and recordLastAgent', () => {
+    const file = tmpConfig()
+    writeFileSync(
+      file,
+      JSON.stringify({ myCustomKey: { a: 1 }, agentPaths: { codex: '/opt/bin/codex' } })
+    )
+    const reg = new AgentRegistry(file, async () => null)
+
+    reg.setPath('gemini', '/opt/gemini')
+    expect(JSON.parse(readFileSync(file, 'utf8')).myCustomKey).toEqual({ a: 1 })
+
+    reg.recordLastAgent('codex')
+    expect(JSON.parse(readFileSync(file, 'utf8')).myCustomKey).toEqual({ a: 1 })
   })
 })

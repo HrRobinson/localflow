@@ -48,6 +48,20 @@ Research (2026-07-06) confirmed both have Claude-like hooks systems:
 
 - Keybindings editor (click binding, press keys).
 - Agent management (paths, extra args, default agent).
+- **Themes** (added 2026-07-07): app + terminal color themes, switchable in
+  settings. Theme = a JSON/CSS-token file (the Tailwind `@theme` tokens and
+  xterm palette make this natural), so the community can develop and share
+  themes; ship a handful of presets (dark default, light, popular terminal
+  palettes). Layout preferences (density, pane sizing) belong here too —
+  customization is a first-class feature, not an afterthought.
+
+## M7 — Abstract activity view (for non-technical "vibe coders")
+
+- An alternative to raw terminals: a plain-language activity feed / flow
+  visualization per session ("editing 3 files", "running tests", "waiting for
+  your approval") derived from the same hook events that drive status colors.
+- Glanceable shapes: activity sparkline per session, big needs-you cues.
+- Terminal stays one click away — this is a lens, not a replacement.
 
 ## M5 — Session layers (nested sessions + breadcrumbs)
 

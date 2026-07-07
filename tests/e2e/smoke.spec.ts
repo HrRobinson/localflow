@@ -265,6 +265,21 @@ test('closing a terminal keeps the session listed; delete is confirm-gated', asy
   await expect(pane.getByRole('button', { name: 'Start fresh' })).toBeVisible()
   await expect(pane.locator('.restart-overlay p')).toHaveCount(0)
 
+  // A second session keeps sessions.length > 0 after the delete below, so
+  // the terminals grid actually mounts for the final pane-absence check —
+  // asserting toHaveCount(0) with the grid unmounted would be vacuous.
+  const second = await win.evaluate(
+    (cwd) =>
+      (
+        window as unknown as {
+          localflow: { createSession(a: string, c: string): Promise<{ id: string }> }
+        }
+      ).localflow.createSession('claude', cwd),
+    userData
+  )
+  const secondPane = win.locator(`[data-pane-id="${second!.id}"]`)
+  await expect(secondPane).toBeVisible()
+
   // Overview: the row is still there, now offering resume/fresh instead of
   // "open" — closeTerminal must not have deleted the session record.
   await win.getByRole('button', { name: 'Overview', exact: true }).click()
@@ -284,11 +299,17 @@ test('closing a terminal keeps the session listed; delete is confirm-gated', asy
   await expect(row.getByRole('button', { name: 'Delete', exact: true })).toHaveCount(0)
   await expect(row).toBeVisible()
 
-  // Arm again and confirm: now the row — and the pane, wherever it might
-  // render — are both gone for good.
+  // Arm again and confirm: now the row is gone for good.
   await row.locator('button[title="Delete session"]').click()
   await row.getByRole('button', { name: 'Delete', exact: true }).click()
   await expect(row).toHaveCount(0)
+
+  // Back to Terminals via the sidebar: with the second session keeping the
+  // grid mounted, exactly the deleted pane is gone and the survivor renders
+  // — proving the delete removed the right session, not that the grid was
+  // simply unmounted.
+  await win.getByRole('button', { name: 'Terminals', exact: true }).click()
+  await expect(secondPane).toBeVisible()
   await expect(win.locator(`[data-pane-id="${info!.id}"]`)).toHaveCount(0)
 
   await app.close()

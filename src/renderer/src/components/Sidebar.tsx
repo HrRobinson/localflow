@@ -118,8 +118,12 @@ export default function Sidebar({
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     const trimmed = editValue.trim()
-                    if (trimmed) onRenameSession(s.id, trimmed)
-                    setEditingId(null)
+                    if (trimmed) {
+                      onRenameSession(s.id, trimmed)
+                      setEditingId(null)
+                    }
+                    // Empty/whitespace: skip the commit and leave the input
+                    // open so the user sees why nothing happened.
                   } else if (e.key === 'Escape') {
                     setEditingId(null)
                   }

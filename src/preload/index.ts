@@ -23,7 +23,8 @@ const api: LocalflowApi = {
       cb(id, status)
     ipcRenderer.on('session:status', listener)
     return () => ipcRenderer.removeListener('session:status', listener)
-  }
+  },
+  getKeybindings: () => ipcRenderer.invoke('keybindings:get')
 }
 
 contextBridge.exposeInMainWorld('localflow', api)

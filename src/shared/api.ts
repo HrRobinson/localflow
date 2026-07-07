@@ -18,4 +18,5 @@ export interface LocalflowApi {
   resize(id: string, cols: number, rows: number): void
   onData(cb: (id: string, data: string) => void): () => void
   onStatus(cb: (id: string, status: SessionStatus) => void): () => void
+  getKeybindings(): Promise<Record<string, string>>
 }

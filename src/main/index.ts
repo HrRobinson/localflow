@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu } from 'electron'
 import { join } from 'node:path'
 import { writeFileSync } from 'node:fs'
 import type { AgentId } from '../shared/types'
@@ -6,6 +6,7 @@ import { startHookServer } from './hook-server'
 import { SessionManager, type SpawnSpec } from './session-manager'
 import { loadSavedSessions, saveSessions } from './persistence'
 import { AgentRegistry } from './agent-registry'
+import { loadOrCreateKeybindings } from './keybindings-file'
 
 if (process.env['LOCALFLOW_USER_DATA']) {
   app.setPath('userData', process.env['LOCALFLOW_USER_DATA'])
@@ -36,9 +37,43 @@ function createWindow(): void {
   }
 }
 
+/**
+ * Electron's default application menu binds cmd+w to Close Window and
+ * cmd+h to Hide. localflow owns those as in-app pane keys (close-pane,
+ * focus-left), so the menu must not carry those accelerators.
+ */
+function buildAppMenu(): void {
+  const template: Electron.MenuItemConstructorOptions[] = [
+    {
+      role: 'appMenu',
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { label: 'Hide localflow', role: 'hide', accelerator: undefined },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' }
+      ]
+    },
+    { role: 'editMenu' },
+    { role: 'viewMenu' },
+    {
+      label: 'Window',
+      submenu: [{ role: 'minimize' }, { role: 'zoom' }]
+    }
+  ]
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+}
+
 app.whenReady().then(async () => {
+  buildAppMenu()
+
   const userData = app.getPath('userData')
   const sessionsFile = join(userData, 'sessions.json')
+  const keybindings = loadOrCreateKeybindings(join(userData, 'keybindings.json'))
 
   const registry = new AgentRegistry(
     join(userData, 'config.json'),
@@ -112,6 +147,8 @@ app.whenReady().then(async () => {
   ipcMain.on('session:resize', (_e, id: string, cols: number, rows: number) =>
     manager.resize(id, cols, rows)
   )
+
+  ipcMain.handle('keybindings:get', () => keybindings)
 
   ipcMain.handle('agents:list', () => registry.list())
   ipcMain.handle('agents:setPath', async (_e, agentId: AgentId) => {

@@ -51,7 +51,10 @@ function buildAppMenu(): void {
         { type: 'separator' },
         { role: 'services' },
         { type: 'separator' },
-        { label: 'Hide localflow', role: 'hide', accelerator: undefined },
+        // Not role: 'hide' — Electron treats `accelerator: undefined` on a
+        // role item as omitted and applies the role default (Cmd+H), which
+        // must stay free for the in-app focus-left key.
+        { label: 'Hide localflow', click: () => app.hide() },
         { role: 'hideOthers' },
         { role: 'unhide' },
         { type: 'separator' },

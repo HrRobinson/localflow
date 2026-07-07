@@ -33,15 +33,34 @@ export default function Sidebar({
   const [editValue, setEditValue] = useState('')
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
+  // Clicking anywhere outside the armed row, or pressing Escape, disarms.
+  // The Escape listener is local to the armed state — the global keyboard
+  // dispatcher only claims bound combos, and bare Escape stays free.
   useEffect(() => {
     if (!confirmDeleteId) return
     const onDocMouseDown = (e: MouseEvent): void => {
       const row = (e.target as HTMLElement).closest(`[data-nav-session="${confirmDeleteId}"]`)
       if (!row) setConfirmDeleteId(null)
     }
+    const onDocKeyDown = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape' && !e.metaKey && !e.ctrlKey && !e.altKey) setConfirmDeleteId(null)
+    }
     window.addEventListener('mousedown', onDocMouseDown)
-    return () => window.removeEventListener('mousedown', onDocMouseDown)
+    window.addEventListener('keydown', onDocKeyDown)
+    return () => {
+      window.removeEventListener('mousedown', onDocMouseDown)
+      window.removeEventListener('keydown', onDocKeyDown)
+    }
   }, [confirmDeleteId])
+
+  // Defensive: if the session being edited or armed-for-delete disappears
+  // from the list (deleted elsewhere, poll refresh), drop the stale state.
+  // Render-time adjustment (not an effect) per React's "adjusting state when
+  // props change" pattern — React re-renders immediately, before commit.
+  if (editingId !== null && !sessions.some((s) => s.id === editingId)) setEditingId(null)
+  if (confirmDeleteId !== null && !sessions.some((s) => s.id === confirmDeleteId)) {
+    setConfirmDeleteId(null)
+  }
 
   return (
     <aside className="bg-sidebar flex min-h-0 w-[230px] flex-none flex-col border-r border-white/[0.07]">
@@ -108,18 +127,35 @@ export default function Sidebar({
                 onBlur={() => setEditingId(null)}
               />
             ) : (
-              <button
-                className="min-w-0 flex-1 cursor-pointer overflow-hidden border-0 bg-transparent p-0 text-left text-ellipsis whitespace-nowrap text-inherit"
-                title={s.cwd}
-                onClick={() => onOpenSession(s.id)}
-                onDoubleClick={() => {
-                  setEditingId(s.id)
-                  setEditValue(s.name)
-                }}
-                onMouseDown={(e) => e.preventDefault()}
-              >
-                {s.name}
-              </button>
+              <>
+                <button
+                  className="min-w-0 flex-1 cursor-pointer overflow-hidden border-0 bg-transparent p-0 text-left text-ellipsis whitespace-nowrap text-inherit"
+                  title={s.cwd}
+                  onClick={() => onOpenSession(s.id)}
+                  onMouseDown={(e) => e.preventDefault()}
+                >
+                  {s.name}
+                </button>
+                {/* Rename gets its own button (not dblclick on the name):
+                    browsers fire two clicks before dblclick, so a dblclick
+                    rename on the open button would first open/enlarge the
+                    session and race the rename input for focus. */}
+                <button
+                  className="flex-none cursor-pointer border-0 bg-transparent p-0 text-xs text-gray-500 opacity-0 group-hover:opacity-100 hover:text-white"
+                  title="Rename session"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setEditingId(s.id)
+                    setEditValue(s.name)
+                  }}
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                  }}
+                >
+                  ✎
+                </button>
+              </>
             )}
             {editingId !== s.id &&
               (confirmDeleteId === s.id ? (

@@ -45,15 +45,34 @@ export default function Landing({
   const [editValue, setEditValue] = useState('')
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
+  // Clicking anywhere outside the armed row, or pressing Escape, disarms.
+  // The Escape listener is local to the armed state — the global keyboard
+  // dispatcher only claims bound combos, and bare Escape stays free.
   useEffect(() => {
     if (!confirmDeleteId) return
     const onDocMouseDown = (e: MouseEvent): void => {
       const row = (e.target as HTMLElement).closest(`[data-session-id="${confirmDeleteId}"]`)
       if (!row) setConfirmDeleteId(null)
     }
+    const onDocKeyDown = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape' && !e.metaKey && !e.ctrlKey && !e.altKey) setConfirmDeleteId(null)
+    }
     window.addEventListener('mousedown', onDocMouseDown)
-    return () => window.removeEventListener('mousedown', onDocMouseDown)
+    window.addEventListener('keydown', onDocKeyDown)
+    return () => {
+      window.removeEventListener('mousedown', onDocMouseDown)
+      window.removeEventListener('keydown', onDocKeyDown)
+    }
   }, [confirmDeleteId])
+
+  // Defensive: if the session being edited or armed-for-delete disappears
+  // from the list (deleted elsewhere, poll refresh), drop the stale state.
+  // Render-time adjustment (not an effect) per React's "adjusting state when
+  // props change" pattern — React re-renders immediately, before commit.
+  if (editingId !== null && !sessions.some((s) => s.id === editingId)) setEditingId(null)
+  if (confirmDeleteId !== null && !sessions.some((s) => s.id === confirmDeleteId)) {
+    setConfirmDeleteId(null)
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -213,36 +232,37 @@ export default function Landing({
                         open
                       </button>
                     )}
-                    {confirmDeleteId === s.id ? (
-                      <>
+                    {editingId !== s.id &&
+                      (confirmDeleteId === s.id ? (
+                        <>
+                          <button
+                            className={`${rowBtnBase} border border-red-500/60 bg-red-500/20 px-2 text-red-300 hover:bg-red-500/30`}
+                            onClick={() => {
+                              setConfirmDeleteId(null)
+                              onDelete(s.id)
+                            }}
+                            onMouseDown={(e) => e.preventDefault()}
+                          >
+                            Delete
+                          </button>
+                          <button
+                            className={`${rowBtnBase} ${rowBtnGray} px-2`}
+                            onClick={() => setConfirmDeleteId(null)}
+                            onMouseDown={(e) => e.preventDefault()}
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
                         <button
-                          className={`${rowBtnBase} border border-red-500/60 bg-red-500/20 px-2 text-red-300 hover:bg-red-500/30`}
-                          onClick={() => {
-                            setConfirmDeleteId(null)
-                            onDelete(s.id)
-                          }}
+                          className={`${rowBtnBase} ${rowBtnGray} px-2 hover:text-red-400`}
+                          title="Delete session"
+                          onClick={() => setConfirmDeleteId(s.id)}
                           onMouseDown={(e) => e.preventDefault()}
                         >
-                          Delete
+                          ×
                         </button>
-                        <button
-                          className={`${rowBtnBase} ${rowBtnGray} px-2`}
-                          onClick={() => setConfirmDeleteId(null)}
-                          onMouseDown={(e) => e.preventDefault()}
-                        >
-                          Cancel
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        className={`${rowBtnBase} ${rowBtnGray} px-2 hover:text-red-400`}
-                        title="Delete session"
-                        onClick={() => setConfirmDeleteId(s.id)}
-                        onMouseDown={(e) => e.preventDefault()}
-                      >
-                        ×
-                      </button>
-                    )}
+                      ))}
                   </span>
                 </div>
               ))}

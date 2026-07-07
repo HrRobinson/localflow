@@ -182,6 +182,12 @@ describe('AgentRegistry', () => {
     expect(agents.find((a) => a.id === 'codex')?.resolvedPath).toBeNull()
     expect(agents.find((a) => a.id === 'claude')?.hasStatusFeed).toBe(true)
     expect(agents.find((a) => a.id === 'codex')?.hasStatusFeed).toBe(true)
+    // Claude/Gemini distinguish all three states; Codex's shipped
+    // cli-args-notify tier only ever reports a turn-complete signal —
+    // the UI must never claim more fidelity than the adapter delivers.
+    expect(agents.find((a) => a.id === 'claude')?.statusFidelity).toBe('full')
+    expect(agents.find((a) => a.id === 'codex')?.statusFidelity).toBe('done-only')
+    expect(agents.find((a) => a.id === 'gemini')?.statusFidelity).toBe('full')
 
     reg.setPath('codex', '/somewhere/codex')
     expect(loadAgentConfig(file).agentPaths.codex).toBe('/somewhere/codex')

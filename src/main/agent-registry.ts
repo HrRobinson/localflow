@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import type { AgentId, AgentInfo, LastAgent } from '../shared/types'
+type StatusFidelity = AgentInfo['statusFidelity']
 import {
   AGENT_PRESETS,
   presetFor,
@@ -94,6 +95,28 @@ export function whichViaLoginShell(bin: string): Promise<string | null> {
   })
 }
 
+/**
+ * Maps a preset's hook-injection mechanism to how much of the
+ * {working, needs-you, done} status feed it actually reports — 'full'
+ * and 'env-settings-file' adapters distinguish all three states;
+ * 'cli-args-full' (Codex's unshipped, unverified-grammar tier) would
+ * too, if/when the manual verification checklist clears it; Codex's
+ * shipped 'cli-args-notify' tier only ever reports a turn-complete
+ * signal, never a wrong-but-confident 'working'/'needs-you'.
+ */
+function statusFidelityFor(kind: HookAdapterKind): StatusFidelity {
+  switch (kind) {
+    case 'settings-file':
+    case 'env-settings-file':
+    case 'cli-args-full':
+      return 'full'
+    case 'cli-args-notify':
+      return 'done-only'
+    case 'none':
+      return 'none'
+  }
+}
+
 export class AgentRegistry {
   private config: AgentConfig
   private resolved = new Map<AgentId, string | null>()
@@ -149,7 +172,8 @@ export class AgentRegistry {
         label: preset.label,
         command,
         resolvedPath: await this.resolve(preset, command),
-        hasStatusFeed: hasHookAdapter(preset.hookAdapter)
+        hasStatusFeed: hasHookAdapter(preset.hookAdapter),
+        statusFidelity: statusFidelityFor(preset.hookAdapter)
       })
     }
     return infos

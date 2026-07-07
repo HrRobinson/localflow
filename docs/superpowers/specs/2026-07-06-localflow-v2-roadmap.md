@@ -132,6 +132,14 @@ Research (2026-07-06) confirmed both have Claude-like hooks systems:
 
 ## M5 — Session layers (nested sessions + breadcrumbs)
 
+- **Sessions are parents (user refinement, 2026-07-07):** a session is the
+  parent node; terminals (and later sub-sessions) are its children going
+  down the staircase — one session, multiple children. Keyboard shortcuts
+  are hierarchy-aware: closing a child (cmd+w) lands you on its PARENT
+  level, never an unrelated view; navigation moves within the tree.
+- **Resume dead-end UX:** when a resume attempt instantly fails (e.g. "No
+  conversation found"), the overlay should promote Start fresh as the
+  primary action and explain why resume can't work — not let the user loop.
 - **The staircase (user framing, 2026-07-07): each level down adds context.**
   Overview → Terminals grid → an ENLARGED pane is an *environment*, not just
   a bigger view: it shows a breadcrumb of where you are

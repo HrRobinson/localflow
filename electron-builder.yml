@@ -9,3 +9,9 @@ mac:
     - dmg
     - zip
   identity: null
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Development
+  maintainer: HrRobinson

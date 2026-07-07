@@ -44,6 +44,17 @@ Research (2026-07-06) confirmed both have Claude-like hooks systems:
 - Sidebar workspace list with status-rollup dots (see "workspace 3 needs you"
   at a glance). Sessions persist with workspace assignment.
 
+## M1.5 — Simplified Overview + Settings page (user request 2026-07-07)
+
+- Overview goes minimal and centered: "latest sessions" (recent few, big
+  rows: project, agent, status, open/resume) + one primary "New session"
+  action (default/last-used agent, small agent picker beside it).
+- All agent configuration (detection cards, Set path…, custom command
+  default) moves to a Settings page reachable from the sidebar — the same
+  page that later hosts keybindings (M4) and themes.
+- Build immediately after M1 (both rewrite App.tsx; sequenced to avoid
+  conflicts).
+
 ## M4 — Settings UI
 
 - Keybindings editor (click binding, press keys).

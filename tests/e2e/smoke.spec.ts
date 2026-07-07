@@ -42,9 +42,22 @@ function launchApp(
       ...process.env,
       LOCALFLOW_E2E: '1',
       LOCALFLOW_USER_DATA: userData,
-      LOCALFLOW_CLAUDE_BIN: join(here, '../fixtures/fake-claude.sh')
+      LOCALFLOW_CLAUDE_BIN: join(here, '../fixtures/fake-claude.sh'),
+      // Marker file the codex/gemini fixtures poll for before firing their
+      // hook commands (SessionManager.spawn passes the app's env through to
+      // every pty): a test creates it via goMarker() only once everything
+      // that must precede the fixture's events has been asserted, making
+      // the status order deterministic by construction instead of
+      // sleep-raced. Fixtures that never fire hooks (fake-claude.sh)
+      // simply ignore it.
+      LOCALFLOW_E2E_GO: join(userData, 'e2e-go')
     }
   })
+}
+
+/** Release a launched app's hook-firing fixtures (see LOCALFLOW_E2E_GO). */
+function goMarker(userData: string): void {
+  writeFileSync(join(userData, 'e2e-go'), '')
 }
 
 test('panes render and hook events change status colors', async () => {
@@ -134,13 +147,13 @@ test('codex pane (notify tier): fixture-executed Stop hook reaches idle', async 
   await expect(pane).toHaveAttribute('data-status', 'working')
   expect(await pane.getAttribute('data-status')).not.toBe('running')
 
-  // fake-codex.sh eval's the extracted Stop-mapped curl ~3s after start,
-  // with no further help from the test — this is the fixture proving
-  // localflow's -c injection reaches a real child process and executes.
-  // Generous explicit timeout: the 3s fixture delay is measured from
-  // process spawn, well before this point in the test, so the default 5s
-  // expect timeout leaves too little margin under load.
-  await expect(pane).toHaveAttribute('data-status', 'idle', { timeout: 10_000 })
+  // Only now release the fixture: it has been polling for the go-marker
+  // since spawn, so its Stop-mapped hook cannot have fired before the
+  // 'working' assertion above — the idle below is guaranteed to be the
+  // fixture's own executed curl, proving localflow's -c injection reaches
+  // a real child process and executes, with no sleep-length race.
+  goMarker(userData)
+  await expect(pane).toHaveAttribute('data-status', 'idle')
   expect(await pane.getAttribute('data-status')).not.toBe('running')
 
   await app.close()
@@ -177,15 +190,16 @@ test('gemini pane (env tier): fixture cycles working -> needs-you -> idle', asyn
   await expect(pane).toBeVisible()
   await expect(pane).toHaveAttribute('data-status', 'idle')
 
-  // fake-gemini.sh runs BeforeAgent (~2.5s post-spawn), then
-  // Notification(ToolPermission) (+2s), then AfterAgent (+2s more),
-  // entirely on its own — the three assertions below are driven purely by
-  // the fixture actually executing localflow's injected commands, no
-  // manual fetch() POSTs involved. Generous explicit timeouts: each delay
-  // is measured from process spawn, well before this point in the test.
-  await expect(pane).toHaveAttribute('data-status', 'working', { timeout: 10_000 })
-  await expect(pane).toHaveAttribute('data-status', 'needs-you', { timeout: 10_000 })
-  await expect(pane).toHaveAttribute('data-status', 'idle', { timeout: 10_000 })
+  // Release the fixture (it polls for the go-marker since spawn, so
+  // nothing fired before the initial-idle assertion above), then observe
+  // BeforeAgent -> Notification(ToolPermission) -> AfterAgent, self-paced
+  // 1s apart by the fixture — the three assertions below are driven purely
+  // by the fixture actually executing localflow's injected commands, no
+  // manual fetch() POSTs involved.
+  goMarker(userData)
+  await expect(pane).toHaveAttribute('data-status', 'working')
+  await expect(pane).toHaveAttribute('data-status', 'needs-you')
+  await expect(pane).toHaveAttribute('data-status', 'idle')
 
   await app.close()
 })

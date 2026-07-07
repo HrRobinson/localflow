@@ -10,7 +10,12 @@ export interface LocalflowApi {
   createSession(agentId: AgentId, cwd?: string, customCommand?: string): Promise<SessionInfo | null>
   /** Relaunch a dead session; `fresh` starts a new conversation instead of resuming. */
   restartSession(id: string, fresh?: boolean): Promise<SessionInfo>
-  killSession(id: string): Promise<void>
+  /** Ends the pty; the session stays listed as exited, reopenable via resume/fresh. */
+  closeTerminal(id: string): Promise<void>
+  /** Removes the session entirely — separate, explicit, irreversible action. */
+  deleteSession(id: string): Promise<void>
+  /** Renames a session; empty/whitespace name is a no-op. Returns the updated info, or null if the id is unknown. */
+  renameSession(id: string, name: string): Promise<SessionInfo | null>
   listSessions(): Promise<SessionInfo[]>
   listAgents(): Promise<AgentInfo[]>
   /** Opens a file picker to locate the agent binary; returns the updated list. */

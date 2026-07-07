@@ -84,7 +84,10 @@ export default function App(): React.JSX.Element {
     await refresh()
   }
   const close = async (id: string): Promise<void> => {
-    await window.localflow.killSession(id)
+    // TODO(task 3): split into a real close-pane (closeTerminal) vs. remove
+    // (deleteSession) UX. For now, preserve the pre-M1.6 kill behavior
+    // (which itself mapped to deleteSession) so this call site just typechecks.
+    await window.localflow.deleteSession(id)
     setEnlarged((cur) => (cur === id ? null : cur))
     setActiveId((cur) => {
       if (cur !== id) return cur

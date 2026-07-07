@@ -6,7 +6,9 @@ const api: LocalflowApi = {
   createSession: (agentId: AgentId, cwd?: string, customCommand?: string) =>
     ipcRenderer.invoke('session:create', agentId, cwd, customCommand),
   restartSession: (id: string, fresh?: boolean) => ipcRenderer.invoke('session:restart', id, fresh),
-  killSession: (id: string) => ipcRenderer.invoke('session:kill', id),
+  closeTerminal: (id: string) => ipcRenderer.invoke('session:closeTerminal', id),
+  deleteSession: (id: string) => ipcRenderer.invoke('session:delete', id),
+  renameSession: (id: string, name: string) => ipcRenderer.invoke('session:rename', id, name),
   listSessions: () => ipcRenderer.invoke('session:list'),
   listAgents: () => ipcRenderer.invoke('agents:list'),
   setAgentPath: (agentId: AgentId) => ipcRenderer.invoke('agents:setPath', agentId),

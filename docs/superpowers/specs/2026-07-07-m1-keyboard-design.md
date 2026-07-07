@@ -33,6 +33,7 @@ keybindings — while never stealing keys the agents themselves use.
 | enlarge-toggle | cmd+m | enlarge/shrink the active pane |
 | close-pane | cmd+w | closes and removes the active session — the agent's own conversation history survives in the project folder (e.g. `claude --continue` there starts where you left off) — intercepted so Electron doesn't close the window |
 | new-session | cmd+enter | jumps to Overview (launcher) |
+| toggle-sidebar | cmd+b | hide/show the sidebar (fullscreen-style focus; added 2026-07-07) |
 | go-up | cmd+escape | shrink if enlarged, else Overview (existing behavior, now remappable) |
 
 Bare Escape, Enter, arrows, and every unmodified key pass through to the

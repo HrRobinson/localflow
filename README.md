@@ -25,12 +25,12 @@ Codex and Gemini CLI sessions get real status colors too, not just the
 permanent "running" fallback — each agent's own hook/notification system is
 adapted onto the same three-state model, per-agent fidelity tier:
 
-| Agent       | Mechanism                                     | Fidelity                                                                                                   |
-| ----------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Claude Code | `--settings` file                             | Full: working / needs-you / idle                                                                           |
-| Gemini CLI  | `GEMINI_CLI_SYSTEM_SETTINGS_PATH` env + hooks | Full: working / needs-you / idle                                                                           |
-| Codex       | inline `-c` CLI overrides (legacy `notify`)   | Conservative: turn-complete only — idle/exited are accurate, working/needs-you are not (yet) distinguished |
-| Custom      | none                                          | Permanent "running" (unchanged)                                                                            |
+| Agent       | Mechanism                                     | Fidelity                                                                                                                        |
+| ----------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Claude Code | `--settings` file                             | Full: working / needs-you / idle                                                                                                |
+| Gemini CLI  | `GEMINI_CLI_SYSTEM_SETTINGS_PATH` env + hooks | Full: working / needs-you / idle                                                                                                |
+| Codex       | inline `-c` CLI overrides (legacy `notify`)   | Conservative: turn-complete only — idle is accurate as of the last turn-complete, working/needs-you are not (yet) distinguished |
+| Custom      | none                                          | Permanent "running" (unchanged)                                                                                                 |
 
 Codex ships on the deliberately conservative tier pending manual
 verification of its `-c` hook-injection grammar against a real install;

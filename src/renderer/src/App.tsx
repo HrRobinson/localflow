@@ -214,34 +214,11 @@ export default function App(): React.JSX.Element {
           onOpenSession={openSession}
         />
       )}
+      {/* No content header: the sidebar IS the navigation (user decision
+          2026-07-07); cmd+esc / nav items cover the old header buttons. */}
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between border-b border-white/[0.06] px-6 py-3">
-          <h2 className="m-0 text-[15px] font-semibold tracking-[-0.01em]">
-            {showTerminals ? 'Terminals' : view === 'settings' ? 'Settings' : 'Overview'}
-          </h2>
-          {showTerminals ? (
-            <button
-              className="cursor-pointer rounded-md border border-white/10 bg-white/[0.06] px-3 py-[5px] text-xs text-gray-300 hover:bg-white/[0.12] hover:text-white"
-              onClick={() => setView('home')}
-              onMouseDown={(e) => e.preventDefault()}
-              title="cmd+esc"
-            >
-              home
-            </button>
-          ) : (
-            sessions.length > 0 && (
-              <button
-                className="cursor-pointer rounded-md border border-white/10 bg-white/[0.06] px-3 py-[5px] text-xs text-gray-300 hover:bg-white/[0.12] hover:text-white"
-                onClick={enterTerminals}
-                onMouseDown={(e) => e.preventDefault()}
-              >
-                open terminals
-              </button>
-            )
-          )}
-        </header>
         {showTerminals ? (
-          <div className="grid flex-1 auto-rows-[minmax(300px,1fr)] grid-cols-[repeat(auto-fit,minmax(460px,1fr))] gap-2.5 overflow-auto px-3 pb-3">
+          <div className="grid flex-1 auto-rows-[minmax(300px,1fr)] grid-cols-[repeat(auto-fit,minmax(460px,1fr))] gap-2.5 overflow-auto px-3 pt-3 pb-3">
             {order
               .map((id) => sessions.find((s) => s.id === id))
               .filter((s): s is SessionInfo => s != null)

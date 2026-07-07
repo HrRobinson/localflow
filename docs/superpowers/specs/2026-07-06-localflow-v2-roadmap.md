@@ -106,6 +106,12 @@ Research (2026-07-06) confirmed both have Claude-like hooks systems:
   (e.g. Ollama's OpenAI-compatible API via base-URL overrides), and the
   agent presets/docs show a "local model" recipe (aider/opencode/custom
   against localhost). No cloud account required to use localflow.
+- **Terminal conveniences via config, not hardcode (user principle
+  2026-07-07):** terminal-app niceties (clear-scrollback a la cmd+k, font
+  size step, copy-mode, etc.) ship as remappable keybinding ACTIONS and
+  theme/config options — never fixed behavior. The keybinding action
+  registry is the extension point; themes own look (xterm palette, font,
+  cursor), config owns behavior (scrollback length, bell).
 - **Themes** (added 2026-07-07): app + terminal color themes, switchable in
   settings. Theme = a JSON/CSS-token file (the Tailwind `@theme` tokens and
   xterm palette make this natural), so the community can develop and share

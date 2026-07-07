@@ -70,7 +70,7 @@ export default function App(): React.JSX.Element {
   const showTerminals = view === 'terminals' && sessions.length > 0
 
   return (
-    <div className="app-shell">
+    <div className="flex min-h-0 flex-1">
       <Sidebar
         sessions={sessions}
         view={showTerminals ? 'terminals' : 'home'}
@@ -79,23 +79,32 @@ export default function App(): React.JSX.Element {
         onTerminals={() => setView('terminals')}
         onOpenSession={openSession}
       />
-      <main className="content">
-        <header className="content-head">
-          <h2>{showTerminals ? 'Terminals' : 'Overview'}</h2>
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <header className="flex items-center justify-between border-b border-white/[0.06] px-6 py-3">
+          <h2 className="m-0 text-[15px] font-semibold tracking-[-0.01em]">
+            {showTerminals ? 'Terminals' : 'Overview'}
+          </h2>
           {showTerminals ? (
-            <button className="toolbar-btn" onClick={() => setView('home')} title="cmd+esc">
+            <button
+              className="cursor-pointer rounded-md border border-white/10 bg-white/[0.06] px-3 py-[5px] text-xs text-gray-300 hover:bg-white/[0.12] hover:text-white"
+              onClick={() => setView('home')}
+              title="cmd+esc"
+            >
               home
             </button>
           ) : (
             sessions.length > 0 && (
-              <button className="toolbar-btn" onClick={() => setView('terminals')}>
+              <button
+                className="cursor-pointer rounded-md border border-white/10 bg-white/[0.06] px-3 py-[5px] text-xs text-gray-300 hover:bg-white/[0.12] hover:text-white"
+                onClick={() => setView('terminals')}
+              >
                 open terminals
               </button>
             )
           )}
         </header>
         {showTerminals ? (
-          <div className="grid">
+          <div className="grid flex-1 auto-rows-[minmax(300px,1fr)] grid-cols-[repeat(auto-fit,minmax(460px,1fr))] gap-2.5 overflow-auto px-3 pb-3">
             {sessions.map((s) => (
               <TerminalPane
                 key={s.id}

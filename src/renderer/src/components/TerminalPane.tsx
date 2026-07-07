@@ -51,33 +51,65 @@ export default function TerminalPane({
   const name = session.cwd.split('/').filter(Boolean).pop() ?? session.cwd
   const agentLabel =
     session.agentId === 'custom' ? session.command.split('/').pop() : session.agentId
+  const paneHeaderBtn =
+    'cursor-pointer border-0 bg-transparent text-xs text-gray-400 hover:text-white'
   return (
     <div
-      className={`pane${enlarged ? ' enlarged' : ''}`}
+      className={`pane border-exited bg-surface-raised flex min-h-0 flex-col overflow-hidden rounded-lg border-2 ${enlarged ? 'enlarged' : ''}`}
       data-pane-id={session.id}
       data-status={session.status}
     >
-      <div className="pane-header" onDoubleClick={onToggleEnlarge}>
-        <span className="dot" />
-        <span className="cwd" title={session.cwd}>
+      <div
+        className="pane-header flex cursor-pointer items-center gap-2 bg-white/[0.04] px-2.5 py-1 text-xs select-none"
+        onDoubleClick={onToggleEnlarge}
+      >
+        <span className="dot bg-exited h-2.5 w-2.5 rounded-full" />
+        <span
+          className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap"
+          title={session.cwd}
+        >
           {name}
         </span>
-        <span className="pane-agent">{agentLabel}</span>
-        <button onClick={onToggleEnlarge} onDoubleClick={(e) => e.stopPropagation()}>
+        <span className="rounded bg-white/[0.06] px-1.5 py-px font-mono text-[10px] text-gray-400">
+          {agentLabel}
+        </span>
+        <button
+          className={paneHeaderBtn}
+          onClick={onToggleEnlarge}
+          onDoubleClick={(e) => e.stopPropagation()}
+        >
           {enlarged ? 'shrink' : 'enlarge'}
         </button>
-        <button onClick={onClose} onDoubleClick={(e) => e.stopPropagation()}>
+        <button
+          className={paneHeaderBtn}
+          onClick={onClose}
+          onDoubleClick={(e) => e.stopPropagation()}
+        >
           close
         </button>
       </div>
       {alive ? (
-        <div className="term-host" ref={hostRef} />
+        <div className="term-host min-h-0 flex-1 p-1" ref={hostRef} />
       ) : (
-        <div className="restart-overlay">
-          {session.message && <p className="restart-message">{session.message}</p>}
-          <div className="restart-actions">
-            <button onClick={() => onRestart(false)}>Resume conversation</button>
-            <button onClick={() => onRestart(true)}>Start fresh</button>
+        <div className="restart-overlay flex flex-1 flex-col items-center justify-center gap-3">
+          {session.message && (
+            <p className="m-0 max-w-[80%] px-4 text-center text-[13px] text-gray-400">
+              {session.message}
+            </p>
+          )}
+          <div className="flex gap-2.5">
+            <button
+              className="cursor-pointer rounded-md border-0 bg-gray-700 px-4 py-2 text-white"
+              onClick={() => onRestart(false)}
+            >
+              Resume conversation
+            </button>
+            <button
+              className="cursor-pointer rounded-md border-0 bg-gray-700 px-4 py-2 text-white"
+              onClick={() => onRestart(true)}
+            >
+              Start fresh
+            </button>
           </div>
         </div>
       )}

@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu } from 'electron'
 import { join } from 'node:path'
-import { writeFileSync } from 'node:fs'
+import { existsSync, writeFileSync } from 'node:fs'
 import type { AgentId } from '../shared/types'
 import { startHookServer } from './hook-server'
 import { SessionManager, type SpawnSpec } from './session-manager'
@@ -80,6 +80,13 @@ function buildAppMenu(): void {
 
 app.whenReady().then(async () => {
   buildAppMenu()
+
+  // Dev-mode dock icon (packaged builds get it from build/icon.png via
+  // electron-builder; in dev Electron shows its default logo otherwise).
+  if (!app.isPackaged && process.platform === 'darwin') {
+    const devIcon = join(__dirname, '../../assets/icon-512.png')
+    if (existsSync(devIcon)) app.dock?.setIcon(devIcon)
+  }
 
   const userData = app.getPath('userData')
   const sessionsFile = join(userData, 'sessions.json')

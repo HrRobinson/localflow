@@ -63,6 +63,9 @@ export default function App(): React.JSX.Element {
     const created = await window.localflow.createSession(agentId, undefined, customCommand)
     if (created) {
       setView('terminals')
+      // A pane enlarged before we left the terminals view would otherwise
+      // stay fixed-position on top of the newly created (active) pane.
+      setEnlarged(null)
       setActiveId(created.id)
       await refresh()
     }
@@ -87,6 +90,13 @@ export default function App(): React.JSX.Element {
     setEnlarged(sessions.length > 1 ? id : null)
     setActiveId(id)
   }
+  // Entering the terminals view without naming a session (sidebar nav item,
+  // header "open terminals") must still yield exactly one active pane —
+  // e.g. with restored sessions activeId starts out null.
+  const enterTerminals = (): void => {
+    setView('terminals')
+    setActiveId((cur) => (cur !== null && order.includes(cur) ? cur : (order[0] ?? null)))
+  }
 
   const showTerminals = view === 'terminals' && sessions.length > 0
 
@@ -97,7 +107,7 @@ export default function App(): React.JSX.Element {
         view={showTerminals ? 'terminals' : 'home'}
         activeId={activeId}
         onHome={() => setView('home')}
-        onTerminals={() => setView('terminals')}
+        onTerminals={enterTerminals}
         onOpenSession={openSession}
       />
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -118,7 +128,7 @@ export default function App(): React.JSX.Element {
             sessions.length > 0 && (
               <button
                 className="cursor-pointer rounded-md border border-white/10 bg-white/[0.06] px-3 py-[5px] text-xs text-gray-300 hover:bg-white/[0.12] hover:text-white"
-                onClick={() => setView('terminals')}
+                onClick={enterTerminals}
                 onMouseDown={(e) => e.preventDefault()}
               >
                 open terminals

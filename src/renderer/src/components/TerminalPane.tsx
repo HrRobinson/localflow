@@ -95,7 +95,13 @@ export default function TerminalPane({
           className={paneHeaderBtn}
           onClick={onToggleEnlarge}
           onDoubleClick={(e) => e.stopPropagation()}
-          onMouseDown={(e) => e.preventDefault()}
+          onMouseDown={(e) => {
+            // preventDefault keeps focus off the button; stopPropagation keeps
+            // the mousedown from bubbling to the pane root's onActivate —
+            // closing a non-active pane must not first make it active.
+            e.preventDefault()
+            e.stopPropagation()
+          }}
         >
           {enlarged ? 'shrink' : 'enlarge'}
         </button>
@@ -103,7 +109,10 @@ export default function TerminalPane({
           className={paneHeaderBtn}
           onClick={onClose}
           onDoubleClick={(e) => e.stopPropagation()}
-          onMouseDown={(e) => e.preventDefault()}
+          onMouseDown={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+          }}
         >
           close
         </button>

@@ -1,7 +1,7 @@
 import { test, expect, _electron as electron, type ElectronApplication } from '@playwright/test'
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, dirname } from 'node:path'
+import { join, dirname, basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -228,6 +228,122 @@ test('Settings nav, unresolved-agent disabling, lastAgent persists restart', asy
   // The config file itself is the contract — assert its on-disk shape too.
   const config = JSON.parse(readFileSync(join(userData, 'config.json'), 'utf8'))
   expect(config.lastAgent).toEqual({ agentId: 'custom', customCommand: 'cat' })
+
+  await app2.close()
+})
+
+test('closing a terminal keeps the session listed; delete is confirm-gated', async () => {
+  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const app = await launchApp(userData)
+  const win = await app.firstWindow()
+  await expect(win.locator('.new-session')).toBeVisible()
+
+  const info = await win.evaluate(
+    (cwd) =>
+      (
+        window as unknown as {
+          localflow: { createSession(a: string, c: string): Promise<{ id: string }> }
+        }
+      ).localflow.createSession('claude', cwd),
+    userData
+  )
+  const row = win.locator(`[data-session-id="${info!.id}"]`)
+  await expect(row).toBeVisible()
+  await row.locator('.row-open').click()
+
+  const pane = win.locator(`[data-pane-id="${info!.id}"]`)
+  await expect(pane).toBeVisible()
+  await expect(pane).toHaveAttribute('data-status', 'idle')
+
+  // Close just this pane's pty (the pane header's "close" button, wired to
+  // closeTerminal — not deleteSession). The session must stay listed as
+  // exited, resumable, and with none of the "instant exit" crash messaging
+  // that a real agent crash would show (this close was user-initiated).
+  await pane.getByRole('button', { name: 'close', exact: true }).click()
+  await expect(pane).toHaveAttribute('data-status', 'exited')
+  await expect(pane.getByRole('button', { name: 'Resume conversation' })).toBeVisible()
+  await expect(pane.getByRole('button', { name: 'Start fresh' })).toBeVisible()
+  await expect(pane.locator('.restart-overlay p')).toHaveCount(0)
+
+  // Overview: the row is still there, now offering resume/fresh instead of
+  // "open" — closeTerminal must not have deleted the session record.
+  await win.getByRole('button', { name: 'Overview', exact: true }).click()
+  await expect(row).toBeVisible()
+  await expect(row.getByRole('button', { name: 'resume', exact: true })).toBeVisible()
+  await expect(row.getByRole('button', { name: 'fresh', exact: true })).toBeVisible()
+  await expect(row.locator('.row-open')).toHaveCount(0)
+
+  // Arming delete (the row's "×") must not delete on the first click.
+  await row.locator('button[title="Delete session"]').click()
+  await expect(row.getByRole('button', { name: 'Delete', exact: true })).toBeVisible()
+  await expect(row.getByRole('button', { name: 'Cancel', exact: true })).toBeVisible()
+  await expect(row).toBeVisible()
+
+  // Cancel disarms without deleting.
+  await row.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(row.getByRole('button', { name: 'Delete', exact: true })).toHaveCount(0)
+  await expect(row).toBeVisible()
+
+  // Arm again and confirm: now the row — and the pane, wherever it might
+  // render — are both gone for good.
+  await row.locator('button[title="Delete session"]').click()
+  await row.getByRole('button', { name: 'Delete', exact: true }).click()
+  await expect(row).toHaveCount(0)
+  await expect(win.locator(`[data-pane-id="${info!.id}"]`)).toHaveCount(0)
+
+  await app.close()
+})
+
+test('rename via the pencil icon persists across a relaunch', async () => {
+  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const app = await launchApp(userData)
+  const win = await app.firstWindow()
+  await expect(win.locator('.new-session')).toBeVisible()
+
+  const info = await win.evaluate(
+    (cwd) =>
+      (
+        window as unknown as {
+          localflow: { createSession(a: string, c: string): Promise<{ id: string }> }
+        }
+      ).localflow.createSession('claude', cwd),
+    userData
+  )
+  const row = win.locator(`[data-session-id="${info!.id}"]`)
+  await expect(row).toBeVisible()
+
+  // Default name is the cwd's folder basename (createSession was passed
+  // userData itself as cwd, matching session-manager's basename(cwd) default).
+  const defaultName = basename(userData)
+  await expect(row.locator('strong')).toHaveText(defaultName)
+
+  // Rename via the hover pencil (not double-click) → Enter saves.
+  await row.locator('button[title="Rename session"]').click()
+  const input = row.locator('input')
+  await expect(input).toBeVisible()
+  await input.fill('Renamed Session')
+  await input.press('Enter')
+  await expect(row.locator('strong')).toHaveText('Renamed Session')
+
+  // The sidebar's matching entry reflects the same rename.
+  const navEntry = win.locator(`[data-nav-session="${info!.id}"]`)
+  await expect(navEntry).toContainText('Renamed Session')
+
+  await app.close()
+
+  // Relaunch against the SAME userData dir: the name must have been
+  // persisted to sessions.json, not just held in React state.
+  const app2 = await launchApp(userData)
+  const win2 = await app2.firstWindow()
+  const row2 = win2.locator(`[data-session-id="${info!.id}"]`)
+  await expect(row2).toBeVisible()
+  await expect(row2.locator('strong')).toHaveText('Renamed Session')
+
+  const saved = JSON.parse(readFileSync(join(userData, 'sessions.json'), 'utf8')) as Array<{
+    id: string
+    name?: string
+  }>
+  expect(saved.find((s) => s.id === info!.id)?.name).toBe('Renamed Session')
 
   await app2.close()
 })

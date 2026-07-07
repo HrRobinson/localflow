@@ -237,7 +237,8 @@ describe('DEFAULT_BINDINGS', () => {
       'enlarge-toggle',
       'close-pane',
       'new-session',
-      'go-up'
+      'go-up',
+      'toggle-sidebar'
     ]
     allActions.forEach((action) => {
       expect(DEFAULT_BINDINGS).toHaveProperty(action)
@@ -262,5 +263,6 @@ describe('DEFAULT_BINDINGS', () => {
   it('has named key bindings', () => {
     expect(DEFAULT_BINDINGS['new-session']).toBe('cmd+enter')
     expect(DEFAULT_BINDINGS['go-up']).toBe('cmd+escape')
+    expect(DEFAULT_BINDINGS['toggle-sidebar']).toBe('cmd+b')
   })
 })

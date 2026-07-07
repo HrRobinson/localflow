@@ -65,6 +65,41 @@ describe('SessionManager', () => {
     })
   })
 
+  it('instant exit surfaces the last output in message (ANSI stripped)', () => {
+    const info = mgr.create('/p', claudeSpec)
+    ptys[0].dataCb?.('\u001b[31mNo conversation found in this directory\u001b[0m\r\n')
+    ptys[0].exitCb?.()
+    const msg = mgr.list().find((s) => s.id === info.id)?.message
+    expect(msg).toContain('No conversation found')
+    expect(msg).not.toContain('\u001b')
+  })
+
+  it('instant exit with no output still gets an explanatory message', () => {
+    const info = mgr.create('/p', claudeSpec)
+    ptys[0].exitCb?.()
+    expect(mgr.list().find((s) => s.id === info.id)?.message).toContain('Exited right away')
+  })
+
+  it('long-lived session exit sets no message', () => {
+    let t = 0
+    const ptysT: FakePty[] = []
+    const mgrT = new SessionManager({
+      settingsDir: mkdtempSync(join(tmpdir(), 'localflow-sm-')),
+      port: 9999,
+      token: 'tok',
+      now: () => t,
+      spawnFn: () => {
+        const pty = new FakePty()
+        ptysT.push(pty)
+        return pty
+      }
+    })
+    const info = mgrT.create('/p', claudeSpec)
+    t = 60_000
+    ptysT[0].exitCb?.()
+    expect(mgrT.list().find((s) => s.id === info.id)?.message).toBeUndefined()
+  })
+
   it('create spawns a hook agent with --settings in the cwd, idle status', () => {
     const info = mgr.create('/some/project', claudeSpec)
     expect(info.status).toBe('idle')

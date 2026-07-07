@@ -60,6 +60,7 @@ given direction), so they work regardless of grid layout.
 | Enlarge/shrink           | `cmd+m`                                                       | toggles the active pane full-size                                                                                                                               |
 | Close pane               | `cmd+w`                                                       | closes and removes the session — the agent's own conversation history survives in the project folder (e.g. `claude --continue` there starts where you left off) |
 | New session              | `cmd+enter`                                                   | jumps to Overview                                                                                                                                               |
+| Toggle sidebar           | `cmd+b`                                                       | hides/shows the sidebar (fullscreen-style focus mode)                                                                                                           |
 | Go up                    | `cmd+escape`                                                  | shrinks an enlarged pane, else goes to Overview                                                                                                                 |
 
 Bare `Escape`, `Enter`, arrow keys, and every unmodified keystroke always
@@ -88,7 +89,8 @@ The file is a flat JSON object mapping action name to binding string:
   "enlarge-toggle": "cmd+m",
   "close-pane": "cmd+w",
   "new-session": "cmd+enter",
-  "go-up": "cmd+escape"
+  "go-up": "cmd+escape",
+  "toggle-sidebar": "cmd+b"
 }
 ```
 

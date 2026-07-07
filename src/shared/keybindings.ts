@@ -11,6 +11,7 @@ export type KeyAction =
   | 'close-pane'
   | 'new-session'
   | 'go-up'
+  | 'toggle-sidebar'
 
 export const DEFAULT_BINDINGS: Record<KeyAction, string> = {
   'focus-left': 'cmd+h',
@@ -24,7 +25,8 @@ export const DEFAULT_BINDINGS: Record<KeyAction, string> = {
   'enlarge-toggle': 'cmd+m',
   'close-pane': 'cmd+w',
   'new-session': 'cmd+enter',
-  'go-up': 'cmd+escape'
+  'go-up': 'cmd+escape',
+  'toggle-sidebar': 'cmd+b'
 }
 
 /**

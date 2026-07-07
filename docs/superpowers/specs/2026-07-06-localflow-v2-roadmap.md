@@ -110,10 +110,16 @@ Research (2026-07-06) confirmed both have Claude-like hooks systems:
 
 ## M5 — Session layers (nested sessions + breadcrumbs)
 
+- **The staircase (user framing, 2026-07-07): each level down adds context.**
+  Overview → Terminals grid → an ENLARGED pane is an *environment*, not just
+  a bigger view: it shows a breadcrumb of where you are
+  (`Overview › project-name`) and offers "spin up a terminal here" — a new
+  session/shell in the same cwd, becoming a sibling/child of that pane.
 - A session can open child sessions (e.g. an orchestrator agent with subagents
   on branches/worktrees) — sessions form a tree, max depth configurable.
 - Breadcrumb trail of active layers (`workspace › project › branch-session`)
-  when drilling in; status rolls up the tree.
+  when drilling in; status rolls up the tree. Entry point: the enlarged-pane
+  breadcrumb bar ships first (possibly with M3 workspaces).
 
 ## M6 — Changes / diff review
 

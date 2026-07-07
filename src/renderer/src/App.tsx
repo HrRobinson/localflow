@@ -28,6 +28,8 @@ const ACTION_DIRECTION: Partial<Record<KeyAction, Direction>> = {
 export default function App(): React.JSX.Element {
   const [sessions, setSessions] = useState<SessionInfo[]>([])
   const [enlarged, setEnlarged] = useState<string | null>(null)
+  // cmd+b hides the sidebar for a fullscreen-style focus mode.
+  const [sidebarVisible, setSidebarVisible] = useState(true)
   // Which pane has keyboard focus, and the display order panes render in.
   // `order` is reconciled from `sessions` on every refresh: new ids are
   // appended, ids no longer present are dropped, everything else is stable.
@@ -149,6 +151,10 @@ export default function App(): React.JSX.Element {
         setView('home')
         return
       }
+      if (action === 'toggle-sidebar') {
+        setSidebarVisible((cur) => !cur)
+        return
+      }
 
       // Everything else only acts within the terminals view, on the active
       // pane — a no-op elsewhere (e.g. on the home/landing view).
@@ -196,14 +202,16 @@ export default function App(): React.JSX.Element {
 
   return (
     <div className="flex min-h-0 flex-1">
-      <Sidebar
-        sessions={sessions}
-        view={showTerminals ? 'terminals' : 'home'}
-        activeId={activeId}
-        onHome={() => setView('home')}
-        onTerminals={enterTerminals}
-        onOpenSession={openSession}
-      />
+      {sidebarVisible && (
+        <Sidebar
+          sessions={sessions}
+          view={showTerminals ? 'terminals' : 'home'}
+          activeId={activeId}
+          onHome={() => setView('home')}
+          onTerminals={enterTerminals}
+          onOpenSession={openSession}
+        />
+      )}
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
         <header className="flex items-center justify-between border-b border-white/[0.06] px-6 py-3">
           <h2 className="m-0 text-[15px] font-semibold tracking-[-0.01em]">

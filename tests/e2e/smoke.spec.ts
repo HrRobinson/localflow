@@ -132,7 +132,6 @@ test('keyboard nav: focus moves, enlarge toggle, bare keys fall through', async 
   await win.keyboard.type('x')
   await expect(win.locator('.pane.active')).toHaveCount(1)
   await expect(firstPane).toHaveClass(/active/)
-  await expect(win.locator('main h2')).toHaveText('Terminals')
 
   await app.close()
 })

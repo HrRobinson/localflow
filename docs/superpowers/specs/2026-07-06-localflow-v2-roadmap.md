@@ -4,6 +4,19 @@ Direction agreed 2026-07-06: localflow evolves from "Claude session grid" into a
 keyboard-driven workspace manager for AI agent terminals, with GitHub
 Desktop-grade UI. Each milestone is its own spec → plan → PR cycle.
 
+## Design principles (standing, 2026-07-07)
+
+1. **Two audiences, one product.** Every feature must serve both non-technical
+   "vibe coders" (glanceable, forgiving, GUI-first) and technical power users
+   (keyboard-first, scriptable, inspectable). When designing, ask: what's the
+   vibe-coder path AND the power-user path?
+2. **Config as code underneath, GUI on top.** All configuration lives in
+   plain, hand-editable, documented files in userData (`config.json`,
+   `keybindings.json`, theme files) — dotfile-able and version-controllable,
+   vim-style. Settings GUIs read and write those same files; the file is the
+   source of truth, never a hidden database. GUI edits must round-trip
+   cleanly with hand edits.
+
 ## Shipped ahead of schedule
 
 - Agent-neutral core: presets (Claude Code / Codex / Gemini / custom), binary

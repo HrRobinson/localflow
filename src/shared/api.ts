@@ -1,4 +1,4 @@
-import type { AgentId, AgentInfo, SessionInfo, SessionStatus } from './types'
+import type { AgentId, AgentInfo, LastAgent, SessionInfo, SessionStatus } from './types'
 import type { KeyAction } from './keybindings'
 
 export interface LocalflowApi {
@@ -15,6 +15,7 @@ export interface LocalflowApi {
   listAgents(): Promise<AgentInfo[]>
   /** Opens a file picker to locate the agent binary; returns the updated list. */
   setAgentPath(agentId: AgentId): Promise<AgentInfo[] | null>
+  getLastAgent(): Promise<LastAgent | null>
   write(id: string, data: string): void
   resize(id: string, cols: number, rows: number): void
   onData(cb: (id: string, data: string) => void): () => void

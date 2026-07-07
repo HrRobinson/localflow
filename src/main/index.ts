@@ -144,7 +144,9 @@ app.whenReady().then(async () => {
         if (result.canceled || result.filePaths.length === 0) return null
         dir = result.filePaths[0]
       }
-      return manager.create(dir, specFor(agentId, customCommand?.trim()))
+      const created = manager.create(dir, specFor(agentId, customCommand?.trim()))
+      registry.recordLastAgent(agentId, customCommand?.trim())
+      return created
     }
   )
   ipcMain.handle('session:restart', (_e, id: string, fresh?: boolean) =>
@@ -160,6 +162,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('keybindings:get', () => keybindings)
 
   ipcMain.handle('agents:list', () => registry.list())
+  ipcMain.handle('agents:getLastAgent', () => registry.getLastAgent())
   ipcMain.handle('agents:setPath', async (_e, agentId: AgentId) => {
     if (!VALID_AGENTS.includes(agentId) || agentId === 'custom') return null
     const result = await dialog.showOpenDialog(win!, {

@@ -54,6 +54,18 @@ keybindings/themes live on the **Settings** page, reachable from the
 sidebar. localflow remembers the last agent you launched and preselects it
 the next time you open Overview.
 
+Sessions are durable: once created, they stay listed (named, with their
+working directory) until you explicitly delete them. Closing a terminal —
+the pane's **close** button, or `cmd+w` — only ends that pty; the session
+itself stays in Overview and the sidebar as **exited**, ready to be resumed
+(continuing the conversation) or restarted fresh. Deleting a session is a
+separate, deliberate action: the row's **×** arms a **Delete**/**Cancel**
+pair rather than deleting immediately, so a stray click can't lose a
+session. Session names default to the project folder's name and can be
+renamed inline — double-click the name, or use the pencil icon that
+appears on hover — in both Overview and the sidebar; press Enter to save
+or Escape to cancel.
+
 ## Keyboard
 
 The Terminals view is fully keyboard-drivable: exactly one pane is always

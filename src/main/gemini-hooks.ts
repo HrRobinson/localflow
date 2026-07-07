@@ -27,7 +27,16 @@ function curlCommand(paneId: string, port: number, token: string, event: HookEve
  */
 function notificationCommand(paneId: string, port: number, token: string): string {
   const payload = JSON.stringify({ paneId, event: 'Notification' as HookEventName })
-  const curl = `curl -s -m 3 -X POST http://127.0.0.1:${port}/event -H "Content-Type: application/json" -H "X-Localflow-Token: ${token}" -d '${payload}'`
+  // The whole command below is itself wrapped in an outer `sh -c '...'`, so a
+  // plain `-d '<payload>'` would prematurely close that outer single-quoted
+  // string the moment it hit payload's own single quotes — corrupting the
+  // curl invocation the outer shell sees before the inner `sh -c` ever runs.
+  // `'"'"'` is the standard POSIX trick for embedding a literal single quote
+  // inside an already-open single-quoted string (close quote, insert a
+  // double-quoted single quote, reopen quote), so the payload still reaches
+  // curl as one properly single-quoted argument.
+  const quotedPayload = `'"'"'${payload}'"'"'`
+  const curl = `curl -s -m 3 -X POST http://127.0.0.1:${port}/event -H "Content-Type: application/json" -H "X-Localflow-Token: ${token}" -d ${quotedPayload}`
   return `sh -c 'body=$(cat); case "$body" in *"\\"type\\":\\"ToolPermission\\""*|*"\\"type\\": \\"ToolPermission\\""*) ${curl} ;; esac'`
 }
 

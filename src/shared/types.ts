@@ -18,6 +18,7 @@ export interface LastAgent {
 export interface SessionInfo {
   id: string
   cwd: string
+  name: string
   status: SessionStatus
   agentId: AgentId
   command: string

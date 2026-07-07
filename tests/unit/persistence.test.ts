@@ -18,4 +18,19 @@ describe('persistence', () => {
     writeFileSync(file, 'garbage')
     expect(loadSavedSessions(file)).toEqual([])
   })
+  it('round-trips an optional name', () => {
+    const file = join(mkdtempSync(join(tmpdir(), 'localflow-p-')), 'sessions.json')
+    saveSessions(file, [{ id: 'a', cwd: '/x', name: 'my project' }])
+    expect(loadSavedSessions(file)).toEqual([{ id: 'a', cwd: '/x', name: 'my project' }])
+  })
+  it('tolerates a saved session with no name key at all', () => {
+    const file = join(mkdtempSync(join(tmpdir(), 'localflow-p-')), 'sessions.json')
+    writeFileSync(file, JSON.stringify([{ id: 'a', cwd: '/x' }]))
+    expect(loadSavedSessions(file)).toEqual([{ id: 'a', cwd: '/x' }])
+  })
+  it('tolerates a non-string name, treating it as absent', () => {
+    const file = join(mkdtempSync(join(tmpdir(), 'localflow-p-')), 'sessions.json')
+    writeFileSync(file, JSON.stringify([{ id: 'a', cwd: '/x', name: 123 }]))
+    expect(loadSavedSessions(file)).toEqual([{ id: 'a', cwd: '/x' }])
+  })
 })

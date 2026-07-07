@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import Brand from './Brand'
 import type { SessionInfo } from '../../../shared/types'
 
@@ -9,6 +10,8 @@ interface Props {
   onTerminals: () => void
   onSettings: () => void
   onOpenSession: (id: string) => void
+  onDeleteSession: (id: string) => void
+  onRenameSession: (id: string, name: string) => void
 }
 
 const navItemBase =
@@ -22,8 +25,43 @@ export default function Sidebar({
   onHome,
   onTerminals,
   onSettings,
-  onOpenSession
+  onOpenSession,
+  onDeleteSession,
+  onRenameSession
 }: Props): React.JSX.Element {
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editValue, setEditValue] = useState('')
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+
+  // Clicking anywhere outside the armed row, or pressing Escape, disarms.
+  // The Escape listener is local to the armed state — the global keyboard
+  // dispatcher only claims bound combos, and bare Escape stays free.
+  useEffect(() => {
+    if (!confirmDeleteId) return
+    const onDocMouseDown = (e: MouseEvent): void => {
+      const row = (e.target as HTMLElement).closest(`[data-nav-session="${confirmDeleteId}"]`)
+      if (!row) setConfirmDeleteId(null)
+    }
+    const onDocKeyDown = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape' && !e.metaKey && !e.ctrlKey && !e.altKey) setConfirmDeleteId(null)
+    }
+    window.addEventListener('mousedown', onDocMouseDown)
+    window.addEventListener('keydown', onDocKeyDown)
+    return () => {
+      window.removeEventListener('mousedown', onDocMouseDown)
+      window.removeEventListener('keydown', onDocKeyDown)
+    }
+  }, [confirmDeleteId])
+
+  // Defensive: if the session being edited or armed-for-delete disappears
+  // from the list (deleted elsewhere, poll refresh), drop the stale state.
+  // Render-time adjustment (not an effect) per React's "adjusting state when
+  // props change" pattern — React re-renders immediately, before commit.
+  if (editingId !== null && !sessions.some((s) => s.id === editingId)) setEditingId(null)
+  if (confirmDeleteId !== null && !sessions.some((s) => s.id === confirmDeleteId)) {
+    setConfirmDeleteId(null)
+  }
+
   return (
     <aside className="bg-sidebar flex min-h-0 w-[230px] flex-none flex-col border-r border-white/[0.07]">
       <div className="flex items-center gap-[9px] px-4 pt-4 pb-2.5">
@@ -64,19 +102,97 @@ export default function Sidebar({
           <div className="px-2.5 py-0.5 text-xs text-gray-600">none yet</div>
         )}
         {sessions.map((s) => (
-          <button
+          <div
             key={s.id}
-            className={`side-session flex w-full cursor-pointer items-center gap-2 rounded-md border-0 bg-transparent px-2.5 py-1.5 text-left text-[13px] text-gray-300 hover:bg-white/5 hover:text-white ${activeId === s.id && view === 'terminals' ? 'active bg-white/10 text-white' : ''}`}
+            className={`side-session group flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-[13px] text-gray-300 hover:bg-white/5 hover:text-white ${activeId === s.id && view === 'terminals' ? 'active bg-white/10 text-white' : ''}`}
             data-nav-session={s.id}
-            title={s.cwd}
-            onClick={() => onOpenSession(s.id)}
-            onMouseDown={(e) => e.preventDefault()}
           >
             <span className="dot bg-exited h-2 w-2 flex-none rounded-full" data-status={s.status} />
-            <span className="overflow-hidden text-ellipsis whitespace-nowrap">
-              {s.cwd.split('/').filter(Boolean).pop() ?? s.cwd}
-            </span>
-          </button>
+            {editingId === s.id ? (
+              <input
+                className="bg-surface min-w-0 flex-1 rounded border border-white/20 px-1 py-0 text-[13px] text-gray-100 outline-none"
+                value={editValue}
+                autoFocus
+                onFocus={(e) => e.currentTarget.select()}
+                onChange={(e) => setEditValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const trimmed = editValue.trim()
+                    if (trimmed) {
+                      onRenameSession(s.id, trimmed)
+                      setEditingId(null)
+                    }
+                    // Empty/whitespace: skip the commit and leave the input
+                    // open so the user sees why nothing happened.
+                  } else if (e.key === 'Escape') {
+                    setEditingId(null)
+                  }
+                }}
+                onBlur={() => setEditingId(null)}
+              />
+            ) : (
+              <>
+                <button
+                  className="min-w-0 flex-1 cursor-pointer overflow-hidden border-0 bg-transparent p-0 text-left text-ellipsis whitespace-nowrap text-inherit"
+                  title={s.cwd}
+                  onClick={() => onOpenSession(s.id)}
+                  onMouseDown={(e) => e.preventDefault()}
+                >
+                  {s.name}
+                </button>
+                {/* Rename gets its own button (not dblclick on the name):
+                    browsers fire two clicks before dblclick, so a dblclick
+                    rename on the open button would first open/enlarge the
+                    session and race the rename input for focus. */}
+                <button
+                  className="flex-none cursor-pointer border-0 bg-transparent p-0 text-xs text-gray-500 opacity-0 group-hover:opacity-100 hover:text-white"
+                  title="Rename session"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setEditingId(s.id)
+                    setEditValue(s.name)
+                  }}
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                  }}
+                >
+                  ✎
+                </button>
+              </>
+            )}
+            {editingId !== s.id &&
+              (confirmDeleteId === s.id ? (
+                <span className="flex flex-none gap-1">
+                  <button
+                    className="cursor-pointer rounded border-0 bg-red-500/20 px-1.5 text-[11px] text-red-300 hover:bg-red-500/30"
+                    onClick={() => {
+                      setConfirmDeleteId(null)
+                      onDeleteSession(s.id)
+                    }}
+                    onMouseDown={(e) => e.preventDefault()}
+                  >
+                    Delete
+                  </button>
+                  <button
+                    className="cursor-pointer rounded border-0 bg-white/10 px-1.5 text-[11px] text-gray-300 hover:bg-white/20"
+                    onClick={() => setConfirmDeleteId(null)}
+                    onMouseDown={(e) => e.preventDefault()}
+                  >
+                    Cancel
+                  </button>
+                </span>
+              ) : (
+                <button
+                  className="cursor-pointer border-0 bg-transparent p-0 text-xs text-gray-500 opacity-0 group-hover:opacity-100 hover:text-red-400"
+                  title="Delete session"
+                  onClick={() => setConfirmDeleteId(s.id)}
+                  onMouseDown={(e) => e.preventDefault()}
+                >
+                  ×
+                </button>
+              ))}
+          </div>
         ))}
         <button
           className="block w-full cursor-pointer rounded-md border-0 bg-transparent px-2.5 py-1.5 text-left text-[13px] text-gray-500 hover:bg-white/5 hover:text-gray-300"

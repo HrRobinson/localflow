@@ -45,14 +45,26 @@ installed.
 Click **New session** and pick a folder — localflow starts `claude` there
 and adds a pane to the grid. Double-click a pane's header to enlarge it;
 press `cmd+escape` to shrink it back (bare Escape always goes to the agent).
-If a session has exited, its **Restart** button resumes it with
-`claude --continue`, so you don't lose context.
+If a session has exited, its pane offers **Resume conversation** (relaunching
+with `claude --continue`, so you don't lose context) or **Start fresh**.
 
 The Overview page is intentionally minimal: your latest sessions plus a
 single "New session" control. Agent detection, configured paths, and (later)
 keybindings/themes live on the **Settings** page, reachable from the
 sidebar. localflow remembers the last agent you launched and preselects it
 the next time you open Overview.
+
+Sessions are durable: once created, they stay listed (named, with their
+working directory) until you explicitly delete them. Closing a terminal —
+the pane's **close** button, or `cmd+w` — only ends that pty; the session
+itself stays in Overview and the sidebar as **exited**, ready to be resumed
+(continuing the conversation) or restarted fresh. Deleting a session is a
+separate, deliberate action: the row's **×** arms a **Delete**/**Cancel**
+pair rather than deleting immediately, so a stray click can't lose a
+session. Session names default to the project folder's name and can be
+renamed inline — double-click the name, or use the pencil icon that
+appears on hover — in both Overview and the sidebar; press Enter to save
+or Escape to cancel.
 
 ## Keyboard
 

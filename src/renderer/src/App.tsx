@@ -83,8 +83,22 @@ export default function App(): React.JSX.Element {
     await window.localflow.restartSession(id, fresh)
     await refresh()
   }
-  const close = async (id: string): Promise<void> => {
-    await window.localflow.killSession(id)
+  const closeTerminal = async (id: string): Promise<void> => {
+    await window.localflow.closeTerminal(id)
+    await afterPaneGone(id)
+  }
+  const deleteSession = async (id: string): Promise<void> => {
+    await window.localflow.deleteSession(id)
+    await afterPaneGone(id)
+  }
+  const renameSession = async (id: string, name: string): Promise<void> => {
+    const updated = await window.localflow.renameSession(id, name)
+    if (updated) setSessions((prev) => prev.map((s) => (s.id === id ? updated : s)))
+  }
+  // Shared post-action cleanup: whether the pane vanished entirely
+  // (deleteSession) or just went dead-but-still-listed (closeTerminal), it
+  // can no longer hold keyboard focus or stay enlarged.
+  const afterPaneGone = async (id: string): Promise<void> => {
     setEnlarged((cur) => (cur === id ? null : cur))
     setActiveId((cur) => {
       if (cur !== id) return cur
@@ -110,9 +124,9 @@ export default function App(): React.JSX.Element {
   // The dispatcher's keydown handler is a stable closure attached once on
   // mount, so it reads current state through a ref kept in sync every
   // render rather than through the effect's own stale closure.
-  const liveRef = useRef({ view, activeId, order, enlarged, close })
+  const liveRef = useRef({ view, activeId, order, enlarged, closeTerminal })
   useEffect(() => {
-    liveRef.current = { view, activeId, order, enlarged, close }
+    liveRef.current = { view, activeId, order, enlarged, closeTerminal }
   })
 
   useEffect(() => {
@@ -168,7 +182,7 @@ export default function App(): React.JSX.Element {
         return
       }
       if (action === 'close-pane') {
-        void live.close(activeId)
+        void live.closeTerminal(activeId)
         return
       }
 
@@ -212,6 +226,8 @@ export default function App(): React.JSX.Element {
           onTerminals={enterTerminals}
           onSettings={() => setView('settings')}
           onOpenSession={openSession}
+          onDeleteSession={(id) => void deleteSession(id)}
+          onRenameSession={(id, name) => void renameSession(id, name)}
         />
       )}
       {/* No content header: the sidebar IS the navigation (user decision
@@ -231,7 +247,7 @@ export default function App(): React.JSX.Element {
                   onToggleEnlarge={() => setEnlarged((cur) => (cur === s.id ? null : s.id))}
                   onActivate={() => setActiveId(s.id)}
                   onRestart={(fresh) => void restart(s.id, fresh)}
-                  onClose={() => void close(s.id)}
+                  onClose={() => void closeTerminal(s.id)}
                 />
               ))}
           </div>
@@ -243,7 +259,8 @@ export default function App(): React.JSX.Element {
             onCreate={(agentId, cmd) => void createSession(agentId, cmd)}
             onOpen={openSession}
             onResume={(id, fresh) => void restart(id, fresh)}
-            onRemove={(id) => void close(id)}
+            onDelete={(id) => void deleteSession(id)}
+            onRename={(id, name) => void renameSession(id, name)}
             onOpenSettings={() => setView('settings')}
           />
         )}

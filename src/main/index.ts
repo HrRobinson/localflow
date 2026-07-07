@@ -132,7 +132,9 @@ app.whenReady().then(async () => {
   manager.onSessionsChanged(() =>
     saveSessions(
       sessionsFile,
-      manager.list().map(({ id, cwd, agentId, command }) => ({ id, cwd, agentId, command }))
+      manager
+        .list()
+        .map(({ id, cwd, agentId, command, name }) => ({ id, cwd, agentId, command, name }))
     )
   )
 
@@ -142,7 +144,7 @@ app.whenReady().then(async () => {
       : 'claude'
     // A saved custom session keeps its stored command verbatim.
     const spec = agentId === 'custom' ? specFor(agentId, saved.command ?? '') : specFor(agentId)
-    manager.restore(saved.id, saved.cwd, spec)
+    manager.restore(saved.id, saved.cwd, spec, saved.name)
   }
 
   ipcMain.handle(
@@ -169,7 +171,9 @@ app.whenReady().then(async () => {
   ipcMain.handle('session:restart', (_e, id: string, fresh?: boolean) =>
     manager.restart(id, fresh === true)
   )
-  ipcMain.handle('session:kill', (_e, id: string) => manager.kill(id))
+  ipcMain.handle('session:closeTerminal', (_e, id: string) => manager.closeTerminal(id))
+  ipcMain.handle('session:delete', (_e, id: string) => manager.deleteSession(id))
+  ipcMain.handle('session:rename', (_e, id: string, name: string) => manager.rename(id, name))
   ipcMain.handle('session:list', () => manager.list())
   ipcMain.on('session:write', (_e, id: string, data: string) => manager.write(id, data))
   ipcMain.on('session:resize', (_e, id: string, cols: number, rows: number) =>

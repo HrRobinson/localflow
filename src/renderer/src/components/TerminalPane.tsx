@@ -7,7 +7,9 @@ import type { SessionInfo } from '../../../shared/types'
 interface Props {
   session: SessionInfo
   enlarged: boolean
+  active: boolean
   onToggleEnlarge: () => void
+  onActivate: () => void
   /** Relaunch the agent; `fresh` starts a new conversation instead of resuming. */
   onRestart: (fresh: boolean) => void
   onClose: () => void
@@ -16,16 +18,20 @@ interface Props {
 export default function TerminalPane({
   session,
   enlarged,
+  active,
   onToggleEnlarge,
+  onActivate,
   onRestart,
   onClose
 }: Props): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
+  const termRef = useRef<Terminal | null>(null)
   const alive = session.status !== 'exited'
 
   useEffect(() => {
     if (!alive || !hostRef.current) return
     const term = new Terminal({ fontSize: 12, theme: { background: '#1a1b1e' } })
+    termRef.current = term
     const fit = new FitAddon()
     term.loadAddon(fit)
     term.open(hostRef.current)
@@ -45,8 +51,15 @@ export default function TerminalPane({
       onInput.dispose()
       ro.disconnect()
       term.dispose()
+      termRef.current = null
     }
   }, [session.id, alive])
+
+  // Keep DOM focus on the active pane's terminal — after activation changes,
+  // and after the terminals view (re)mounts panes.
+  useEffect(() => {
+    if (active && alive) termRef.current?.focus()
+  }, [active, alive])
 
   const name = session.cwd.split('/').filter(Boolean).pop() ?? session.cwd
   const agentLabel =
@@ -55,13 +68,31 @@ export default function TerminalPane({
     'cursor-pointer border-0 bg-transparent text-xs text-gray-400 hover:text-white'
   return (
     <div
-      className={`pane border-exited bg-surface-raised flex min-h-0 flex-col overflow-hidden rounded-lg border-2 ${enlarged ? 'enlarged' : ''}`}
+      className={
+        'pane border-exited bg-surface-raised flex min-h-0 flex-col overflow-hidden rounded-lg border-2' +
+        (enlarged ? ' enlarged' : '') +
+        (active ? ' active' : '')
+      }
       data-pane-id={session.id}
       data-status={session.status}
+      onMouseDown={() => {
+        onActivate()
+        // setActiveId bails out when this pane is already active, so the
+        // focus effect below never re-runs and Chromium is free to blur the
+        // terminal to <body> on a header/gutter click. Force it back.
+        if (active) termRef.current?.focus()
+      }}
     >
       <div
         className="pane-header flex cursor-pointer items-center gap-2 bg-white/[0.04] px-2.5 py-1 text-xs select-none"
         onDoubleClick={onToggleEnlarge}
+        onMouseDown={(e) => {
+          // Keep the terminal from losing DOM focus when clicking the header
+          // chrome itself — let the event keep bubbling to the pane root so
+          // onActivate above still runs (activation/re-focus for inactive
+          // panes must still work).
+          e.preventDefault()
+        }}
       >
         <span className="dot bg-exited h-2.5 w-2.5 rounded-full" />
         <span
@@ -75,8 +106,18 @@ export default function TerminalPane({
         </span>
         <button
           className={paneHeaderBtn}
-          onClick={onToggleEnlarge}
+          onClick={() => {
+            // Enlarging must activate the pane, explicitly — an enlarged
+            // non-active pane would cover the grid while the previously
+            // active terminal keeps keyboard focus underneath it.
+            onActivate()
+            onToggleEnlarge()
+          }}
           onDoubleClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+          }}
         >
           {enlarged ? 'shrink' : 'enlarge'}
         </button>
@@ -84,6 +125,13 @@ export default function TerminalPane({
           className={paneHeaderBtn}
           onClick={onClose}
           onDoubleClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => {
+            // preventDefault keeps focus off the button; stopPropagation keeps
+            // the mousedown from bubbling to the pane root's onActivate —
+            // closing a non-active pane must not first make it active.
+            e.preventDefault()
+            e.stopPropagation()
+          }}
         >
           close
         </button>
@@ -101,12 +149,14 @@ export default function TerminalPane({
             <button
               className="cursor-pointer rounded-md border-0 bg-gray-700 px-4 py-2 text-white"
               onClick={() => onRestart(false)}
+              onMouseDown={(e) => e.preventDefault()}
             >
               Resume conversation
             </button>
             <button
               className="cursor-pointer rounded-md border-0 bg-gray-700 px-4 py-2 text-white"
               onClick={() => onRestart(true)}
+              onMouseDown={(e) => e.preventDefault()}
             >
               Start fresh
             </button>

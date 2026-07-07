@@ -103,11 +103,21 @@ body {
   color: var(--working);
 }
 
-.enlarged {
+/* .pane.enlarged (not bare .enlarged): must out-specify the
+   .pane[data-status='exited'] opacity dimming above. */
+.pane.enlarged {
   position: fixed;
   inset: 12px;
   z-index: 10;
   opacity: 1;
+}
+
+/* Focus ring for the active pane — additive box-shadow, so it composes with
+   the status border-color rules above rather than competing with them. */
+.pane.active {
+  box-shadow:
+    0 0 0 2px #00ffff66,
+    0 0 12px 0 #00ffff33;
 }
 
 /* xterm sizing */

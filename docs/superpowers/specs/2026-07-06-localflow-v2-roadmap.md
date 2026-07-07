@@ -4,6 +4,19 @@ Direction agreed 2026-07-06: localflow evolves from "Claude session grid" into a
 keyboard-driven workspace manager for AI agent terminals, with GitHub
 Desktop-grade UI. Each milestone is its own spec → plan → PR cycle.
 
+## Design principles (standing, 2026-07-07)
+
+1. **Two audiences, one product.** Every feature must serve both non-technical
+   "vibe coders" (glanceable, forgiving, GUI-first) and technical power users
+   (keyboard-first, scriptable, inspectable). When designing, ask: what's the
+   vibe-coder path AND the power-user path?
+2. **Config as code underneath, GUI on top.** All configuration lives in
+   plain, hand-editable, documented files in userData (`config.json`,
+   `keybindings.json`, theme files) — dotfile-able and version-controllable,
+   vim-style. Settings GUIs read and write those same files; the file is the
+   source of truth, never a hidden database. GUI edits must round-trip
+   cleanly with hand edits.
+
 ## Shipped ahead of schedule
 
 - Agent-neutral core: presets (Claude Code / Codex / Gemini / custom), binary
@@ -38,11 +51,34 @@ Research (2026-07-06) confirmed both have Claude-like hooks systems:
 - Adapter layer maps each agent's events onto the existing
   working/needs-you/idle state machine and localhost listener.
 
+## M2.5 — Needs-you quick actions (user request 2026-07-07)
+
+- Jump-to-attention: keybinding (default `cmd+u`) focuses + enlarges the next
+  needs-you pane; press again to cycle through all waiting panes.
+- Approve from outside: on yellow panes (header) and overview rows, an
+  "Approve" action writes the confirm keystroke (Enter) to that session's pty
+  — answering the agent's pending prompt without entering the terminal.
+- Safety: never blind-approve — show a peek of the pending question (last few
+  terminal lines) beside the approve control. Requires the per-session output
+  ring buffer in main (already a planned follow-up; this is its first real
+  consumer).
+
 ## M3 — Workspaces
 
 - AeroSpace-style workspaces 1–9: `cmd-1…9` switch, `cmd-shift-1…9` move pane.
 - Sidebar workspace list with status-rollup dots (see "workspace 3 needs you"
   at a glance). Sessions persist with workspace assignment.
+
+## M1.5 — Simplified Overview + Settings page (user request 2026-07-07)
+
+- Overview goes minimal and centered: "latest sessions" (recent few, big
+  rows: project, agent, status, open/resume) + one primary "New session"
+  action (default/last-used agent, small agent picker beside it).
+- All agent configuration (detection cards, Set path…, custom command
+  default) moves to a Settings page reachable from the sidebar — the same
+  page that later hosts keybindings (M4) and themes.
+- Build immediately after M1 (both rewrite App.tsx; sequenced to avoid
+  conflicts).
 
 ## M4 — Settings UI
 
@@ -84,6 +120,17 @@ Research (2026-07-06) confirmed both have Claude-like hooks systems:
 - Per-session Changes view (GitHub Desktop-style): git status file list of the
   session's cwd, syntax-highlighted diffs, `j/k` file/hunk navigation.
 - Escape hatches: "open lazygit/vim here", "open in editor".
+
+## M8 — Editor panes (user request 2026-07-07)
+
+- Terminal editors (nvim/helix/emacs -nw) already work via Custom command —
+  document this as a first-class pattern ("add an editor pane beside your
+  agent").
+- "Open in editor" per session: button + keybinding launching `code <cwd>`
+  (configurable editor command) in the external app. Near-term, cheap.
+- Web-IDE pane (later): embed code-server/openvscode in a webview pane inside
+  the grid. Feasible (localflow is Chromium); real embedding of native VS Code
+  windows is impossible on macOS — don't promise it.
 
 ## Platform & tooling
 

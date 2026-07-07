@@ -4,7 +4,7 @@ import type { SessionInfo } from '../../../shared/types'
 interface Props {
   sessions: SessionInfo[]
   view: 'home' | 'terminals'
-  activeSession: string | null
+  activeId: string | null
   onHome: () => void
   onTerminals: () => void
   onOpenSession: (id: string) => void
@@ -17,7 +17,7 @@ const navItemActive = 'bg-white/[0.08] font-semibold text-white'
 export default function Sidebar({
   sessions,
   view,
-  activeSession,
+  activeId,
   onHome,
   onTerminals,
   onOpenSession
@@ -34,6 +34,7 @@ export default function Sidebar({
         <button
           className={`${navItemBase}${view === 'home' ? ` ${navItemActive}` : ''}`}
           onClick={onHome}
+          onMouseDown={(e) => e.preventDefault()}
         >
           Overview
         </button>
@@ -41,6 +42,7 @@ export default function Sidebar({
           className={`${navItemBase}${view === 'terminals' ? ` ${navItemActive}` : ''}`}
           onClick={onTerminals}
           disabled={sessions.length === 0}
+          onMouseDown={(e) => e.preventDefault()}
         >
           Terminals
         </button>
@@ -55,10 +57,11 @@ export default function Sidebar({
         {sessions.map((s) => (
           <button
             key={s.id}
-            className={`side-session flex w-full cursor-pointer items-center gap-2 rounded-md border-0 bg-transparent px-2.5 py-1.5 text-left text-[13px] text-gray-300 hover:bg-white/5 hover:text-white ${activeSession === s.id && view === 'terminals' ? 'active bg-white/10 text-white' : ''}`}
+            className={`side-session flex w-full cursor-pointer items-center gap-2 rounded-md border-0 bg-transparent px-2.5 py-1.5 text-left text-[13px] text-gray-300 hover:bg-white/5 hover:text-white ${activeId === s.id && view === 'terminals' ? 'active bg-white/10 text-white' : ''}`}
             data-nav-session={s.id}
             title={s.cwd}
             onClick={() => onOpenSession(s.id)}
+            onMouseDown={(e) => e.preventDefault()}
           >
             <span className="dot bg-exited h-2 w-2 flex-none rounded-full" data-status={s.status} />
             <span className="overflow-hidden text-ellipsis whitespace-nowrap">
@@ -69,6 +72,7 @@ export default function Sidebar({
         <button
           className="block w-full cursor-pointer rounded-md border-0 bg-transparent px-2.5 py-1.5 text-left text-[13px] text-gray-500 hover:bg-white/5 hover:text-gray-300"
           onClick={onHome}
+          onMouseDown={(e) => e.preventDefault()}
         >
           + new session
         </button>

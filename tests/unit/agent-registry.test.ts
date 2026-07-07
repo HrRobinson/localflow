@@ -155,12 +155,13 @@ describe('AgentRegistry', () => {
     expect(reg.commandFor('custom', 'aider')).toBe('aider')
   })
 
-  it('claude env override wins and only claude uses hooks', () => {
+  it('claude env override wins and each agent gets its preset hook adapter', () => {
     const reg = new AgentRegistry(tmpConfig(), async () => null, '/tmp/fake-claude.sh')
     expect(reg.commandFor('claude')).toBe('/tmp/fake-claude.sh')
-    expect(reg.useHooks('claude')).toBe(true)
-    expect(reg.useHooks('codex')).toBe(false)
-    expect(reg.useHooks('custom')).toBe(false)
+    expect(reg.hookAdapter('claude')).toBe('settings-file')
+    expect(reg.hookAdapter('codex')).toBe('cli-args-notify')
+    expect(reg.hookAdapter('gemini')).toBe('env-settings-file')
+    expect(reg.hookAdapter('custom')).toBe('none')
   })
 
   it('resume args are agent-specific', () => {
@@ -180,6 +181,13 @@ describe('AgentRegistry', () => {
     expect(agents.find((a) => a.id === 'claude')?.resolvedPath).toBe('/found/claude')
     expect(agents.find((a) => a.id === 'codex')?.resolvedPath).toBeNull()
     expect(agents.find((a) => a.id === 'claude')?.hasStatusFeed).toBe(true)
+    expect(agents.find((a) => a.id === 'codex')?.hasStatusFeed).toBe(true)
+    // Claude/Gemini distinguish all three states; Codex's shipped
+    // cli-args-notify tier only ever reports a turn-complete signal —
+    // the UI must never claim more fidelity than the adapter delivers.
+    expect(agents.find((a) => a.id === 'claude')?.statusFidelity).toBe('full')
+    expect(agents.find((a) => a.id === 'codex')?.statusFidelity).toBe('done-only')
+    expect(agents.find((a) => a.id === 'gemini')?.statusFidelity).toBe('full')
 
     reg.setPath('codex', '/somewhere/codex')
     expect(loadAgentConfig(file).agentPaths.codex).toBe('/somewhere/codex')

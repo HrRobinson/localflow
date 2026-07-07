@@ -8,13 +8,18 @@ const here = dirname(fileURLToPath(import.meta.url))
 
 /**
  * Launch the app against a userData dir. Pre-seeds/merges config.json with
- * absolute, nonexistent paths for the agents we don't fake (codex, gemini)
- * so their detection short-circuits through existsSync instead of racing a
- * real (slow) login-shell `command -v` lookup against expect()'s timeouts.
- * Merges rather than overwrites so a relaunch against the same userData
- * (e.g. to check lastAgent persistence) doesn't clobber what was saved.
+ * absolute paths for codex/gemini — nonexistent by default so their
+ * detection short-circuits through existsSync instead of racing a real
+ * (slow) login-shell `command -v` lookup against expect()'s timeouts; pass
+ * `agentPaths` to point either (or both) at a real fixture script instead,
+ * e.g. the fake-codex.sh/fake-gemini.sh pair. Merges rather than overwrites
+ * so a relaunch against the same userData (e.g. to check lastAgent
+ * persistence) doesn't clobber what was saved.
  */
-function launchApp(userData: string): Promise<ElectronApplication> {
+function launchApp(
+  userData: string,
+  agentPaths: Record<string, string> = {}
+): Promise<ElectronApplication> {
   const configFile = join(userData, 'config.json')
   const existing: { agentPaths?: Record<string, string> } = existsSync(configFile)
     ? JSON.parse(readFileSync(configFile, 'utf8'))
@@ -24,9 +29,10 @@ function launchApp(userData: string): Promise<ElectronApplication> {
     JSON.stringify({
       ...existing,
       agentPaths: {
-        ...existing.agentPaths,
         codex: '/nonexistent/codex',
-        gemini: '/nonexistent/gemini'
+        gemini: '/nonexistent/gemini',
+        ...existing.agentPaths,
+        ...agentPaths
       }
     })
   )
@@ -36,9 +42,22 @@ function launchApp(userData: string): Promise<ElectronApplication> {
       ...process.env,
       LOCALFLOW_E2E: '1',
       LOCALFLOW_USER_DATA: userData,
-      LOCALFLOW_CLAUDE_BIN: join(here, '../fixtures/fake-claude.sh')
+      LOCALFLOW_CLAUDE_BIN: join(here, '../fixtures/fake-claude.sh'),
+      // Marker file the codex/gemini fixtures poll for before firing their
+      // hook commands (SessionManager.spawn passes the app's env through to
+      // every pty): a test creates it via goMarker() only once everything
+      // that must precede the fixture's events has been asserted, making
+      // the status order deterministic by construction instead of
+      // sleep-raced. Fixtures that never fire hooks (fake-claude.sh)
+      // simply ignore it.
+      LOCALFLOW_E2E_GO: join(userData, 'e2e-go')
     }
   })
+}
+
+/** Release a launched app's hook-firing fixtures (see LOCALFLOW_E2E_GO). */
+function goMarker(userData: string): void {
+  writeFileSync(join(userData, 'e2e-go'), '')
 }
 
 test('panes render and hook events change status colors', async () => {
@@ -79,6 +98,107 @@ test('panes render and hook events change status colors', async () => {
   await post('Notification')
   await expect(pane).toHaveAttribute('data-status', 'needs-you')
   await post('Stop')
+  await expect(pane).toHaveAttribute('data-status', 'idle')
+
+  await app.close()
+})
+
+test('codex pane (notify tier): fixture-executed Stop hook reaches idle', async () => {
+  // fake-codex.sh doesn't parse Codex's real -c grammar — it extracts and
+  // runs the exact curl command localflow's cli-args-notify adapter
+  // embedded (see src/main/codex-hooks.ts), proving localflow's own wiring
+  // end-to-end. It is not proof the real `codex` binary invokes -c the
+  // same way — see the manual verification checklist in
+  // docs/superpowers/plans/2026-07-07-m2-status-adapters.md.
+  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const app = await launchApp(userData, { codex: join(here, '../fixtures/fake-codex.sh') })
+  const win = await app.firstWindow()
+  await expect(win.locator('.new-session')).toBeVisible()
+
+  const info = await win.evaluate(
+    (cwd) =>
+      (
+        window as unknown as {
+          localflow: { createSession(a: string, c: string): Promise<{ id: string }> }
+        }
+      ).localflow.createSession('codex', cwd),
+    userData
+  )
+  const row = win.locator(`[data-session-id="${info!.id}"]`)
+  await expect(row).toBeVisible()
+  await row.locator('.row-open').click()
+
+  const pane = win.locator(`[data-pane-id="${info!.id}"]`)
+  await expect(pane).toBeVisible()
+  // Codex has a hook adapter, so the initial status is 'idle', same as
+  // Claude — never the violet 'running' fallback custom sessions get.
+  await expect(pane).toHaveAttribute('data-status', 'idle')
+
+  // Manually drive a 'working' state via the same hook-server endpoint the
+  // claude test uses, to prove the subsequent idle transition below is a
+  // real state change coming from the fixture's own executed hook command,
+  // not just the untouched initial default.
+  const { port, token } = JSON.parse(readFileSync(join(userData, 'endpoint.json'), 'utf8'))
+  await fetch(`http://127.0.0.1:${port}/event`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Localflow-Token': token },
+    body: JSON.stringify({ paneId: info!.id, event: 'UserPromptSubmit' })
+  })
+  await expect(pane).toHaveAttribute('data-status', 'working')
+  expect(await pane.getAttribute('data-status')).not.toBe('running')
+
+  // Only now release the fixture: it has been polling for the go-marker
+  // since spawn, so its Stop-mapped hook cannot have fired before the
+  // 'working' assertion above — the idle below is guaranteed to be the
+  // fixture's own executed curl, proving localflow's -c injection reaches
+  // a real child process and executes, with no sleep-length race.
+  goMarker(userData)
+  await expect(pane).toHaveAttribute('data-status', 'idle')
+  expect(await pane.getAttribute('data-status')).not.toBe('running')
+
+  await app.close()
+})
+
+test('gemini pane (env tier): fixture cycles working -> needs-you -> idle', async () => {
+  // fake-gemini.sh doesn't parse Gemini's real settings consumption — it
+  // reads the file localflow pointed GEMINI_CLI_SYSTEM_SETTINGS_PATH at
+  // (see src/main/gemini-hooks.ts) and runs each hook's command itself,
+  // including piping a fake {"type":"ToolPermission"} payload into the
+  // Notification hook to exercise the payload-gated branch. Not proof the
+  // real `gemini` binary uses this settings shape or payload field name —
+  // see the manual verification checklist in
+  // docs/superpowers/plans/2026-07-07-m2-status-adapters.md.
+  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const app = await launchApp(userData, { gemini: join(here, '../fixtures/fake-gemini.sh') })
+  const win = await app.firstWindow()
+  await expect(win.locator('.new-session')).toBeVisible()
+
+  const info = await win.evaluate(
+    (cwd) =>
+      (
+        window as unknown as {
+          localflow: { createSession(a: string, c: string): Promise<{ id: string }> }
+        }
+      ).localflow.createSession('gemini', cwd),
+    userData
+  )
+  const row = win.locator(`[data-session-id="${info!.id}"]`)
+  await expect(row).toBeVisible()
+  await row.locator('.row-open').click()
+
+  const pane = win.locator(`[data-pane-id="${info!.id}"]`)
+  await expect(pane).toBeVisible()
+  await expect(pane).toHaveAttribute('data-status', 'idle')
+
+  // Release the fixture (it polls for the go-marker since spawn, so
+  // nothing fired before the initial-idle assertion above), then observe
+  // BeforeAgent -> Notification(ToolPermission) -> AfterAgent, self-paced
+  // 1s apart by the fixture — the three assertions below are driven purely
+  // by the fixture actually executing localflow's injected commands, no
+  // manual fetch() POSTs involved.
+  goMarker(userData)
+  await expect(pane).toHaveAttribute('data-status', 'working')
+  await expect(pane).toHaveAttribute('data-status', 'needs-you')
   await expect(pane).toHaveAttribute('data-status', 'idle')
 
   await app.close()

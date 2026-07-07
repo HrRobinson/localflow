@@ -3,7 +3,8 @@ import { basename } from 'node:path'
 import { spawn as ptySpawn } from 'node-pty'
 import type { AgentId, HookEvent, SessionInfo, SessionStatus } from '../shared/types'
 import { transition } from './state-machine'
-import { writeHookSettings } from './hook-settings'
+import { hasHookAdapter, type HookAdapterKind } from '../shared/agents'
+import { buildHookInjection } from './hook-adapter'
 
 export interface PtyLike {
   onData(cb: (d: string) => void): void
@@ -25,8 +26,8 @@ export interface SpawnSpec {
   command: string
   /** Args appended when resuming a dead session (agent-specific). */
   resumeArgs: string[]
-  /** Inject localflow status hooks (exact colors) — Claude Code only for now. */
-  useHooks: boolean
+  /** Which hook-injection mechanism to use to feed this session's status. */
+  hookAdapter: HookAdapterKind
 }
 
 const defaultSpawn: SpawnFn = (bin, args, opts) => {
@@ -148,25 +149,26 @@ export class SessionManager {
       cwd,
       name,
       // Hook-fed agents report their own states; others we only know as alive.
-      status: spec.useHooks ? 'idle' : 'running',
+      status: hasHookAdapter(spec.hookAdapter) ? 'idle' : 'running',
       agentId: spec.agentId,
       command: spec.command
     }
     let pty: PtyLike
     try {
-      const hookArgs = spec.useHooks
-        ? [
-            '--settings',
-            writeHookSettings(this.opts.settingsDir, id, this.opts.port, this.opts.token)
-          ]
-        : []
+      const injection = buildHookInjection(
+        spec.hookAdapter,
+        this.opts.settingsDir,
+        id,
+        this.opts.port,
+        this.opts.token
+      )
       const resumeArgs = resume ? spec.resumeArgs : []
-      pty = (this.opts.spawnFn ?? defaultSpawn)(spec.command, [...hookArgs, ...resumeArgs], {
+      pty = (this.opts.spawnFn ?? defaultSpawn)(spec.command, [...injection.args, ...resumeArgs], {
         cwd,
         cols: 80,
         rows: 24,
         name: 'xterm-256color',
-        env: process.env
+        env: { ...process.env, ...injection.env }
       })
     } catch {
       const message = `Could not start '${spec.command}'. Check the agent's path in the launcher.`

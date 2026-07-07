@@ -52,12 +52,20 @@ export default function Settings(): React.JSX.Element {
                     last used
                   </span>
                 )}
-                {agent.hasStatusFeed && (
+                {agent.statusFidelity === 'full' && (
                   <span
                     className="border-idle/50 text-idle rounded-full border px-2 py-px text-[10px] whitespace-nowrap"
                     title="Reports working / needs-you / done"
                   >
                     live status
+                  </span>
+                )}
+                {agent.statusFidelity === 'done-only' && (
+                  <span
+                    className="border-idle/50 text-idle rounded-full border px-2 py-px text-[10px] whitespace-nowrap"
+                    title="Reports done only — idle is accurate as of the last turn-complete, working/needs-you are not distinguished"
+                  >
+                    done signal
                   </span>
                 )}
                 <span

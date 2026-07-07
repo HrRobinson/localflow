@@ -35,4 +35,16 @@ export interface AgentInfo {
   resolvedPath: string | null
   /** True when sessions of this agent report status via hooks (exact colors). */
   hasStatusFeed: boolean
+  /**
+   * How much of the {working, needs-you, done} status feed this agent's
+   * wired-up hook adapter actually reports, so the UI never claims more
+   * fidelity than the adapter delivers:
+   * - 'full': all three states are distinguished (settings-file /
+   *   env-settings-file adapters — Claude Code, Gemini CLI).
+   * - 'done-only': only a turn-complete signal is reported (Codex's
+   *   cli-args-notify tier) — idle is accurate as of the last
+   *   turn-complete, but working/needs-you are never distinguished.
+   * - 'none': no hook adapter is wired up at all.
+   */
+  statusFidelity: 'full' | 'done-only' | 'none'
 }

@@ -33,14 +33,21 @@ const claudeSpec: SpawnSpec = {
   agentId: 'claude',
   command: 'fake-claude',
   resumeArgs: ['--continue'],
-  useHooks: true
+  hookAdapter: 'settings-file'
 }
 
 const codexSpec: SpawnSpec = {
   agentId: 'codex',
   command: 'fake-codex',
   resumeArgs: ['resume', '--last'],
-  useHooks: false
+  hookAdapter: 'cli-args-notify'
+}
+
+const noAdapterSpec: SpawnSpec = {
+  agentId: 'custom',
+  command: 'fake-custom',
+  resumeArgs: [],
+  hookAdapter: 'none'
 }
 
 describe('SessionManager', () => {
@@ -146,12 +153,17 @@ describe('SessionManager', () => {
     expect(info.name).toBe('project')
   })
 
-  it('create spawns a non-hook agent without settings, running status', () => {
-    const info = mgr.create('/p', codexSpec)
+  it('create spawns a non-adapter agent without settings, running status', () => {
+    const info = mgr.create('/p', noAdapterSpec)
     expect(info.status).toBe('running')
-    expect(info.agentId).toBe('codex')
-    expect(spawnCalls[0].bin).toBe('fake-codex')
+    expect(info.agentId).toBe('custom')
+    expect(spawnCalls[0].bin).toBe('fake-custom')
     expect(spawnCalls[0].args).toEqual([])
+  })
+
+  it('create spawns a codex (degraded-adapter) agent as idle', () => {
+    const info = mgr.create('/p', codexSpec)
+    expect(info.status).toBe('idle')
   })
 
   it('hook events drive status and notify listeners', () => {
@@ -183,12 +195,12 @@ describe('SessionManager', () => {
     expect(spawnCalls[1].args[0]).toBe('--settings')
   })
 
-  it('restart of a non-hook agent uses its own resume args and no settings', () => {
-    const info = mgr.create('/p', codexSpec)
+  it('restart of a no-adapter agent uses its own resume args and no settings', () => {
+    const info = mgr.create('/p', noAdapterSpec)
     ptys[0].exitCb?.()
     const restarted = mgr.restart(info.id)
     expect(restarted.status).toBe('running')
-    expect(spawnCalls[1].args).toEqual(['resume', '--last'])
+    expect(spawnCalls[1].args).toEqual([])
   })
 
   it('restore registers an exited placeholder without spawning', () => {

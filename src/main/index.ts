@@ -118,7 +118,7 @@ app.whenReady().then(async () => {
     agentId,
     command: registry.commandFor(agentId, customCommand),
     resumeArgs: registry.argsFor(agentId, true),
-    useHooks: registry.useHooks(agentId)
+    hookAdapter: registry.hookAdapter(agentId)
   })
 
   // A destroyed BrowserWindow still non-null: guard every send, because pty

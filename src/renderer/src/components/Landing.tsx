@@ -180,6 +180,7 @@ export default function Landing({
               className="bg-surface-raised focus:border-working rounded-md border border-white/[0.14] px-2.5 py-2 text-[13px] text-gray-200 outline-none"
               value={selectedAgentId}
               onChange={(e) => setSelectedAgentId(e.target.value as AgentId)}
+              aria-label="Agent"
             >
               {AGENT_PRESETS.map((preset) => (
                 <option key={preset.id} value={preset.id}>
@@ -208,6 +209,9 @@ export default function Landing({
           >
             New session
           </button>
+          {agents === null && (
+            <p className="m-0 text-[13px] text-gray-500">Detecting installed agents…</p>
+          )}
           {selectedAgentId !== 'custom' && agents !== null && !selectedAgent?.resolvedPath && (
             <p className="m-0 text-[13px] text-gray-500">
               {selectedAgent?.label ?? selectedAgentId} not found ({selectedAgent?.command}).{' '}

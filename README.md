@@ -42,7 +42,7 @@ installed.
 
 ## Usage
 
-Click **+ New session** and pick a folder — localflow starts `claude` there
+Click **New session** and pick a folder — localflow starts `claude` there
 and adds a pane to the grid. Double-click a pane's header to enlarge it;
 press `cmd+escape` to shrink it back (bare Escape always goes to the agent).
 If a session has exited, its **Restart** button resumes it with

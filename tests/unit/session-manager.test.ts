@@ -197,6 +197,10 @@ describe('SessionManager', () => {
     expect(ptys[0].killed).toBe(true)
     expect(ptys[1].killed).toBe(true)
     expect(mgr.list()).toHaveLength(2)
+    // Late flushed output after dispose must be swallowed, not forwarded.
+    ptys[0].dataCb?.('late output after quit')
+    ptys[1].exitCb?.()
+    expect(messages).toEqual([])
     expect(() => mgr.write(a.id, 'x')).not.toThrow()
     expect(ptys[0].written).toEqual([])
   })

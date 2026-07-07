@@ -78,6 +78,8 @@ const INSTANT_EXIT_MS = 5000
 
 export class SessionManager {
   private sessions = new Map<string, Record_>()
+  /** Set at quit: silences all late pty events (data, exit) app-wide. */
+  private disposed = false
   private dataCbs: ((id: string, data: string) => void)[] = []
   private statusCbs: ((id: string, status: SessionStatus) => void)[] = []
   private changedCbs: (() => void)[] = []
@@ -154,12 +156,14 @@ export class SessionManager {
     }
     this.sessions.set(id, { info, spec, pty, spawnedAt: this.now(), tail: '' })
     pty.onData((d) => {
+      if (this.disposed) return
       const rec = this.sessions.get(id)
       if (!rec) return
       rec.tail = (rec.tail + d).slice(-500)
       this.dataCbs.forEach((cb) => cb(id, d))
     })
     pty.onExit(() => {
+      if (this.disposed) return
       // Drop the pty reference first: its fd is gone, and any late
       // write/resize against it would throw EBADF in the main process.
       const rec = this.sessions.get(id)
@@ -218,11 +222,14 @@ export class SessionManager {
   }
 
   /**
-   * Quit-time cleanup: kill every live pty and drop the handles so late
-   * stream events can't fire into a tearing-down app. Sessions stay in the
-   * map (and thus in sessions.json) so they restore on next launch.
+   * Quit-time cleanup: kill every live pty and set the disposed flag, which
+   * the onData/onExit closures check — so late stream events truly cannot
+   * fire into a tearing-down app (the isDestroyed guard in main/index.ts is
+   * the second line of defense). Sessions stay in the map (and thus in
+   * sessions.json) so they restore on next launch.
    */
   disposeAll(): void {
+    this.disposed = true
     for (const rec of this.sessions.values()) {
       try {
         rec.pty?.kill()

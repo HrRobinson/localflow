@@ -166,3 +166,5 @@ regressions to session creation, resume, or the existing e2e DOM contract.
 - `listAgents()` / `getLastAgent()` IPC failure → out of scope for this
   milestone, same as today's Overview (no retry/backoff logic exists for
   `listAgents()` either).
+
+**Amended 2026-07-07:** the content header was dropped entirely during implementation (user decision) — the sidebar is the navigation; cmd+esc and nav items cover the old header buttons.

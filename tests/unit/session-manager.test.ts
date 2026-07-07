@@ -78,6 +78,16 @@ describe('SessionManager', () => {
     expect(msg).not.toContain('4m')
   })
 
+  it('instant exit strips 8-bit C1 CSI sequences too', () => {
+    const info = mgr.create('/p', claudeSpec)
+    ptys[0].dataCb?.('31mRed0m')
+    ptys[0].exitCb?.()
+    const msg = mgr.list().find((s) => s.id === info.id)?.message
+    expect(msg).toContain('Red')
+    expect(msg).not.toContain('')
+    expect(msg).not.toContain('31m')
+  })
+
   it('instant exit with no output still gets an explanatory message', () => {
     const info = mgr.create('/p', claudeSpec)
     ptys[0].exitCb?.()

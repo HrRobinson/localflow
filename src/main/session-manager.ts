@@ -61,11 +61,14 @@ interface Record_ {
 // Strips ANSI/VT escape sequences per the ECMA-48 grammar: CSI with full
 // parameter bytes (covers private-mode like ESC[>0q), OSC titles ended by
 // BEL/ST, DCS-family strings, other C1 escapes, and stray control bytes.
+// Also covers the 8-bit C1 CSI () form some agents/terminfo emit
+// instead of the 7-bit ESC[ prefix — same CSI grammar, single code unit.
 // Partial stripping here leaks garbage like "0q4mu" into user messages.
 
 const ANSI_RE = new RegExp(
   [
     '\\u001b\\[[0-9:;<=>?]*[ -/]*[@-~]',
+    '\\u009b[0-9:;<=>?]*[ -/]*[@-~]',
     '\\u001b\\][^\\u0007\\u001b]*(?:\\u0007|\\u001b\\\\)?',
     '\\u001b[PX^_][^\\u001b]*(?:\\u001b\\\\)?',
     '\\u001b[@-Z\\\\-_]',

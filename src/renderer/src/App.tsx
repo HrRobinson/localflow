@@ -2,16 +2,29 @@ import { useCallback, useEffect, useState } from 'react'
 import TerminalPane from './components/TerminalPane'
 import Landing from './components/Landing'
 import Sidebar from './components/Sidebar'
+import { reconcileOrder } from './lib/order'
 import type { AgentId, SessionInfo } from '../../shared/types'
 
 export default function App(): React.JSX.Element {
   const [sessions, setSessions] = useState<SessionInfo[]>([])
   const [enlarged, setEnlarged] = useState<string | null>(null)
+  // Which pane has keyboard focus, and the display order panes render in.
+  // `order` is reconciled from `sessions` on every refresh: new ids are
+  // appended, ids no longer present are dropped, everything else is stable.
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const [order, setOrder] = useState<string[]>([])
   // The app opens on the home overview; terminals are entered explicitly.
   const [view, setView] = useState<'home' | 'terminals'>('home')
 
   const refresh = useCallback(async () => {
-    setSessions(await window.localflow.listSessions())
+    const list = await window.localflow.listSessions()
+    setSessions(list)
+    setOrder((cur) =>
+      reconcileOrder(
+        cur,
+        list.map((s) => s.id)
+      )
+    )
   }, [])
 
   useEffect(() => {
@@ -50,6 +63,7 @@ export default function App(): React.JSX.Element {
     const created = await window.localflow.createSession(agentId, undefined, customCommand)
     if (created) {
       setView('terminals')
+      setActiveId(created.id)
       await refresh()
     }
   }
@@ -60,11 +74,18 @@ export default function App(): React.JSX.Element {
   const close = async (id: string): Promise<void> => {
     await window.localflow.killSession(id)
     setEnlarged((cur) => (cur === id ? null : cur))
+    setActiveId((cur) => {
+      if (cur !== id) return cur
+      const idx = order.indexOf(id)
+      if (idx === -1) return null
+      return order[idx + 1] ?? order[idx - 1] ?? null
+    })
     await refresh()
   }
   const openSession = (id: string): void => {
     setView('terminals')
     setEnlarged(sessions.length > 1 ? id : null)
+    setActiveId(id)
   }
 
   const showTerminals = view === 'terminals' && sessions.length > 0
@@ -74,7 +95,7 @@ export default function App(): React.JSX.Element {
       <Sidebar
         sessions={sessions}
         view={showTerminals ? 'terminals' : 'home'}
-        activeSession={enlarged}
+        activeId={activeId}
         onHome={() => setView('home')}
         onTerminals={() => setView('terminals')}
         onOpenSession={openSession}
@@ -88,6 +109,7 @@ export default function App(): React.JSX.Element {
             <button
               className="cursor-pointer rounded-md border border-white/10 bg-white/[0.06] px-3 py-[5px] text-xs text-gray-300 hover:bg-white/[0.12] hover:text-white"
               onClick={() => setView('home')}
+              onMouseDown={(e) => e.preventDefault()}
               title="cmd+esc"
             >
               home
@@ -97,6 +119,7 @@ export default function App(): React.JSX.Element {
               <button
                 className="cursor-pointer rounded-md border border-white/10 bg-white/[0.06] px-3 py-[5px] text-xs text-gray-300 hover:bg-white/[0.12] hover:text-white"
                 onClick={() => setView('terminals')}
+                onMouseDown={(e) => e.preventDefault()}
               >
                 open terminals
               </button>
@@ -105,16 +128,21 @@ export default function App(): React.JSX.Element {
         </header>
         {showTerminals ? (
           <div className="grid flex-1 auto-rows-[minmax(300px,1fr)] grid-cols-[repeat(auto-fit,minmax(460px,1fr))] gap-2.5 overflow-auto px-3 pb-3">
-            {sessions.map((s) => (
-              <TerminalPane
-                key={s.id}
-                session={s}
-                enlarged={enlarged === s.id}
-                onToggleEnlarge={() => setEnlarged((cur) => (cur === s.id ? null : s.id))}
-                onRestart={(fresh) => void restart(s.id, fresh)}
-                onClose={() => void close(s.id)}
-              />
-            ))}
+            {order
+              .map((id) => sessions.find((s) => s.id === id))
+              .filter((s): s is SessionInfo => s != null)
+              .map((s) => (
+                <TerminalPane
+                  key={s.id}
+                  session={s}
+                  enlarged={enlarged === s.id}
+                  active={activeId === s.id}
+                  onToggleEnlarge={() => setEnlarged((cur) => (cur === s.id ? null : s.id))}
+                  onActivate={() => setActiveId(s.id)}
+                  onRestart={(fresh) => void restart(s.id, fresh)}
+                  onClose={() => void close(s.id)}
+                />
+              ))}
           </div>
         ) : (
           <Landing

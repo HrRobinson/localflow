@@ -114,10 +114,18 @@ export default function Landing({
                 <span className="flex w-[150px] justify-end gap-1.5">
                   {s.status === 'exited' ? (
                     <>
-                      <button className={rowBtn} onClick={() => onResume(s.id, false)}>
+                      <button
+                        className={rowBtn}
+                        onClick={() => onResume(s.id, false)}
+                        onMouseDown={(e) => e.preventDefault()}
+                      >
                         resume
                       </button>
-                      <button className={rowBtn} onClick={() => onResume(s.id, true)}>
+                      <button
+                        className={rowBtn}
+                        onClick={() => onResume(s.id, true)}
+                        onMouseDown={(e) => e.preventDefault()}
+                      >
                         fresh
                       </button>
                     </>
@@ -125,6 +133,7 @@ export default function Landing({
                     <button
                       className={`row-open ${rowBtnBase} border border-blue-600 bg-blue-600 px-2.5 text-white hover:bg-blue-700`}
                       onClick={() => onOpen(s.id)}
+                      onMouseDown={(e) => e.preventDefault()}
                     >
                       open
                     </button>
@@ -133,6 +142,7 @@ export default function Landing({
                     className={`${rowBtnBase} ${rowBtnGray} px-2`}
                     title="Remove session"
                     onClick={() => onRemove(s.id)}
+                    onMouseDown={(e) => e.preventDefault()}
                   >
                     ×
                   </button>
@@ -189,11 +199,16 @@ export default function Landing({
                       : agentStartAlt
                   }
                   onClick={() => onCreate(agent.id)}
+                  onMouseDown={(e) => e.preventDefault()}
                 >
                   New session
                 </button>
               ) : (
-                <button className={agentStartAlt} onClick={() => void setPath(agent.id)}>
+                <button
+                  className={agentStartAlt}
+                  onClick={() => void setPath(agent.id)}
+                  onMouseDown={(e) => e.preventDefault()}
+                >
                   Set path…
                 </button>
               )}
@@ -218,6 +233,7 @@ export default function Landing({
                 className={agentStartAlt}
                 disabled={!customCommand.trim()}
                 onClick={() => onCreate('custom', customCommand.trim())}
+                onMouseDown={(e) => e.preventDefault()}
               >
                 New session
               </button>

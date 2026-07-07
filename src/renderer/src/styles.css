@@ -112,6 +112,14 @@ body {
   opacity: 1;
 }
 
+/* Focus ring for the active pane — additive box-shadow, so it composes with
+   the status border-color rules above rather than competing with them. */
+.pane.active {
+  box-shadow:
+    0 0 0 2px #00ffff66,
+    0 0 12px 0 #00ffff33;
+}
+
 /* xterm sizing */
 .term-host {
   flex: 1;

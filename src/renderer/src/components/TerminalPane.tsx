@@ -75,11 +75,24 @@ export default function TerminalPane({
       }
       data-pane-id={session.id}
       data-status={session.status}
-      onMouseDown={onActivate}
+      onMouseDown={() => {
+        onActivate()
+        // setActiveId bails out when this pane is already active, so the
+        // focus effect below never re-runs and Chromium is free to blur the
+        // terminal to <body> on a header/gutter click. Force it back.
+        if (active) termRef.current?.focus()
+      }}
     >
       <div
         className="pane-header flex cursor-pointer items-center gap-2 bg-white/[0.04] px-2.5 py-1 text-xs select-none"
         onDoubleClick={onToggleEnlarge}
+        onMouseDown={(e) => {
+          // Keep the terminal from losing DOM focus when clicking the header
+          // chrome itself — let the event keep bubbling to the pane root so
+          // onActivate above still runs (activation/re-focus for inactive
+          // panes must still work).
+          e.preventDefault()
+        }}
       >
         <span className="dot bg-exited h-2.5 w-2.5 rounded-full" />
         <span

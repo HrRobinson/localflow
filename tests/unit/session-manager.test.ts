@@ -88,6 +88,23 @@ describe('SessionManager', () => {
     expect(msg).not.toContain('31m')
   })
 
+  it('strips charset designations and survives mid-sequence truncation', () => {
+    const info = mgr.create('/p', claudeSpec)
+    // ESC(B charset designation (leaked as "(B" before) plus a long padding
+    // that pushes an escape sequence across the tail-truncation boundary —
+    // stripping must happen before truncation so no orphan fragments remain.
+    const padding = '\u001b[38;5;178m.\u001b[0m'.repeat(60)
+    ptys[0].dataCb?.(
+      padding + '\u001b(B\u001b[78;1H No conversation found to continue \u001b(B\u001b[7m'
+    )
+    ptys[0].exitCb?.()
+    const msg = mgr.list().find((s) => s.id === info.id)?.message ?? ''
+    expect(msg).toContain('No conversation found')
+    expect(msg).not.toContain('(B')
+    expect(msg).not.toContain('78')
+    expect(msg).not.toContain('\u001b')
+  })
+
   it('instant exit with no output still gets an explanatory message', () => {
     const info = mgr.create('/p', claudeSpec)
     ptys[0].exitCb?.()

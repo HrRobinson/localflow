@@ -77,6 +77,7 @@ const ANSI_RE = new RegExp(
     '\\u009b[0-9:;<=>?]*[ -/]*[@-~]',
     '\\u001b\\][^\\u0007\\u001b]*(?:\\u0007|\\u001b\\\\)?',
     '\\u001b[PX^_][^\\u001b]*(?:\\u001b\\\\)?',
+    '\\u001b[ -/]+[0-~]',
     '\\u001b[@-Z\\\\-_]',
     '[\\u0000-\\u0008\\u000b-\\u001f\\u007f]'
   ].join('|'),
@@ -189,7 +190,11 @@ export class SessionManager {
     pty.onData((d) => {
       if (this.disposed) return
       if (this.sessions.get(id) !== rec) return
-      rec.tail = (rec.tail + d).slice(-500)
+      // Keep a generous raw tail: ANSI stripping happens at exit, and the
+      // shown message is the LAST 160 chars — a front-cut escape fragment
+      // 2000 chars upstream can never reach it (the 500-char buffer could
+      // cut a sequence right next to the visible text).
+      rec.tail = (rec.tail + d).slice(-2000)
       this.dataCbs.forEach((cb) => cb(id, d))
     })
     pty.onExit(() => {

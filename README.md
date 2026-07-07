@@ -41,8 +41,9 @@ installed.
 
 Click **+ New session** and pick a folder — localflow starts `claude` there
 and adds a pane to the grid. Double-click a pane's header to enlarge it;
-press Escape to shrink it back. If a session has exited, its **Restart**
-button resumes it with `claude --continue`, so you don't lose context.
+press `cmd+escape` to shrink it back (bare Escape always goes to the agent).
+If a session has exited, its **Restart** button resumes it with
+`claude --continue`, so you don't lose context.
 
 ## Keyboard
 

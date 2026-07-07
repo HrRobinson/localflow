@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu } from 'electron'
 import { join } from 'node:path'
-import { writeFileSync } from 'node:fs'
+import { existsSync, writeFileSync } from 'node:fs'
 import type { AgentId } from '../shared/types'
 import { startHookServer } from './hook-server'
 import { SessionManager, type SpawnSpec } from './session-manager'
@@ -15,6 +15,7 @@ if (process.env['LOCALFLOW_USER_DATA']) {
 const VALID_AGENTS: AgentId[] = ['claude', 'codex', 'gemini', 'custom']
 
 let win: BrowserWindow | null = null
+let managerRef: SessionManager | null = null
 
 function createWindow(): void {
   win = new BrowserWindow({
@@ -80,6 +81,13 @@ function buildAppMenu(): void {
 app.whenReady().then(async () => {
   buildAppMenu()
 
+  // Dev-mode dock icon (packaged builds get it from build/icon.png via
+  // electron-builder; in dev Electron shows its default logo otherwise).
+  if (!app.isPackaged && process.platform === 'darwin') {
+    const devIcon = join(__dirname, '../../assets/icon-512.png')
+    if (existsSync(devIcon)) app.dock?.setIcon(devIcon)
+  }
+
   const userData = app.getPath('userData')
   const sessionsFile = join(userData, 'sessions.json')
   const keybindings = loadOrCreateKeybindings(join(userData, 'keybindings.json'))
@@ -104,6 +112,7 @@ app.whenReady().then(async () => {
     port: endpoint.port,
     token: endpoint.token
   })
+  managerRef = manager
 
   const specFor = (agentId: AgentId, customCommand?: string): SpawnSpec => ({
     agentId,
@@ -112,8 +121,14 @@ app.whenReady().then(async () => {
     useHooks: registry.useHooks(agentId)
   })
 
-  manager.onData((id, data) => win?.webContents.send('session:data', id, data))
-  manager.onStatus((id, status) => win?.webContents.send('session:status', id, status))
+  // A destroyed BrowserWindow still non-null: guard every send, because pty
+  // output keeps streaming while the app tears down (crash: "Object has been
+  // destroyed" dialogs during quit/reload otherwise).
+  const sendToWindow = (channel: string, ...args: unknown[]): void => {
+    if (win && !win.isDestroyed()) win.webContents.send(channel, ...args)
+  }
+  manager.onData((id, data) => sendToWindow('session:data', id, data))
+  manager.onStatus((id, status) => sendToWindow('session:status', id, status))
   manager.onSessionsChanged(() =>
     saveSessions(
       sessionsFile,
@@ -144,7 +159,9 @@ app.whenReady().then(async () => {
         if (result.canceled || result.filePaths.length === 0) return null
         dir = result.filePaths[0]
       }
-      return manager.create(dir, specFor(agentId, customCommand?.trim()))
+      const created = manager.create(dir, specFor(agentId, customCommand?.trim()))
+      registry.recordLastAgent(agentId, customCommand?.trim())
+      return created
     }
   )
   ipcMain.handle('session:restart', (_e, id: string, fresh?: boolean) =>
@@ -160,6 +177,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('keybindings:get', () => keybindings)
 
   ipcMain.handle('agents:list', () => registry.list())
+  ipcMain.handle('agents:getLastAgent', () => registry.getLastAgent())
   ipcMain.handle('agents:setPath', async (_e, agentId: AgentId) => {
     if (!VALID_AGENTS.includes(agentId) || agentId === 'custom') return null
     const result = await dialog.showOpenDialog(win!, {
@@ -172,6 +190,12 @@ app.whenReady().then(async () => {
   })
 
   createWindow()
+})
+
+app.on('before-quit', () => {
+  // Stop pty streams before windows die — their late output must never
+  // reach a destroyed window.
+  managerRef?.disposeAll()
 })
 
 app.on('window-all-closed', () => {

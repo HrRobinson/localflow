@@ -37,6 +37,17 @@ Desktop-grade UI. Each milestone is its own spec → plan → PR cycle.
 - Focus correctness: keyboard input always lands in the active terminal (fixes
   Enter re-triggering buttons).
 
+## M1.6 — Durable sessions (user design 2026-07-07)
+
+- Sessions and terminals become distinct: a SESSION is a durable, named,
+  renameable entry (project path, agent, kept in the sessions list until
+  explicitly deleted); a TERMINAL is an ephemeral process attached to it.
+- Closing a terminal (button or cmd+w) never deletes the session — it goes
+  back to the list as closed/exited with its path saved, reopenable via
+  resume/fresh. Deleting a session is a separate explicit action.
+- Rename sessions inline in the sidebar/overview list.
+- Fixes the M1 final-review finding that cmd+w is irreversibly destructive.
+
 ## M2 — Status adapters for Codex & Gemini
 
 Research (2026-07-06) confirmed both have Claude-like hooks systems:
@@ -84,6 +95,17 @@ Research (2026-07-06) confirmed both have Claude-like hooks systems:
 
 - Keybindings editor (click binding, press keys).
 - Agent management (paths, extra args, default agent).
+- **Provider tokens (user request 2026-07-07):** connect agents via API
+  tokens/keys per provider (e.g. ANTHROPIC_API_KEY, OPENAI_API_KEY,
+  GEMINI_API_KEY) configured in Settings and injected into that agent's
+  spawn env. Storage MUST use the OS keychain via Electron `safeStorage` —
+  never plain-text config.json. Config-as-code story: the config file keeps
+  a reference/alias, the secret itself lives in the keychain.
+- **Local LLMs (user request 2026-07-07):** first-class support for agents
+  running against local models — per-agent env can point at local endpoints
+  (e.g. Ollama's OpenAI-compatible API via base-URL overrides), and the
+  agent presets/docs show a "local model" recipe (aider/opencode/custom
+  against localhost). No cloud account required to use localflow.
 - **Themes** (added 2026-07-07): app + terminal color themes, switchable in
   settings. Theme = a JSON/CSS-token file (the Tailwind `@theme` tokens and
   xterm palette make this natural), so the community can develop and share

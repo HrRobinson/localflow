@@ -67,11 +67,15 @@ describe('SessionManager', () => {
 
   it('instant exit surfaces the last output in message (ANSI stripped)', () => {
     const info = mgr.create('/p', claudeSpec)
-    ptys[0].dataCb?.('\u001b[31mNo conversation found in this directory\u001b[0m\r\n')
+    ptys[0].dataCb?.(
+      '\u001b[>0q\u001b]0;claude\u0007\u001b[4m\u001b[31mNo conversation found in this directory\u001b[0m\r\n'
+    )
     ptys[0].exitCb?.()
     const msg = mgr.list().find((s) => s.id === info.id)?.message
     expect(msg).toContain('No conversation found')
     expect(msg).not.toContain('\u001b')
+    expect(msg).not.toContain('0q')
+    expect(msg).not.toContain('4m')
   })
 
   it('instant exit with no output still gets an explanatory message', () => {
@@ -182,6 +186,23 @@ describe('SessionManager', () => {
     expect(info.status).toBe('exited')
     expect(messages.join('')).toContain('Could not start')
     expect(info.message).toContain('Could not start')
+  })
+
+  it('disposeAll kills every pty, keeps sessions, silences late data', () => {
+    const a = mgr.create('/p1', claudeSpec)
+    mgr.create('/p2', codexSpec)
+    const messages: string[] = []
+    mgr.onData((_id, d) => messages.push(d))
+    mgr.disposeAll()
+    expect(ptys[0].killed).toBe(true)
+    expect(ptys[1].killed).toBe(true)
+    expect(mgr.list()).toHaveLength(2)
+    // Late flushed output after dispose must be swallowed, not forwarded.
+    ptys[0].dataCb?.('late output after quit')
+    ptys[1].exitCb?.()
+    expect(messages).toEqual([])
+    expect(() => mgr.write(a.id, 'x')).not.toThrow()
+    expect(ptys[0].written).toEqual([])
   })
 
   it('kill removes the session and kills the pty', () => {

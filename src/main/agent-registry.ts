@@ -1,11 +1,26 @@
 import { execFile } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import type { AgentId, AgentInfo } from '../shared/types'
+import type { AgentId, AgentInfo, LastAgent } from '../shared/types'
 import { AGENT_PRESETS, presetFor, type AgentPreset } from '../shared/agents'
 
 export interface AgentConfig {
   /** User-configured absolute paths per agent, overriding PATH lookup. */
   agentPaths: Partial<Record<AgentId, string>>
+  lastAgent?: LastAgent
+}
+
+function parseLastAgent(raw: unknown): LastAgent | null {
+  if (typeof raw !== 'object' || raw === null) return null
+  const agentId = (raw as { agentId?: unknown }).agentId
+  const isKnown = agentId === 'custom' || AGENT_PRESETS.some((p) => p.id === agentId)
+  if (typeof agentId !== 'string' || !isKnown) return null
+  if (agentId === 'custom') {
+    const cmd = (raw as { customCommand?: unknown }).customCommand
+    return typeof cmd === 'string' && cmd.trim().length > 0
+      ? { agentId: 'custom', customCommand: cmd }
+      : null
+  }
+  return { agentId: agentId as AgentId }
 }
 
 export function loadAgentConfig(file: string): AgentConfig {
@@ -19,7 +34,12 @@ export function loadAgentConfig(file: string): AgentConfig {
       const value = (paths as Record<string, unknown>)[preset.id]
       if (typeof value === 'string' && value.length > 0) agentPaths[preset.id] = value
     }
-    return { agentPaths }
+    const config: AgentConfig = { agentPaths }
+    const lastAgent = parseLastAgent((data as { lastAgent?: unknown }).lastAgent)
+    if (lastAgent !== null) {
+      config.lastAgent = lastAgent
+    }
+    return config
   } catch {
     return { agentPaths: {} }
   }
@@ -81,6 +101,16 @@ export class AgentRegistry {
     this.config.agentPaths[agentId] = path
     saveAgentConfig(this.configFile, this.config)
     this.resolved.delete(agentId)
+  }
+
+  getLastAgent(): LastAgent | null {
+    return this.config.lastAgent ?? null
+  }
+
+  recordLastAgent(agentId: AgentId, customCommand?: string): void {
+    this.config.lastAgent =
+      agentId === 'custom' ? { agentId, customCommand: customCommand ?? '' } : { agentId }
+    saveAgentConfig(this.configFile, this.config)
   }
 
   async list(): Promise<AgentInfo[]> {

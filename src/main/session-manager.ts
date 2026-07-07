@@ -58,14 +58,28 @@ interface Record_ {
   tail: string
 }
 
-// Matches ANSI escape sequences (colors, cursor movement) for log cleanup.
-// eslint-disable-next-line no-control-regex
-const ANSI_RE = /[\u001b\u009b][[()#;?]*(?:\d{1,4}(?:;\d{0,4})*)?[0-9A-ORZcf-nqry=><]/g
+// Strips ANSI/VT escape sequences per the ECMA-48 grammar: CSI with full
+// parameter bytes (covers private-mode like ESC[>0q), OSC titles ended by
+// BEL/ST, DCS-family strings, other C1 escapes, and stray control bytes.
+// Partial stripping here leaks garbage like "0q4mu" into user messages.
+
+const ANSI_RE = new RegExp(
+  [
+    '\\u001b\\[[0-9:;<=>?]*[ -/]*[@-~]',
+    '\\u001b\\][^\\u0007\\u001b]*(?:\\u0007|\\u001b\\\\)?',
+    '\\u001b[PX^_][^\\u001b]*(?:\\u001b\\\\)?',
+    '\\u001b[@-Z\\\\-_]',
+    '[\\u0000-\\u0008\\u000b-\\u001f\\u007f]'
+  ].join('|'),
+  'g'
+)
 
 const INSTANT_EXIT_MS = 5000
 
 export class SessionManager {
   private sessions = new Map<string, Record_>()
+  /** Set at quit: silences all late pty events (data, exit) app-wide. */
+  private disposed = false
   private dataCbs: ((id: string, data: string) => void)[] = []
   private statusCbs: ((id: string, status: SessionStatus) => void)[] = []
   private changedCbs: (() => void)[] = []
@@ -142,12 +156,14 @@ export class SessionManager {
     }
     this.sessions.set(id, { info, spec, pty, spawnedAt: this.now(), tail: '' })
     pty.onData((d) => {
+      if (this.disposed) return
       const rec = this.sessions.get(id)
       if (!rec) return
       rec.tail = (rec.tail + d).slice(-500)
       this.dataCbs.forEach((cb) => cb(id, d))
     })
     pty.onExit(() => {
+      if (this.disposed) return
       // Drop the pty reference first: its fd is gone, and any late
       // write/resize against it would throw EBADF in the main process.
       const rec = this.sessions.get(id)
@@ -203,6 +219,25 @@ export class SessionManager {
     }
     this.sessions.delete(id)
     this.changedCbs.forEach((cb) => cb())
+  }
+
+  /**
+   * Quit-time cleanup: kill every live pty and set the disposed flag, which
+   * the onData/onExit closures check — so late stream events truly cannot
+   * fire into a tearing-down app (the isDestroyed guard in main/index.ts is
+   * the second line of defense). Sessions stay in the map (and thus in
+   * sessions.json) so they restore on next launch.
+   */
+  disposeAll(): void {
+    this.disposed = true
+    for (const rec of this.sessions.values()) {
+      try {
+        rec.pty?.kill()
+      } catch {
+        /* dead pty */
+      }
+      rec.pty = null
+    }
   }
 
   list(): SessionInfo[] {

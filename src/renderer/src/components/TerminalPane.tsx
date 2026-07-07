@@ -93,12 +93,15 @@ export default function TerminalPane({
         </span>
         <button
           className={paneHeaderBtn}
-          onClick={onToggleEnlarge}
+          onClick={() => {
+            // Enlarging must activate the pane, explicitly — an enlarged
+            // non-active pane would cover the grid while the previously
+            // active terminal keeps keyboard focus underneath it.
+            onActivate()
+            onToggleEnlarge()
+          }}
           onDoubleClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => {
-            // preventDefault keeps focus off the button; stopPropagation keeps
-            // the mousedown from bubbling to the pane root's onActivate —
-            // closing a non-active pane must not first make it active.
             e.preventDefault()
             e.stopPropagation()
           }}
@@ -110,6 +113,9 @@ export default function TerminalPane({
           onClick={onClose}
           onDoubleClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => {
+            // preventDefault keeps focus off the button; stopPropagation keeps
+            // the mousedown from bubbling to the pane root's onActivate —
+            // closing a non-active pane must not first make it active.
             e.preventDefault()
             e.stopPropagation()
           }}

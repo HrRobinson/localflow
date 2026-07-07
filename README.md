@@ -52,14 +52,14 @@ The Terminals view is fully keyboard-drivable: exactly one pane is always
 swap panes, and enlarge/shrink — all geometric (nearest pane center in the
 given direction), so they work regardless of grid layout.
 
-| Action                   | Default                                                       | Notes                                                                     |
-| ------------------------ | ------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| Focus left/down/up/right | `cmd+h` / `cmd+j` / `cmd+k` / `cmd+l`                         | moves the active pane to the nearest neighbor in that direction           |
-| Swap left/down/up/right  | `cmd+shift+h` / `cmd+shift+j` / `cmd+shift+k` / `cmd+shift+l` | swaps the active pane's position with its neighbor, active pane unchanged |
-| Enlarge/shrink           | `cmd+m`                                                       | toggles the active pane full-size                                         |
-| Close pane               | `cmd+w`                                                       | kills the active session (resumable from Overview)                        |
-| New session              | `cmd+enter`                                                   | jumps to Overview                                                         |
-| Go up                    | `cmd+escape`                                                  | shrinks an enlarged pane, else goes to Overview                           |
+| Action                   | Default                                                       | Notes                                                                                                                                                           |
+| ------------------------ | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Focus left/down/up/right | `cmd+h` / `cmd+j` / `cmd+k` / `cmd+l`                         | moves the active pane to the nearest neighbor in that direction                                                                                                 |
+| Swap left/down/up/right  | `cmd+shift+h` / `cmd+shift+j` / `cmd+shift+k` / `cmd+shift+l` | swaps the active pane's position with its neighbor, active pane unchanged                                                                                       |
+| Enlarge/shrink           | `cmd+m`                                                       | toggles the active pane full-size                                                                                                                               |
+| Close pane               | `cmd+w`                                                       | closes and removes the session — the agent's own conversation history survives in the project folder (e.g. `claude --continue` there starts where you left off) |
+| New session              | `cmd+enter`                                                   | jumps to Overview                                                                                                                                               |
+| Go up                    | `cmd+escape`                                                  | shrinks an enlarged pane, else goes to Overview                                                                                                                 |
 
 Bare `Escape`, `Enter`, arrow keys, and every unmodified keystroke always
 reach the active terminal untouched — localflow only intercepts the exact

@@ -31,7 +31,7 @@ keybindings — while never stealing keys the agents themselves use.
 | focus-left/down/up/right | cmd+h / cmd+j / cmd+k / cmd+l | geometric: nearest pane center in that direction |
 | swap-left/down/up/right | cmd+shift+h/j/k/l | swaps pane positions in the grid order |
 | enlarge-toggle | cmd+m | enlarge/shrink the active pane |
-| close-pane | cmd+w | kills the active session (it remains resumable via Overview if it was saved) — intercepted so Electron doesn't close the window |
+| close-pane | cmd+w | closes and removes the active session — the agent's own conversation history survives in the project folder (e.g. `claude --continue` there starts where you left off) — intercepted so Electron doesn't close the window |
 | new-session | cmd+enter | jumps to Overview (launcher) |
 | go-up | cmd+escape | shrink if enlarged, else Overview (existing behavior, now remappable) |
 

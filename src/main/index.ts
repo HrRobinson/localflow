@@ -38,9 +38,10 @@ function createWindow(): void {
 }
 
 /**
- * Electron's default application menu binds cmd+w to Close Window and
- * cmd+h to Hide. localflow owns those as in-app pane keys (close-pane,
- * focus-left), so the menu must not carry those accelerators.
+ * Electron's default application menu binds cmd+w to Close Window, cmd+h
+ * to Hide and cmd+m to Minimize. localflow owns those as in-app pane keys
+ * (close-pane, focus-left, enlarge-toggle), so the menu must not carry
+ * those accelerators.
  */
 function buildAppMenu(): void {
   const template: Electron.MenuItemConstructorOptions[] = [
@@ -65,7 +66,12 @@ function buildAppMenu(): void {
     { role: 'viewMenu' },
     {
       label: 'Window',
-      submenu: [{ role: 'minimize' }, { role: 'zoom' }]
+      submenu: [
+        // Not role: 'minimize' — its role default (Cmd+M) must stay free
+        // for the in-app enlarge-toggle key.
+        { label: 'Minimize', click: () => BrowserWindow.getFocusedWindow()?.minimize() },
+        { role: 'zoom' }
+      ]
     }
   ]
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))

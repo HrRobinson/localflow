@@ -382,6 +382,16 @@ describe('SessionManager', () => {
     expect(msg).not.toContain('OLD STALE DATA')
   })
 
+  it('restore stores a trimmed name, not the raw padded value', () => {
+    const info = mgr.restore('saved-id', '/old/project', claudeSpec, '  padded name  ')
+    expect(info.name).toBe('padded name')
+  })
+
+  it('restore treats a non-string name as absent (malformed sessions.json)', () => {
+    const info = mgr.restore('saved-id', '/old/project', claudeSpec, 123 as unknown as string)
+    expect(info.name).toBe('project')
+  })
+
   it('restart of a restored session with an invalid id does not throw and reports failure', () => {
     mgr.restore('bad/id', '/p', claudeSpec)
     const messages: string[] = []

@@ -28,4 +28,9 @@ describe('persistence', () => {
     writeFileSync(file, JSON.stringify([{ id: 'a', cwd: '/x' }]))
     expect(loadSavedSessions(file)).toEqual([{ id: 'a', cwd: '/x' }])
   })
+  it('tolerates a non-string name, treating it as absent', () => {
+    const file = join(mkdtempSync(join(tmpdir(), 'localflow-p-')), 'sessions.json')
+    writeFileSync(file, JSON.stringify([{ id: 'a', cwd: '/x', name: 123 }]))
+    expect(loadSavedSessions(file)).toEqual([{ id: 'a', cwd: '/x' }])
+  })
 })

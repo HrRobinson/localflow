@@ -110,10 +110,15 @@ export class SessionManager {
   }
 
   restore(id: string, cwd: string, spec: SpawnSpec, name?: string): SessionInfo {
+    // Defense in depth: a hand-edited sessions.json can hand us a non-string
+    // name (e.g. `"name": 123`) — treat that as absent rather than throwing
+    // on .trim() before IPC is even registered. Store the trimmed value so
+    // a whitespace-padded name doesn't carry its padding through restarts.
+    const trimmed = typeof name === 'string' ? name.trim() : ''
     const info: SessionInfo = {
       id,
       cwd,
-      name: name && name.trim().length > 0 ? name : basename(cwd),
+      name: trimmed.length > 0 ? trimmed : basename(cwd),
       status: 'exited',
       agentId: spec.agentId,
       command: spec.command

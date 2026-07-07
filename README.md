@@ -1,3 +1,5 @@
+<img src="assets/logo.svg" width="88" alt="localflow logo" />
+
 # localflow
 
 localflow is mission control for your Claude Code sessions. It puts a grid of

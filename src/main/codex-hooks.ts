@@ -40,7 +40,7 @@ export function buildCodexHookArgs(
   assertValidPort(port)
   if (tier === 'none') return []
   if (tier === 'notify') {
-    return ['-c', `notify=["sh","-c","${curlCommand(paneId, port, token, 'Stop')}"]`]
+    return ['-c', `notify=["sh","-c",${JSON.stringify(curlCommand(paneId, port, token, 'Stop'))}]`]
   }
   const table: [string, HookEventName][] = [
     ['UserPromptSubmit', 'UserPromptSubmit'],
@@ -49,6 +49,6 @@ export function buildCodexHookArgs(
   ]
   return table.flatMap(([codexEvent, canonical]) => [
     '-c',
-    `hooks.${codexEvent}=[{command=["sh","-c","${curlCommand(paneId, port, token, canonical)}"]}]`
+    `hooks.${codexEvent}=[{command=["sh","-c",${JSON.stringify(curlCommand(paneId, port, token, canonical))}]}]`
   ])
 }

@@ -913,6 +913,84 @@ that gap is closed by the manual checklist below, not by these fixtures.
 
 ---
 
+## Manual verification (Codex / Gemini hooks)
+
+One-time developer-facing checklist for whoever has real `codex`/`gemini`
+CLIs installed. Not end-user documentation (see README's "Status adapters"
+section for that) and **not required to merge this milestone** — the
+shipped defaults (`codex: cli-args-notify`, `gemini: env-settings-file`)
+are the safe/degraded-where-uncertain tiers, chosen precisely so this
+verification can happen later without blocking anything.
+
+### Codex `-c` hook-injection grammar
+
+- [ ] Install `codex` (or point `agentPaths.codex` in `config.json` at a
+  real dev build) and inspect `codex --help` / its docs for the actual
+  `-c`/`--profile`/config-override grammar it accepts on the command line.
+- [ ] Confirm whether a nested table like
+  `hooks.<Event>=[{command=["sh","-c","..."]}]` (the `'full'` tier's shape,
+  see `buildCodexHookArgs` in `src/main/codex-hooks.ts`) is accepted,
+  rejected outright, or silently ignored by a real invocation. The legacy
+  `notify=["sh","-c","..."]` form (the shipped `'notify'` tier) is the
+  fallback already believed more likely to work, since `notify` is Codex's
+  longer-standing turn-complete mechanism.
+- [ ] If `'full'` verifies correctly: flip `AGENT_PRESETS`'s `codex` entry
+  in `src/shared/agents.ts` to `hookAdapter: 'cli-args-full'`, re-run
+  `npm run check`, and update `tests/e2e/smoke.spec.ts`'s codex test to
+  expect `working`/`needs-you` transitions (via `UserPromptSubmit` and
+  `PermissionRequest`-mapped-to-`Notification`) rather than idle-only.
+- [ ] If nothing beyond legacy `notify` works: leave the shipped default at
+  `'cli-args-notify'` and file a follow-up issue noting `'cli-args-full'`
+  is unreachable until Codex adds real per-invocation hook-table support.
+
+### Gemini notification payload shape
+
+- [ ] Install `gemini` (or point `agentPaths.gemini` at a real dev build)
+  and trigger an actual tool-permission approval prompt in a live session.
+- [ ] Inspect the real stdin payload the `Notification` hook receives — the
+  quickest way is to temporarily swap `notificationCommand`'s generated
+  command (in `src/main/gemini-hooks.ts`) for something like
+  `cat > /tmp/gemini-notif.json` and read the file back afterward — to
+  confirm the actual notification-kind field name/casing Gemini sends.
+- [ ] If it differs from `"type":"ToolPermission"` (case sensitivity,
+  different field name, different value, etc.), correct the `case`
+  pattern inside `notificationCommand`'s generated `sh -c '...'` script
+  accordingly, re-run `npm run check`, and confirm
+  `tests/unit/gemini-hooks.test.ts`'s payload-gating tests still reflect
+  the corrected shape.
+
+### Notes for whoever runs this
+
+- Neither check blocks this milestone's merge — they're follow-up
+  verification, tracked here so they aren't lost, matching the spec's
+  stance that shipped defaults are the safe tiers until confirmed.
+- The e2e fixtures (`tests/fixtures/fake-codex.sh`,
+  `tests/fixtures/fake-gemini.sh`) prove localflow's own wiring — that the
+  generated `-c` args / settings-file env var actually reach a spawned
+  child process and, once executed, correctly reach `hook-server.ts` — but
+  they are not a substitute for either check above, since both fixtures
+  execute the injected command themselves rather than going through a real
+  CLI's own hook-firing logic.
+- Building the fixtures surfaced one non-obvious pitfall worth knowing
+  before touching either generator again: `buildCodexHookArgs` and
+  `writeGeminiHookSettings` both embed the curl command as a
+  `JSON.stringify`-escaped string (once for Codex's `-c` value, once for
+  Gemini's settings-file `"command"` field). Extracting that value back out
+  with `grep`/`sed` and stripping only the *outer* wrapping quotes leaves
+  literal backslash-quote (`\"`) pairs sitting inside the extracted
+  command's own single-quoted `-d '...'` JSON body. POSIX shell does not
+  treat backslash as an escape character inside single quotes, so `eval`ing
+  that string verbatim sends the literal backslashes to curl, producing a
+  body `hook-server.ts`'s `JSON.parse` rejects (silently — the event is
+  simply dropped) — status never updates, and it looks like the hook never
+  fired at all. Both fixtures reverse this with an explicit `unescape()`
+  step (`\\` → placeholder → `\"` → `"` → placeholder → `\`) before
+  `eval`, verified against the real generators' output (not just the
+  brief's sketch) with a live HTTP listener before being wired into the
+  Playwright tests.
+
+---
+
 ## Self-Review Notes
 
 - Spec coverage: `HookAdapterKind` and the dispatcher replace

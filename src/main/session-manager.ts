@@ -62,7 +62,7 @@ interface Record_ {
 // parameter bytes (covers private-mode like ESC[>0q), OSC titles ended by
 // BEL/ST, DCS-family strings, other C1 escapes, and stray control bytes.
 // Partial stripping here leaks garbage like "0q4mu" into user messages.
-// eslint-disable-next-line no-control-regex
+ 
 const ANSI_RE = new RegExp(
   [
     '\\u001b\\[[0-9:;<=>?]*[ -/]*[@-~]',

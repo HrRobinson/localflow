@@ -90,6 +90,11 @@ Research (2026-07-06) confirmed both have Claude-like hooks systems:
   spawn env. Storage MUST use the OS keychain via Electron `safeStorage` —
   never plain-text config.json. Config-as-code story: the config file keeps
   a reference/alias, the secret itself lives in the keychain.
+- **Local LLMs (user request 2026-07-07):** first-class support for agents
+  running against local models — per-agent env can point at local endpoints
+  (e.g. Ollama's OpenAI-compatible API via base-URL overrides), and the
+  agent presets/docs show a "local model" recipe (aider/opencode/custom
+  against localhost). No cloud account required to use localflow.
 - **Themes** (added 2026-07-07): app + terminal color themes, switchable in
   settings. Theme = a JSON/CSS-token file (the Tailwind `@theme` tokens and
   xterm palette make this natural), so the community can develop and share

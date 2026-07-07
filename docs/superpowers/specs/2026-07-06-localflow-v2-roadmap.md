@@ -37,6 +37,17 @@ Desktop-grade UI. Each milestone is its own spec → plan → PR cycle.
 - Focus correctness: keyboard input always lands in the active terminal (fixes
   Enter re-triggering buttons).
 
+## M1.6 — Durable sessions (user design 2026-07-07)
+
+- Sessions and terminals become distinct: a SESSION is a durable, named,
+  renameable entry (project path, agent, kept in the sessions list until
+  explicitly deleted); a TERMINAL is an ephemeral process attached to it.
+- Closing a terminal (button or cmd+w) never deletes the session — it goes
+  back to the list as closed/exited with its path saved, reopenable via
+  resume/fresh. Deleting a session is a separate explicit action.
+- Rename sessions inline in the sidebar/overview list.
+- Fixes the M1 final-review finding that cmd+w is irreversibly destructive.
+
 ## M2 — Status adapters for Codex & Gemini
 
 Research (2026-07-06) confirmed both have Claude-like hooks systems:

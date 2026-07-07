@@ -44,13 +44,25 @@ interface Options {
   port: number
   token: string
   spawnFn?: SpawnFn
+  /** Clock override for tests. */
+  now?: () => number
 }
 
 interface Record_ {
   info: SessionInfo
   spec: SpawnSpec
   pty: PtyLike | null
+  /** When the current pty was spawned; 0 for restored placeholders. */
+  spawnedAt: number
+  /** Rolling tail of recent output, used to explain instant exits. */
+  tail: string
 }
+
+// Matches ANSI escape sequences (colors, cursor movement) for log cleanup.
+// eslint-disable-next-line no-control-regex
+const ANSI_RE = /[\u001b\u009b][[()#;?]*(?:\d{1,4}(?:;\d{0,4})*)?[0-9A-ORZcf-nqry=><]/g
+
+const INSTANT_EXIT_MS = 5000
 
 export class SessionManager {
   private sessions = new Map<string, Record_>()
@@ -82,7 +94,7 @@ export class SessionManager {
       agentId: spec.agentId,
       command: spec.command
     }
-    this.sessions.set(id, { info, spec, pty: null })
+    this.sessions.set(id, { info, spec, pty: null, spawnedAt: 0, tail: '' })
     this.changedCbs.forEach((cb) => cb())
     return info
   }
@@ -123,20 +135,34 @@ export class SessionManager {
       const message = `Could not start '${spec.command}'. Check the agent's path in the launcher.`
       info.status = 'exited'
       info.message = message
-      this.sessions.set(id, { info, spec, pty: null })
+      this.sessions.set(id, { info, spec, pty: null, spawnedAt: 0, tail: '' })
       this.changedCbs.forEach((cb) => cb())
       this.dataCbs.forEach((cb) => cb(id, `\r\n${message}\r\n`))
       return info
     }
-    this.sessions.set(id, { info, spec, pty })
+    this.sessions.set(id, { info, spec, pty, spawnedAt: this.now(), tail: '' })
     pty.onData((d) => {
-      if (this.sessions.has(id)) this.dataCbs.forEach((cb) => cb(id, d))
+      const rec = this.sessions.get(id)
+      if (!rec) return
+      rec.tail = (rec.tail + d).slice(-500)
+      this.dataCbs.forEach((cb) => cb(id, d))
     })
     pty.onExit(() => {
       // Drop the pty reference first: its fd is gone, and any late
       // write/resize against it would throw EBADF in the main process.
       const rec = this.sessions.get(id)
-      if (rec) rec.pty = null
+      if (rec) {
+        rec.pty = null
+        // An agent that dies within seconds never showed the user anything —
+        // surface its last words in the restart overlay (e.g. claude's
+        // "No conversation found" when --continue has nothing to resume).
+        if (!rec.info.message && this.now() - rec.spawnedAt < INSTANT_EXIT_MS) {
+          const tail = rec.tail.replace(ANSI_RE, '').replace(/\s+/g, ' ').trim().slice(-160)
+          rec.info.message = tail
+            ? `Exited right away — last output: \u201c${tail}\u201d`
+            : 'Exited right away with no output.'
+        }
+      }
       this.setStatus(id, transition(this.status(id), 'pty-exit'))
     })
     this.changedCbs.forEach((cb) => cb())
@@ -181,6 +207,10 @@ export class SessionManager {
 
   list(): SessionInfo[] {
     return [...this.sessions.values()].map((r) => ({ ...r.info }))
+  }
+
+  private now(): number {
+    return (this.opts.now ?? Date.now)()
   }
 
   private status(id: string): SessionStatus {

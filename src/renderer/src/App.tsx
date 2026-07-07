@@ -1,9 +1,28 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import TerminalPane from './components/TerminalPane'
 import Landing from './components/Landing'
 import Sidebar from './components/Sidebar'
 import { reconcileOrder } from './lib/order'
+import { pickNeighbor, swapInOrder, type PaneRect, type Direction } from './lib/pane-nav'
+import {
+  parseBinding,
+  eventMatches,
+  type KeyAction,
+  type ParsedBinding
+} from '../../shared/keybindings'
 import type { AgentId, SessionInfo } from '../../shared/types'
+
+// Which pane-nav direction each focus-*/swap-* action moves in.
+const ACTION_DIRECTION: Partial<Record<KeyAction, Direction>> = {
+  'focus-left': 'left',
+  'focus-down': 'down',
+  'focus-up': 'up',
+  'focus-right': 'right',
+  'swap-left': 'left',
+  'swap-down': 'down',
+  'swap-up': 'up',
+  'swap-right': 'right'
+}
 
 export default function App(): React.JSX.Element {
   const [sessions, setSessions] = useState<SessionInfo[]>([])
@@ -33,19 +52,6 @@ export default function App(): React.JSX.Element {
     const offStatus = window.localflow.onStatus((id, status) => {
       setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, status } : s)))
     })
-    const onKey = (e: KeyboardEvent): void => {
-      // Bare Escape belongs to the agents (Claude uses it to interrupt);
-      // cmd-esc is localflow's "go up": shrink if enlarged, else go home.
-      if (e.key === 'Escape' && e.metaKey) {
-        e.preventDefault()
-        setEnlarged((cur) => {
-          if (cur !== null) return null
-          setView('home')
-          return cur
-        })
-      }
-    }
-    window.addEventListener('keydown', onKey)
     // Session state arrives via two paths: pushed onStatus events (fast path
     // for status transitions) and this 1s poll (catches everything else,
     // e.g. sessions created/removed elsewhere). Both write into the same
@@ -54,7 +60,6 @@ export default function App(): React.JSX.Element {
     const iv = setInterval(() => void refresh(), 1000)
     return () => {
       offStatus()
-      window.removeEventListener('keydown', onKey)
       clearInterval(iv)
     }
   }, [refresh])
@@ -97,6 +102,94 @@ export default function App(): React.JSX.Element {
     setView('terminals')
     setActiveId((cur) => (cur !== null && order.includes(cur) ? cur : (order[0] ?? null)))
   }
+
+  // The dispatcher's keydown handler is a stable closure attached once on
+  // mount, so it reads current state through a ref kept in sync every
+  // render rather than through the effect's own stale closure.
+  const liveRef = useRef({ view, activeId, order, enlarged, close })
+  useEffect(() => {
+    liveRef.current = { view, activeId, order, enlarged, close }
+  })
+
+  useEffect(() => {
+    const bindings: [KeyAction, ParsedBinding][] = []
+    void (async () => {
+      const raw = await window.localflow.getKeybindings()
+      for (const [action, binding] of Object.entries(raw)) {
+        const parsed = parseBinding(binding)
+        if (parsed) bindings.push([action as KeyAction, parsed])
+      }
+    })()
+
+    // Capture phase: this dispatcher runs before terminal xterm instances
+    // see the event, so it can claim bound combos (cmd+w, cmd+enter, ...)
+    // that would otherwise be swallowed or misinterpreted by the terminal.
+    // Unmatched events are left completely untouched, falling through to
+    // whichever terminal has focus.
+    const onKey = (e: KeyboardEvent): void => {
+      const match = bindings.find(([, binding]) => eventMatches(binding, e))
+      if (!match) return
+      const [action] = match
+      e.preventDefault()
+      e.stopPropagation()
+
+      // go-up is available everywhere: shrink an enlarged pane, else leave
+      // the terminals view entirely. Same shrink-else-home semantics as
+      // before this became a bound action.
+      if (action === 'go-up') {
+        setEnlarged((cur) => {
+          if (cur !== null) return null
+          setView('home')
+          return cur
+        })
+        return
+      }
+      if (action === 'new-session') {
+        setView('home')
+        return
+      }
+
+      // Everything else only acts within the terminals view, on the active
+      // pane — a no-op elsewhere (e.g. on the home/landing view).
+      const live = liveRef.current
+      if (live.view !== 'terminals' || live.activeId === null) return
+      const activeId = live.activeId
+
+      if (action === 'enlarge-toggle') {
+        setEnlarged((cur) => (cur === activeId ? null : activeId))
+        return
+      }
+      if (action === 'close-pane') {
+        void live.close(activeId)
+        return
+      }
+
+      // Directional focus/swap moves are a no-op while a pane is enlarged —
+      // there is nothing else visible to move to.
+      if (live.enlarged !== null) return
+      const dir = ACTION_DIRECTION[action]
+      if (!dir) return
+
+      const rects: PaneRect[] = Array.from(document.querySelectorAll<HTMLElement>('.pane')).flatMap(
+        (el) => {
+          const id = el.dataset.paneId
+          if (!id) return []
+          const r = el.getBoundingClientRect()
+          return [{ id, x: r.x, y: r.y, w: r.width, h: r.height }]
+        }
+      )
+      const neighbor = pickNeighbor(rects, activeId, dir)
+      if (!neighbor) return
+
+      if (action.startsWith('focus-')) {
+        setActiveId(neighbor)
+      } else {
+        setOrder((cur) => swapInOrder(cur, activeId, neighbor))
+      }
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [])
 
   const showTerminals = view === 'terminals' && sessions.length > 0
 

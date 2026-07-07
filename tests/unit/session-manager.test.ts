@@ -67,11 +67,15 @@ describe('SessionManager', () => {
 
   it('instant exit surfaces the last output in message (ANSI stripped)', () => {
     const info = mgr.create('/p', claudeSpec)
-    ptys[0].dataCb?.('\u001b[31mNo conversation found in this directory\u001b[0m\r\n')
+    ptys[0].dataCb?.(
+      '\u001b[>0q\u001b]0;claude\u0007\u001b[4m\u001b[31mNo conversation found in this directory\u001b[0m\r\n'
+    )
     ptys[0].exitCb?.()
     const msg = mgr.list().find((s) => s.id === info.id)?.message
     expect(msg).toContain('No conversation found')
     expect(msg).not.toContain('\u001b')
+    expect(msg).not.toContain('0q')
+    expect(msg).not.toContain('4m')
   })
 
   it('instant exit with no output still gets an explanatory message', () => {

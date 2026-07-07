@@ -58,9 +58,21 @@ interface Record_ {
   tail: string
 }
 
-// Matches ANSI escape sequences (colors, cursor movement) for log cleanup.
+// Strips ANSI/VT escape sequences per the ECMA-48 grammar: CSI with full
+// parameter bytes (covers private-mode like ESC[>0q), OSC titles ended by
+// BEL/ST, DCS-family strings, other C1 escapes, and stray control bytes.
+// Partial stripping here leaks garbage like "0q4mu" into user messages.
 // eslint-disable-next-line no-control-regex
-const ANSI_RE = /[\u001b\u009b][[()#;?]*(?:\d{1,4}(?:;\d{0,4})*)?[0-9A-ORZcf-nqry=><]/g
+const ANSI_RE = new RegExp(
+  [
+    '\\u001b\\[[0-9:;<=>?]*[ -/]*[@-~]',
+    '\\u001b\\][^\\u0007\\u001b]*(?:\\u0007|\\u001b\\\\)?',
+    '\\u001b[PX^_][^\\u001b]*(?:\\u001b\\\\)?',
+    '\\u001b[@-Z\\\\-_]',
+    '[\\u0000-\\u0008\\u000b-\\u001f\\u007f]'
+  ].join('|'),
+  'g'
+)
 
 const INSTANT_EXIT_MS = 5000
 

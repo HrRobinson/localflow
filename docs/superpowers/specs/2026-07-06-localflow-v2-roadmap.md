@@ -108,6 +108,17 @@ Research (2026-07-06) confirmed both have Claude-like hooks systems:
   session's cwd, syntax-highlighted diffs, `j/k` file/hunk navigation.
 - Escape hatches: "open lazygit/vim here", "open in editor".
 
+## M8 — Editor panes (user request 2026-07-07)
+
+- Terminal editors (nvim/helix/emacs -nw) already work via Custom command —
+  document this as a first-class pattern ("add an editor pane beside your
+  agent").
+- "Open in editor" per session: button + keybinding launching `code <cwd>`
+  (configurable editor command) in the external app. Near-term, cheap.
+- Web-IDE pane (later): embed code-server/openvscode in a webview pane inside
+  the grid. Feasible (localflow is Chromium); real embedding of native VS Code
+  windows is impossible on macOS — don't promise it.
+
 ## Platform & tooling
 
 - Tailwind CSS v4 migration (own PR; design tokens stay as CSS variables).

@@ -38,6 +38,18 @@ Research (2026-07-06) confirmed both have Claude-like hooks systems:
 - Adapter layer maps each agent's events onto the existing
   working/needs-you/idle state machine and localhost listener.
 
+## M2.5 — Needs-you quick actions (user request 2026-07-07)
+
+- Jump-to-attention: keybinding (default `cmd+u`) focuses + enlarges the next
+  needs-you pane; press again to cycle through all waiting panes.
+- Approve from outside: on yellow panes (header) and overview rows, an
+  "Approve" action writes the confirm keystroke (Enter) to that session's pty
+  — answering the agent's pending prompt without entering the terminal.
+- Safety: never blind-approve — show a peek of the pending question (last few
+  terminal lines) beside the approve control. Requires the per-session output
+  ring buffer in main (already a planned follow-up; this is its first real
+  consumer).
+
 ## M3 — Workspaces
 
 - AeroSpace-style workspaces 1–9: `cmd-1…9` switch, `cmd-shift-1…9` move pane.

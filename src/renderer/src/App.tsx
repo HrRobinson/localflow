@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import TerminalPane from './components/TerminalPane'
 import Landing from './components/Landing'
+import Settings from './components/Settings'
 import Sidebar from './components/Sidebar'
 import { reconcileOrder } from './lib/order'
 import { pickNeighbor, swapInOrder, type PaneRect, type Direction } from './lib/pane-nav'
@@ -36,7 +37,7 @@ export default function App(): React.JSX.Element {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [order, setOrder] = useState<string[]>([])
   // The app opens on the home overview; terminals are entered explicitly.
-  const [view, setView] = useState<'home' | 'terminals'>('home')
+  const [view, setView] = useState<'home' | 'terminals' | 'settings'>('home')
 
   const refresh = useCallback(async () => {
     const list = await window.localflow.listSessions()
@@ -205,17 +206,18 @@ export default function App(): React.JSX.Element {
       {sidebarVisible && (
         <Sidebar
           sessions={sessions}
-          view={showTerminals ? 'terminals' : 'home'}
+          view={showTerminals ? 'terminals' : view === 'settings' ? 'settings' : 'home'}
           activeId={activeId}
           onHome={() => setView('home')}
           onTerminals={enterTerminals}
+          onSettings={() => setView('settings')}
           onOpenSession={openSession}
         />
       )}
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
         <header className="flex items-center justify-between border-b border-white/[0.06] px-6 py-3">
           <h2 className="m-0 text-[15px] font-semibold tracking-[-0.01em]">
-            {showTerminals ? 'Terminals' : 'Overview'}
+            {showTerminals ? 'Terminals' : view === 'settings' ? 'Settings' : 'Overview'}
           </h2>
           {showTerminals ? (
             <button
@@ -256,6 +258,8 @@ export default function App(): React.JSX.Element {
                 />
               ))}
           </div>
+        ) : view === 'settings' ? (
+          <Settings />
         ) : (
           <Landing
             sessions={sessions}
@@ -263,6 +267,7 @@ export default function App(): React.JSX.Element {
             onOpen={openSession}
             onResume={(id, fresh) => void restart(id, fresh)}
             onRemove={(id) => void close(id)}
+            onOpenSettings={() => setView('settings')}
           />
         )}
       </main>

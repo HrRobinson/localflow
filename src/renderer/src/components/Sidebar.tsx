@@ -3,10 +3,11 @@ import type { SessionInfo } from '../../../shared/types'
 
 interface Props {
   sessions: SessionInfo[]
-  view: 'home' | 'terminals'
+  view: 'home' | 'terminals' | 'settings'
   activeId: string | null
   onHome: () => void
   onTerminals: () => void
+  onSettings: () => void
   onOpenSession: (id: string) => void
 }
 
@@ -20,6 +21,7 @@ export default function Sidebar({
   activeId,
   onHome,
   onTerminals,
+  onSettings,
   onOpenSession
 }: Props): React.JSX.Element {
   return (
@@ -45,6 +47,13 @@ export default function Sidebar({
           onMouseDown={(e) => e.preventDefault()}
         >
           Terminals
+        </button>
+        <button
+          className={`${navItemBase}${view === 'settings' ? ` ${navItemActive}` : ''}`}
+          onClick={onSettings}
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          Settings
         </button>
       </nav>
       <div className="min-h-0 flex-1 overflow-auto p-2">

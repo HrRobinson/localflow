@@ -7,6 +7,8 @@ interface Props {
   onOpen: (id: string) => void
   onResume: (id: string, fresh: boolean) => void
   onRemove: (id: string) => void
+  // Used by Task 4's "Configure in Settings" hint.
+  onOpenSettings: () => void
 }
 
 const GHOST_LINES = [3, 4, 2]

@@ -169,7 +169,8 @@ app.whenReady().then(async () => {
   ipcMain.handle('session:restart', (_e, id: string, fresh?: boolean) =>
     manager.restart(id, fresh === true)
   )
-  ipcMain.handle('session:kill', (_e, id: string) => manager.kill(id))
+  // TODO(task 2): rename channel to session:delete and wire closeTerminal/rename.
+  ipcMain.handle('session:kill', (_e, id: string) => manager.deleteSession(id))
   ipcMain.handle('session:list', () => manager.list())
   ipcMain.on('session:write', (_e, id: string, data: string) => manager.write(id, data))
   ipcMain.on('session:resize', (_e, id: string, cols: number, rows: number) =>

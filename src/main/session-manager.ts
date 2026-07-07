@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { basename } from 'node:path'
 import { spawn as ptySpawn } from 'node-pty'
 import type { AgentId, HookEvent, SessionInfo, SessionStatus } from '../shared/types'
 import { transition } from './state-machine'
@@ -56,6 +57,11 @@ interface Record_ {
   spawnedAt: number
   /** Rolling tail of recent output, used to explain instant exits. */
   tail: string
+  /** Set by closeTerminal() right before killing the pty; the
+   * eventual real onExit event checks this to avoid re-running the
+   * instant-exit message heuristic against a deliberate close, and
+   * to avoid double-processing an already-handled transition. */
+  closedByUser?: boolean
 }
 
 // Strips ANSI/VT escape sequences per the ECMA-48 grammar: CSI with full
@@ -100,13 +106,14 @@ export class SessionManager {
   }
 
   create(cwd: string, spec: SpawnSpec): SessionInfo {
-    return this.spawn(randomUUID(), cwd, spec, false)
+    return this.spawn(randomUUID(), cwd, spec, false, basename(cwd))
   }
 
-  restore(id: string, cwd: string, spec: SpawnSpec): SessionInfo {
+  restore(id: string, cwd: string, spec: SpawnSpec, name?: string): SessionInfo {
     const info: SessionInfo = {
       id,
       cwd,
+      name: name && name.trim().length > 0 ? name : basename(cwd),
       status: 'exited',
       agentId: spec.agentId,
       command: spec.command
@@ -120,13 +127,20 @@ export class SessionManager {
   restart(id: string, fresh = false): SessionInfo {
     const rec = this.sessions.get(id)
     if (!rec || rec.info.status !== 'exited') throw new Error(`cannot restart session ${id}`)
-    return this.spawn(id, rec.info.cwd, rec.spec, !fresh)
+    return this.spawn(id, rec.info.cwd, rec.spec, !fresh, rec.info.name)
   }
 
-  private spawn(id: string, cwd: string, spec: SpawnSpec, resume: boolean): SessionInfo {
+  private spawn(
+    id: string,
+    cwd: string,
+    spec: SpawnSpec,
+    resume: boolean,
+    name: string
+  ): SessionInfo {
     const info: SessionInfo = {
       id,
       cwd,
+      name,
       // Hook-fed agents report their own states; others we only know as alive.
       status: spec.useHooks ? 'idle' : 'running',
       agentId: spec.agentId,
@@ -170,17 +184,23 @@ export class SessionManager {
       // Drop the pty reference first: its fd is gone, and any late
       // write/resize against it would throw EBADF in the main process.
       const rec = this.sessions.get(id)
-      if (rec) {
-        rec.pty = null
-        // An agent that dies within seconds never showed the user anything —
-        // surface its last words in the restart overlay (e.g. claude's
-        // "No conversation found" when --continue has nothing to resume).
-        if (!rec.info.message && this.now() - rec.spawnedAt < INSTANT_EXIT_MS) {
-          const tail = rec.tail.replace(ANSI_RE, '').replace(/\s+/g, ' ').trim().slice(-160)
-          rec.info.message = tail
-            ? `Exited right away — last output: \u201c${tail}\u201d`
-            : 'Exited right away with no output.'
-        }
+      if (!rec) return
+      if (rec.closedByUser) {
+        // closeTerminal() already transitioned this session; the pty's
+        // own exit event arrived late (kill() is not synchronous) and
+        // must not re-run the instant-exit message logic below.
+        rec.closedByUser = false
+        return
+      }
+      rec.pty = null
+      // An agent that dies within seconds never showed the user anything —
+      // surface its last words in the restart overlay (e.g. claude's
+      // "No conversation found" when --continue has nothing to resume).
+      if (!rec.info.message && this.now() - rec.spawnedAt < INSTANT_EXIT_MS) {
+        const tail = rec.tail.replace(ANSI_RE, '').replace(/\s+/g, ' ').trim().slice(-160)
+        rec.info.message = tail
+          ? `Exited right away — last output: \u201c${tail}\u201d`
+          : 'Exited right away with no output.'
       }
       this.setStatus(id, transition(this.status(id), 'pty-exit'))
     })
@@ -212,7 +232,23 @@ export class SessionManager {
     }
   }
 
-  kill(id: string): void {
+  /** Ends the pty, keeps the session record (durable session, ephemeral terminal). */
+  closeTerminal(id: string): void {
+    const rec = this.sessions.get(id)
+    if (!rec || !rec.pty) return
+    rec.closedByUser = true
+    try {
+      rec.pty.kill()
+    } catch {
+      /* dead pty */
+    }
+    rec.pty = null
+    this.setStatus(id, 'exited')
+    this.changedCbs.forEach((cb) => cb())
+  }
+
+  /** Kills the pty (if alive) and forgets the session entirely. */
+  deleteSession(id: string): void {
     const rec = this.sessions.get(id)
     if (!rec) return
     try {
@@ -222,6 +258,17 @@ export class SessionManager {
     }
     this.sessions.delete(id)
     this.changedCbs.forEach((cb) => cb())
+  }
+
+  rename(id: string, name: string): SessionInfo | null {
+    const rec = this.sessions.get(id)
+    if (!rec) return null
+    const trimmed = name.trim()
+    if (trimmed.length > 0) {
+      rec.info.name = trimmed
+      this.changedCbs.forEach((cb) => cb())
+    }
+    return { ...rec.info }
   }
 
   /**

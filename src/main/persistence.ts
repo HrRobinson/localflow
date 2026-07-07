@@ -7,6 +7,8 @@ export interface SavedSession {
   agentId?: string
   /** Spawned command, needed to restore custom sessions verbatim. */
   command?: string
+  /** User-editable label; absent on files predating M1.6 (falls back to basename(cwd)). */
+  name?: string
 }
 
 export function loadSavedSessions(file: string): SavedSession[] {

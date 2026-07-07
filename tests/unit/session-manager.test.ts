@@ -124,6 +124,11 @@ describe('SessionManager', () => {
     expect(spawnCalls[0].args[1]).toContain(`localflow-hooks-${info.id}.json`)
   })
 
+  it('create defaults name to the cwd basename', () => {
+    const info = mgr.create('/some/project', claudeSpec)
+    expect(info.name).toBe('project')
+  })
+
   it('create spawns a non-hook agent without settings, running status', () => {
     const info = mgr.create('/p', codexSpec)
     expect(info.status).toBe('running')
@@ -174,11 +179,27 @@ describe('SessionManager', () => {
     expect(info).toEqual({
       id: 'saved-id',
       cwd: '/old/project',
+      name: 'project',
       status: 'exited',
       agentId: 'claude',
       command: 'fake-claude'
     })
     expect(spawnCalls).toHaveLength(0)
+  })
+
+  it('restore uses a saved name verbatim when present', () => {
+    const info = mgr.restore('saved-id', '/old/project', claudeSpec, 'kept name')
+    expect(info.name).toBe('kept name')
+  })
+
+  it('restore falls back to basename(cwd) with no name arg', () => {
+    const info = mgr.restore('saved-id', '/old/project', claudeSpec)
+    expect(info.name).toBe('project')
+  })
+
+  it('restore falls back to basename(cwd) with an empty-string name', () => {
+    const info = mgr.restore('saved-id', '/old/project', claudeSpec, '')
+    expect(info.name).toBe('project')
   })
 
   it('spawn failure yields an exited session with an error message', () => {
@@ -215,20 +236,97 @@ describe('SessionManager', () => {
     expect(ptys[0].written).toEqual([])
   })
 
-  it('kill removes the session and kills the pty', () => {
+  it('deleteSession removes the session and kills the pty', () => {
     const info = mgr.create('/p', claudeSpec)
-    mgr.kill(info.id)
+    mgr.deleteSession(info.id)
     expect(ptys[0].killed).toBe(true)
     expect(mgr.list()).toHaveLength(0)
   })
 
-  it('does not forward late data from a killed session', () => {
+  it('does not forward late data from a deleted session', () => {
     const info = mgr.create('/p', claudeSpec)
     const messages: string[] = []
     mgr.onData((_id, d) => messages.push(d))
-    mgr.kill(info.id)
+    mgr.deleteSession(info.id)
     ptys[0].dataCb?.('late buffered output')
     expect(messages).toEqual([])
+  })
+
+  it('closeTerminal kills the pty and keeps the session as exited, no message', () => {
+    const info = mgr.create('/p', claudeSpec)
+    mgr.closeTerminal(info.id)
+    expect(ptys[0].killed).toBe(true)
+    const list = mgr.list()
+    expect(list).toHaveLength(1)
+    expect(list[0].id).toBe(info.id)
+    expect(list[0].status).toBe('exited')
+    expect(list[0].message).toBeUndefined()
+  })
+
+  it('closeTerminal then a late real onExit does not re-run the instant-exit message', () => {
+    const info = mgr.create('/p', claudeSpec)
+    mgr.closeTerminal(info.id)
+    ptys[0].exitCb?.()
+    const list = mgr.list()
+    expect(list[0].status).toBe('exited')
+    expect(list[0].message).toBeUndefined()
+  })
+
+  it('closeTerminal on a session with no live pty is a no-op', () => {
+    const info = mgr.create('/p', claudeSpec)
+    mgr.closeTerminal(info.id)
+    const before = mgr.list()
+    expect(() => mgr.closeTerminal(info.id)).not.toThrow()
+    expect(mgr.list()).toEqual(before)
+  })
+
+  it('closeTerminal on a restored placeholder (no live pty) is a no-op', () => {
+    mgr.restore('saved-id', '/old/project', claudeSpec)
+    const before = mgr.list()
+    expect(() => mgr.closeTerminal('saved-id')).not.toThrow()
+    expect(mgr.list()).toEqual(before)
+  })
+
+  it('closeTerminal on an unknown id does not throw', () => {
+    expect(() => mgr.closeTerminal('no-such-id')).not.toThrow()
+  })
+
+  it('rename trims and updates the name', () => {
+    const info = mgr.create('/p', claudeSpec)
+    const renamed = mgr.rename(info.id, '  New Name  ')
+    expect(renamed).toEqual({ ...info, name: 'New Name' })
+    expect(mgr.list()[0].name).toBe('New Name')
+  })
+
+  it('rename no-ops on empty/whitespace-only names', () => {
+    const info = mgr.create('/p', claudeSpec)
+    const renamedEmpty = mgr.rename(info.id, '')
+    expect(renamedEmpty?.name).toBe(info.name)
+    const renamedBlank = mgr.rename(info.id, '   ')
+    expect(renamedBlank?.name).toBe(info.name)
+    expect(mgr.list()[0].name).toBe(info.name)
+  })
+
+  it('rename on an unknown id returns null', () => {
+    expect(mgr.rename('missing-id', 'x')).toBeNull()
+  })
+
+  it('rename fires onSessionsChanged (persisted immediately)', () => {
+    const info = mgr.create('/p', claudeSpec)
+    let fired = false
+    mgr.onSessionsChanged(() => {
+      fired = true
+    })
+    mgr.rename(info.id, 'New Name')
+    expect(fired).toBe(true)
+  })
+
+  it('restart preserves a renamed session name, not recomputed from cwd', () => {
+    const info = mgr.create('/p', claudeSpec)
+    mgr.rename(info.id, 'Renamed')
+    ptys[0].exitCb?.()
+    const restarted = mgr.restart(info.id)
+    expect(restarted.name).toBe('Renamed')
   })
 
   it('resize and write after pty exit never reach the dead pty', () => {

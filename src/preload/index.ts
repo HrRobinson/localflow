@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import type { LocalflowApi } from '../shared/api'
-import type { AgentId, SessionStatus } from '../shared/types'
+import type { ActivityEntry, AgentId, SessionStatus } from '../shared/types'
 import type { KeyAction } from '../shared/keybindings'
 
 const api: LocalflowApi = {
@@ -34,6 +34,12 @@ const api: LocalflowApi = {
       cb(id, status)
     ipcRenderer.on('session:status', listener)
     return () => ipcRenderer.removeListener('session:status', listener)
+  },
+  getActivity: (id: string) => ipcRenderer.invoke('activity:get', id),
+  onActivity: (cb) => {
+    const listener = (_e: IpcRendererEvent, id: string, entry: ActivityEntry): void => cb(id, entry)
+    ipcRenderer.on('activity:event', listener)
+    return () => ipcRenderer.removeListener('activity:event', listener)
   },
   getKeybindings: () => ipcRenderer.invoke('keybindings:get'),
   onKeyAction: (cb) => {

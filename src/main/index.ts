@@ -142,6 +142,7 @@ app.whenReady().then(async () => {
 
   manager.onData((id, data) => sendToWindow('session:data', id, data))
   manager.onStatus((id, status) => sendToWindow('session:status', id, status))
+  manager.onActivity((id, entry) => sendToWindow('activity:event', id, entry))
   manager.onSessionsChanged(() =>
     saveSessions(
       sessionsFile,
@@ -217,6 +218,7 @@ app.whenReady().then(async () => {
     typeof url === 'string' ? manager.setUrl(id, url) : null
   )
   ipcMain.handle('session:list', () => manager.list())
+  ipcMain.handle('activity:get', (_e, id: string) => manager.getActivity(id))
   ipcMain.handle('session:peek', (_e, id: string, maxLines?: number) => {
     // Clamp at the boundary: the renderer is not trusted with the range.
     const n = Number(maxLines)

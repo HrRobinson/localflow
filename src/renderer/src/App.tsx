@@ -3,6 +3,7 @@ import TerminalPane from './components/TerminalPane'
 import BrowserPane from './components/BrowserPane'
 import Landing from './components/Landing'
 import Settings from './components/Settings'
+import Activity from './components/Activity'
 import Sidebar from './components/Sidebar'
 import { reconcileOrder } from './lib/order'
 import { pickNeighbor, swapInOrder, type PaneRect, type Direction } from './lib/pane-nav'
@@ -40,7 +41,7 @@ export default function App(): React.JSX.Element {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [order, setOrder] = useState<string[]>([])
   // The app opens on the home overview; the environment view is entered explicitly.
-  const [view, setView] = useState<'home' | 'environment' | 'settings'>('home')
+  const [view, setView] = useState<'home' | 'environment' | 'settings' | 'activity'>('home')
   // Which environment's grid is visible. Sessions on other environments stay
   // mounted-invisible? No — they simply don't render; their ptys live in
   // main regardless, so nothing is lost when a pane isn't shown.
@@ -155,6 +156,7 @@ export default function App(): React.JSX.Element {
       return cur !== null && visible.includes(cur) ? cur : (visible[0] ?? null)
     })
   }
+  const enterActivity = (): void => setView('activity')
   // Switching environments re-scopes focus: the active/enlarged pane must be
   // one of the target environment's panes, or null.
   const switchEnvironment = (n: number): void => {
@@ -178,6 +180,13 @@ export default function App(): React.JSX.Element {
     // focus/enlarge exactly like a closed pane. afterPaneGone ends with its
     // own refresh(), so no separate refresh is needed here.
     await afterPaneGone(id)
+  }
+  // The Overview "waiting Nm" fragment jumps to attention exactly like cmd+u:
+  // start from the top of the needs-you ring (activeId null) on the current
+  // environment, and open+enlarge whatever it lands on.
+  const jumpToAttention = (): void => {
+    const target = nextNeedsYou(order, sessions, null, environment)
+    if (target) openSession(target)
   }
 
   // The dispatcher's keydown handler is a stable closure attached once on
@@ -331,12 +340,21 @@ export default function App(): React.JSX.Element {
       {sidebarVisible && (
         <Sidebar
           sessions={sessions}
-          view={showEnvironment ? 'environment' : view === 'settings' ? 'settings' : 'home'}
+          view={
+            showEnvironment
+              ? 'environment'
+              : view === 'settings'
+                ? 'settings'
+                : view === 'activity'
+                  ? 'activity'
+                  : 'home'
+          }
           activeId={activeId}
           environment={environment}
           onSwitchEnvironment={switchEnvironment}
           onHome={() => setView('home')}
           onEnvironment={enterEnvironment}
+          onActivity={enterActivity}
           onSettings={() => setView('settings')}
           onOpenSession={openSession}
           onDeleteSession={(id) => void deleteSession(id)}
@@ -344,8 +362,11 @@ export default function App(): React.JSX.Element {
         />
       )}
       {/* No content header: the sidebar IS the navigation (user decision
-          2026-07-07); cmd+esc / nav items cover the old header buttons. */}
-      <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+          2026-07-07); cmd+esc / nav items cover the old header buttons.
+          relative: positioning context for .pane.enlarged (absolute, inset
+          12px) so an enlarged pane fills only the content area and never
+          covers the sidebar. */}
+      <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
         {showEnvironment ? (
           <div className="grid flex-1 auto-rows-[minmax(300px,1fr)] grid-cols-[repeat(auto-fit,minmax(460px,1fr))] gap-2.5 overflow-auto px-3 pt-3 pb-3">
             {order
@@ -379,6 +400,8 @@ export default function App(): React.JSX.Element {
           </div>
         ) : view === 'settings' ? (
           <Settings />
+        ) : view === 'activity' ? (
+          <Activity sessions={sessions} activeId={activeId} onOpenSession={openSession} />
         ) : (
           <Landing
             sessions={sessions}
@@ -389,6 +412,7 @@ export default function App(): React.JSX.Element {
             onDelete={(id) => void deleteSession(id)}
             onRename={(id, name) => void renameSession(id, name)}
             onOpenSettings={() => setView('settings')}
+            onJumpToAttention={jumpToAttention}
           />
         )}
       </main>

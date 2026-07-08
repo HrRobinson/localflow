@@ -117,9 +117,12 @@ body {
 }
 
 /* .pane.enlarged (not bare .enlarged): must out-specify the
-   .pane[data-status='exited'] opacity dimming above. */
+   .pane[data-status='exited'] opacity dimming above.
+   position: absolute (not fixed) so the enlarge is scoped to <main> (the
+   sidebar's positioned sibling in App.tsx), not the viewport — otherwise it
+   covers the <aside> Sidebar and makes primary nav unclickable by mouse. */
 .pane.enlarged {
-  position: fixed;
+  position: absolute;
   inset: 12px;
   z-index: 10;
   opacity: 1;

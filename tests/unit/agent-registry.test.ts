@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { AgentRegistry, loadAgentConfig, saveAgentConfig } from '../../src/main/agent-registry'
+import { RESERVED_ENV_KEYS } from '../../src/main/hook-adapter'
 
 function tmpConfig(): string {
   return join(mkdtempSync(join(tmpdir(), 'localflow-ar-')), 'config.json')
@@ -314,6 +315,34 @@ describe('M4 config: defaultAgent, per-agent overrides, theme', () => {
     expect(onDisk.defaultAgent).toBe('codex')
     expect(onDisk.agents.codex).toEqual({ extraArgs: '--sandbox', env: { KEY: 'v' } })
     expect(onDisk.environments).toEqual({ '1': 'web' })
+  })
+
+  it('rejects an override with a reserved env key; memory and disk unchanged', () => {
+    const file = tmpConfig()
+    const reg = new AgentRegistry(file, async () => null)
+    expect(reg.setAgentOverride('gemini', { extraArgs: '--keep', env: { SAFE: '1' } })).toEqual({
+      ok: true
+    })
+    const before = readFileSync(file, 'utf8')
+    // The single source of reserved names is the hook-adapter export — no
+    // string duplication here beyond building the fixture from it.
+    const reservedKey = RESERVED_ENV_KEYS[0]
+    const result = reg.setAgentOverride('gemini', {
+      env: { [reservedKey]: '/tmp/hijack', SAFE: '2' }
+    })
+    expect(result).toEqual({ ok: false, reserved: [reservedKey] })
+    expect(readFileSync(file, 'utf8')).toBe(before)
+    expect(reg.getAgentOverride('gemini')).toEqual({ extraArgs: '--keep', env: { SAFE: '1' } })
+  })
+
+  it('non-reserved env keys still save and report ok', () => {
+    const file = tmpConfig()
+    const reg = new AgentRegistry(file, async () => null)
+    const result = reg.setAgentOverride('codex', { env: { OLLAMA_HOST: 'http://127.0.0.1' } })
+    expect(result).toEqual({ ok: true })
+    expect(JSON.parse(readFileSync(file, 'utf8')).agents.codex).toEqual({
+      env: { OLLAMA_HOST: 'http://127.0.0.1' }
+    })
   })
 
   it('setTheme / getTheme round-trip', () => {

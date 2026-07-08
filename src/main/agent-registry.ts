@@ -10,6 +10,7 @@ import {
   type HookAdapterKind
 } from '../shared/agents'
 import { splitArgs } from '../shared/args'
+import { RESERVED_ENV_KEYS } from './hook-adapter'
 
 export interface AgentConfig {
   /** User-configured absolute paths per agent, overriding PATH lookup. */
@@ -218,13 +219,25 @@ export class AgentRegistry {
     return this.config.agents?.[agentId] ?? {}
   }
 
-  setAgentOverride(agentId: AgentId, override: AgentOverride): void {
+  /**
+   * Persists a per-agent override. Env keys owned by the hook injection
+   * (RESERVED_ENV_KEYS) are rejected before anything is written — user env
+   * overrides win last in the spawn merge, so letting one through would
+   * silently kill that agent's status feed.
+   */
+  setAgentOverride(
+    agentId: AgentId,
+    override: AgentOverride
+  ): { ok: true } | { ok: false; reserved: string[] } {
+    const reserved = Object.keys(override.env ?? {}).filter((k) => RESERVED_ENV_KEYS.includes(k))
+    if (reserved.length > 0) return { ok: false, reserved }
     const cleaned = parseAgentOverride(override)
     const agents = { ...this.config.agents }
     if (cleaned) agents[agentId] = cleaned
     else delete agents[agentId]
     this.config.agents = Object.keys(agents).length > 0 ? agents : undefined
     saveAgentConfig(this.configFile, this.config)
+    return { ok: true }
   }
 
   /** Shell-split extra args for spawn composition (empty when unset). */

@@ -2,6 +2,7 @@ import type {
   AgentId,
   AgentInfo,
   AgentOverride,
+  AgentOverrideResult,
   LastAgent,
   SessionInfo,
   SessionStatus
@@ -45,8 +46,13 @@ export interface LocalflowApi {
   setAgentPath(agentId: AgentId): Promise<AgentInfo[] | null>
   /** Sets the launcher's default agent; returns the refreshed list. */
   setDefaultAgent(agentId: AgentId): Promise<AgentInfo[] | null>
-  /** Sets per-agent extra args + env overrides; returns the refreshed list. */
-  setAgentOverride(agentId: AgentId, override: AgentOverride): Promise<AgentInfo[] | null>
+  /**
+   * Sets per-agent extra args + env overrides. Ok carries the refreshed
+   * list; env keys owned by localflow's hook injection are rejected with
+   * the offending names (writing them would kill the status feed). Null
+   * only for a malformed call (unknown agent / non-object override).
+   */
+  setAgentOverride(agentId: AgentId, override: AgentOverride): Promise<AgentOverrideResult | null>
   getLastAgent(): Promise<LastAgent | null>
   write(id: string, data: string): void
   resize(id: string, cols: number, rows: number): void

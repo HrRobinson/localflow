@@ -70,3 +70,13 @@ export interface AgentInfo {
   /** Per-agent env overrides applied at spawn. */
   env: Record<string, string>
 }
+
+/**
+ * Result of a per-agent override write (mirrors BindingChangeResult): an
+ * env override naming a key that localflow's hook injection owns is
+ * rejected with the offending names, because user env overrides win the
+ * spawn env merge and such a clobber would silently kill that agent's
+ * status feed.
+ */
+export type AgentOverrideResult =
+  { ok: true; agents: AgentInfo[] } | { ok: false; reserved: string[] }

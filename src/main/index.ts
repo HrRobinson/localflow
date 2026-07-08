@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
 import { join } from 'node:path'
 import { existsSync, writeFileSync } from 'node:fs'
-import type { AgentId, AgentOverride } from '../shared/types'
+import type { AgentId, AgentOverride, AgentOverrideResult } from '../shared/types'
 import { clampEnvironment } from '../shared/environment'
 import { normalizeHttpUrl, isHttpUrl } from '../shared/urls'
 import { startHookServer } from './hook-server'
@@ -289,13 +289,17 @@ app.whenReady().then(async () => {
     registry.setDefaultAgent(agentId)
     return registry.list()
   })
-  ipcMain.handle('agents:setOverride', (_e, agentId: AgentId, override: AgentOverride) => {
-    if (!VALID_AGENTS.includes(agentId) || typeof override !== 'object' || override === null) {
-      return null
+  ipcMain.handle(
+    'agents:setOverride',
+    async (_e, agentId: AgentId, override: AgentOverride): Promise<AgentOverrideResult | null> => {
+      if (!VALID_AGENTS.includes(agentId) || typeof override !== 'object' || override === null) {
+        return null
+      }
+      const result = registry.setAgentOverride(agentId, override)
+      if (!result.ok) return result
+      return { ok: true, agents: await registry.list() }
     }
-    registry.setAgentOverride(agentId, override)
-    return registry.list()
-  })
+  )
 
   createWindow()
 })

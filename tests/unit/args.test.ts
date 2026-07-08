@@ -19,4 +19,16 @@ describe('splitArgs', () => {
   it('supports empty quoted arguments', () => {
     expect(splitArgs('--flag ""')).toEqual(['--flag', ''])
   })
+  it('flushes the trailing partial token on an unbalanced quote', () => {
+    // No crash, no dropped input: an unterminated quote keeps consuming to
+    // the end of the string and the partial token is flushed as one arg.
+    expect(splitArgs('--x "unterminated span')).toEqual(['--x', 'unterminated span'])
+    expect(splitArgs('"')).toEqual([''])
+  })
+  it('pins embedded-quote semantics: backslash is literal, never an escape', () => {
+    // By design (see args.ts doc comment) there is no backslash escaping:
+    // the backslash stays a literal character and the quote after it still
+    // toggles quoting — so "a\"b" parses as a\b, not a"b.
+    expect(splitArgs('--x "a\\"b"')).toEqual(['--x', 'a\\b'])
+  })
 })

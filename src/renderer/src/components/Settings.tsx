@@ -26,6 +26,8 @@ const envToLines = (env: Record<string, string>): string =>
 export default function Settings(): React.JSX.Element {
   const [agents, setAgents] = useState<AgentInfo[] | null>(null)
   const [lastAgentId, setLastAgentId] = useState<AgentId | null>(null)
+  // Reserved env keys rejected by main for each agent's last save attempt.
+  const [reservedErrors, setReservedErrors] = useState<Partial<Record<AgentId, string[]>>>({})
 
   useEffect(() => {
     let cancelled = false
@@ -50,8 +52,16 @@ export default function Settings(): React.JSX.Element {
     extraArgs: string,
     env: Record<string, string>
   ): Promise<void> => {
-    const updated = await window.localflow.setAgentOverride(agentId, { extraArgs, env })
-    if (updated) setAgents(updated)
+    const result = await window.localflow.setAgentOverride(agentId, { extraArgs, env })
+    if (!result) return
+    if (result.ok) {
+      setAgents(result.agents)
+      setReservedErrors((prev) => ({ ...prev, [agentId]: undefined }))
+    } else {
+      // Rejected: leave agents (and the uncontrolled inputs' text) as they
+      // are so the user can fix the offending line, and name the keys.
+      setReservedErrors((prev) => ({ ...prev, [agentId]: result.reserved }))
+    }
   }
   const makeDefault = async (agentId: AgentId): Promise<void> => {
     const updated = await window.localflow.setDefaultAgent(agentId)
@@ -144,6 +154,14 @@ export default function Settings(): React.JSX.Element {
                     void saveOverride(agent.id, agent.extraArgs, parseEnvLines(e.target.value))
                   }
                 />
+                {(reservedErrors[agent.id]?.length ?? 0) > 0 && (
+                  <p className="env-error m-0 text-[11px] text-red-400">
+                    {reservedErrors[agent.id]!.join(', ')}{' '}
+                    {reservedErrors[agent.id]!.length > 1 ? 'are' : 'is'} managed by
+                    localflow&apos;s status feed and can&apos;t be overridden. The other values were
+                    not saved either — remove the line to save.
+                  </p>
+                )}
               </label>
             </div>
           ))}

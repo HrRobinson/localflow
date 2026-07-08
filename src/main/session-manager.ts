@@ -246,8 +246,9 @@ export class SessionManager {
           rows: 24,
           name: 'xterm-256color',
           // Precedence: process env < hook injection < user override. User
-          // overrides win last (explicit intent); hook vars are
-          // localflow-internal so they never realistically collide.
+          // overrides win last (explicit intent); collisions with the
+          // hook-owned vars cannot reach here — setAgentOverride rejects
+          // RESERVED_ENV_KEYS (hook-adapter.ts) at the config boundary.
           env: { ...process.env, ...injection.env, ...(spec.env ?? {}) }
         }
       )

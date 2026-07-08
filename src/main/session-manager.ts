@@ -1,7 +1,14 @@
 import { randomUUID } from 'node:crypto'
 import { basename } from 'node:path'
 import { spawn as ptySpawn } from 'node-pty'
-import type { AgentId, HookEvent, SessionInfo, SessionStatus } from '../shared/types'
+import type {
+  ActivityEntry,
+  ActivityEventKind,
+  AgentId,
+  HookEvent,
+  SessionInfo,
+  SessionStatus
+} from '../shared/types'
 import { clampEnvironment } from '../shared/environment'
 import { normalizeHttpUrl } from '../shared/urls'
 import { transition } from './state-machine'
@@ -61,6 +68,8 @@ interface Record_ {
   spawnedAt: number
   /** Rolling tail of recent output, used to explain instant exits. */
   tail: string
+  /** In-memory activity ring, last ACTIVITY_LIMIT entries; never persisted. */
+  activity: ActivityEntry[]
   /** Set by closeTerminal() right before killing the pty; the
    * eventual real onExit event checks this to avoid re-running the
    * instant-exit message heuristic against a deliberate close, and
@@ -69,6 +78,7 @@ interface Record_ {
 }
 
 const INSTANT_EXIT_MS = 5000
+const ACTIVITY_LIMIT = 200
 
 // Browser panes have no process; their Record_ still carries a SpawnSpec
 // because the type requires one. This filler is inert — every code path
@@ -88,6 +98,7 @@ export class SessionManager {
   private dataCbs: ((id: string, data: string) => void)[] = []
   private statusCbs: ((id: string, status: SessionStatus) => void)[] = []
   private changedCbs: (() => void)[] = []
+  private activityCbs: ((id: string, entry: ActivityEntry) => void)[] = []
 
   constructor(private opts: Options) {}
 
@@ -100,9 +111,21 @@ export class SessionManager {
   onSessionsChanged(cb: () => void): void {
     this.changedCbs.push(cb)
   }
+  onActivity(cb: (id: string, entry: ActivityEntry) => void): void {
+    this.activityCbs.push(cb)
+  }
 
   create(cwd: string, spec: SpawnSpec, environment: number): SessionInfo {
-    return this.spawn(randomUUID(), cwd, spec, false, basename(cwd), clampEnvironment(environment))
+    const info = this.spawn(
+      randomUUID(),
+      cwd,
+      spec,
+      false,
+      basename(cwd),
+      clampEnvironment(environment)
+    )
+    this.recordActivity(info.id, 'created')
+    return info
   }
 
   restore(
@@ -127,7 +150,7 @@ export class SessionManager {
       environment: clampEnvironment(environment),
       kind: 'terminal' as const
     }
-    this.sessions.set(id, { info, spec, pty: null, spawnedAt: 0, tail: '' })
+    this.sessions.set(id, { info, spec, pty: null, spawnedAt: 0, tail: '', activity: [] })
     this.changedCbs.forEach((cb) => cb())
     return info
   }
@@ -147,8 +170,16 @@ export class SessionManager {
       kind: 'browser',
       url: normalized
     }
-    this.sessions.set(info.id, { info, spec: BROWSER_SPEC, pty: null, spawnedAt: 0, tail: '' })
+    this.sessions.set(info.id, {
+      info,
+      spec: BROWSER_SPEC,
+      pty: null,
+      spawnedAt: 0,
+      tail: '',
+      activity: []
+    })
     this.changedCbs.forEach((cb) => cb())
+    this.recordActivity(info.id, 'created')
     return info
   }
 
@@ -173,7 +204,14 @@ export class SessionManager {
       kind: 'browser',
       url: normalized
     }
-    this.sessions.set(id, { info, spec: BROWSER_SPEC, pty: null, spawnedAt: 0, tail: '' })
+    this.sessions.set(id, {
+      info,
+      spec: BROWSER_SPEC,
+      pty: null,
+      spawnedAt: 0,
+      tail: '',
+      activity: []
+    })
     this.changedCbs.forEach((cb) => cb())
     return info
   }
@@ -199,9 +237,12 @@ export class SessionManager {
       // Reopen at the stored URL; `fresh` has no meaning without a
       // conversation to resume and is deliberately identical.
       this.setStatus(id, 'running')
+      this.recordActivity(id, 'reopened')
       return { ...rec.info }
     }
-    return this.spawn(id, rec.info.cwd, rec.spec, !fresh, rec.info.name, rec.info.environment)
+    const info = this.spawn(id, rec.info.cwd, rec.spec, !fresh, rec.info.name, rec.info.environment)
+    this.recordActivity(id, 'reopened')
+    return info
   }
 
   private spawn(
@@ -212,6 +253,9 @@ export class SessionManager {
     name: string,
     environment: number
   ): SessionInfo {
+    // A restart replaces the pty (and the Record_), but the durable session's
+    // activity history must survive — carry the existing ring forward.
+    const activity = this.sessions.get(id)?.activity ?? []
     const info: SessionInfo = {
       id,
       cwd,
@@ -244,7 +288,7 @@ export class SessionManager {
       const message = `Could not start '${spec.command}'. Check the agent's path in the launcher.`
       info.status = 'exited'
       info.message = message
-      this.sessions.set(id, { info, spec, pty: null, spawnedAt: 0, tail: '' })
+      this.sessions.set(id, { info, spec, pty: null, spawnedAt: 0, tail: '', activity })
       this.changedCbs.forEach((cb) => cb())
       this.dataCbs.forEach((cb) => cb(id, `\r\n${message}\r\n`))
       return info
@@ -257,7 +301,7 @@ export class SessionManager {
     // live pty (orphaning the resumed agent — unreachable by
     // write/delete/disposeAll) and forcing it back to exited with a bogus
     // "Exited right away" message.
-    const rec: Record_ = { info, spec, pty, spawnedAt: this.now(), tail: '' }
+    const rec: Record_ = { info, spec, pty, spawnedAt: this.now(), tail: '', activity }
     this.sessions.set(id, rec)
     pty.onData((d) => {
       if (this.disposed) return
@@ -296,6 +340,7 @@ export class SessionManager {
           : 'Exited right away with no output.'
       }
       this.setStatus(id, transition(this.status(id), 'pty-exit'))
+      this.recordActivity(id, 'exited')
     })
     this.changedCbs.forEach((cb) => cb())
     return info
@@ -305,6 +350,7 @@ export class SessionManager {
     const rec = this.sessions.get(e.paneId)
     if (!rec || rec.info.kind === 'browser') return
     this.setStatus(e.paneId, transition(rec.info.status, e.event))
+    this.recordActivity(e.paneId, e.event)
   }
 
   // The pty's fd can die at any moment (process exit races these calls),
@@ -332,6 +378,7 @@ export class SessionManager {
     if (rec.info.kind === 'browser') {
       if (rec.info.status === 'exited') return
       this.setStatus(id, 'exited')
+      this.recordActivity(id, 'closed')
       this.changedCbs.forEach((cb) => cb())
       return
     }
@@ -344,6 +391,7 @@ export class SessionManager {
     }
     rec.pty = null
     this.setStatus(id, 'exited')
+    this.recordActivity(id, 'closed')
     this.changedCbs.forEach((cb) => cb())
   }
 
@@ -376,6 +424,7 @@ export class SessionManager {
     const rec = this.sessions.get(id)
     if (!rec) return null
     rec.info.environment = clampEnvironment(environment)
+    this.recordActivity(id, 'moved')
     this.changedCbs.forEach((cb) => cb())
     return { ...rec.info }
   }
@@ -410,6 +459,21 @@ export class SessionManager {
     return extractPeekLines(rec.tail, maxLines)
   }
 
+  /** Append one entry to a session's ring (capped), notifying listeners. */
+  private recordActivity(id: string, kind: ActivityEventKind): void {
+    const rec = this.sessions.get(id)
+    if (!rec) return
+    const entry: ActivityEntry = { timestamp: this.now(), kind, status: rec.info.status }
+    rec.activity.push(entry)
+    if (rec.activity.length > ACTIVITY_LIMIT) rec.activity.shift()
+    this.activityCbs.forEach((cb) => cb(id, entry))
+  }
+
+  /** The session's activity ring, oldest first. Empty for unknown ids. */
+  getActivity(id: string): ActivityEntry[] {
+    return this.sessions.get(id)?.activity.map((e) => ({ ...e })) ?? []
+  }
+
   private now(): number {
     return (this.opts.now ?? Date.now)()
   }
@@ -421,6 +485,14 @@ export class SessionManager {
   private setStatus(id: string, status: SessionStatus): void {
     const rec = this.sessions.get(id)
     if (!rec || rec.info.status === status) return
+    // Track how long a session has kept the user waiting: stamp on entry into
+    // needs-you, clear on any exit from it (including 'exited'). The manager's
+    // clock keeps this deterministic in tests; in-memory only (never persisted).
+    if (status === 'needs-you') {
+      rec.info.needsYouSince = this.now()
+    } else {
+      delete rec.info.needsYouSince
+    }
     rec.info.status = status
     this.statusCbs.forEach((cb) => cb(id, status))
   }

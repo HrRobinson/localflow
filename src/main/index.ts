@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
 import { join } from 'node:path'
 import { existsSync, writeFileSync } from 'node:fs'
-import { execFile } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import type { AgentId } from '../shared/types'
 import { clampEnvironment } from '../shared/environment'
 import { normalizeHttpUrl, isHttpUrl } from '../shared/urls'
@@ -13,8 +13,8 @@ import { loadOrCreateKeybindings } from './keybindings-file'
 import { loadEnvironmentNames } from './environment-names'
 import { installWebviewPolicy } from './webview-policy'
 import { gitStatus, gitDiff } from './git'
-import { describeTool } from './tools'
-import { loadEditorCommand, DEFAULT_EDITOR_COMMAND } from './editor-config'
+import { describeTool, gateBin } from './tools'
+import { loadEditorCommand, splitCommandLine } from './editor-config'
 import type { Capabilities } from '../shared/git'
 
 if (process.env['LOCALFLOW_USER_DATA']) {
@@ -238,10 +238,23 @@ app.whenReady().then(async () => {
 
   // Escape-hatch tool resolution. An absolute-path env override is honored via
   // existsSync (tests point these at nonexistent/fixture paths so the suite
-  // never spawns a real login shell); otherwise the same login-shell PATH
-  // lookup agents use.
-  const resolveTool = (bin: string, override?: string): Promise<string | null> =>
-    override ? Promise.resolve(existsSync(override) ? override : null) : whichViaLoginShell(bin)
+  // never spawns a real login shell). Otherwise the token is security-gated
+  // first: whichViaLoginShell interpolates its argument into a shell line
+  // (`$SHELL -ilc "command -v ${bin}"`), so only vetted tokens may reach it —
+  // absolute paths (spaces fine) are checked with existsSync and never touch a
+  // shell; strict safe-identifier names get the login-shell PATH lookup a GUI
+  // app needs; anything else (config.json is user-edited) is unresolvable.
+  const resolveTool = (bin: string, override?: string): Promise<string | null> => {
+    if (override) return Promise.resolve(existsSync(override) ? override : null)
+    switch (gateBin(bin)) {
+      case 'absolute':
+        return Promise.resolve(existsSync(bin) ? bin : null)
+      case 'login-shell':
+        return whichViaLoginShell(bin)
+      case 'rejected':
+        return Promise.resolve(null)
+    }
+  }
 
   // Probed once and cached: a login-shell lookup is expensive, and the Changes
   // view re-enters often. Newly installed tools / edited editorCommand apply on
@@ -250,14 +263,18 @@ app.whenReady().then(async () => {
   ipcMain.handle('git:capabilities', async (): Promise<Capabilities> => {
     if (capsCache) return capsCache
     const editorCommand = loadEditorCommand(join(userData, 'config.json'))
-    const editorBin = editorCommand.split(/\s+/).filter(Boolean)[0] ?? DEFAULT_EDITOR_COMMAND
+    // Quote-aware split: null (unbalanced quote) or an empty first token means
+    // the configured command is unusable — report the editor unavailable.
+    const editorBin = splitCommandLine(editorCommand)?.[0] || null
     const [lazygitPath, editorPath] = await Promise.all([
       resolveTool('lazygit', process.env['LOCALFLOW_LAZYGIT_BIN']),
-      resolveTool(editorBin, process.env['LOCALFLOW_EDITOR_BIN'])
+      editorBin
+        ? resolveTool(editorBin, process.env['LOCALFLOW_EDITOR_BIN'])
+        : Promise.resolve<string | null>(null)
     ])
     capsCache = {
       lazygit: describeTool('lazygit', lazygitPath),
-      editor: { ...describeTool(editorBin, editorPath), command: editorCommand }
+      editor: { ...describeTool(editorBin ?? editorCommand, editorPath), command: editorCommand }
     }
     return capsCache
   })
@@ -276,14 +293,21 @@ app.whenReady().then(async () => {
   ipcMain.handle('git:openEditor', async (_e, id: string) => {
     const s = manager.get(id)
     if (!s || s.kind !== 'terminal' || !s.cwd) return false
-    const editorCommand = loadEditorCommand(join(userData, 'config.json'))
-    const parts = editorCommand.split(/\s+/).filter(Boolean)
-    const bin = parts[0] ?? DEFAULT_EDITOR_COMMAND
+    const parts = splitCommandLine(loadEditorCommand(join(userData, 'config.json')))
+    const bin = parts?.[0]
+    if (!parts || !bin) return false
     const resolved = await resolveTool(bin, process.env['LOCALFLOW_EDITOR_BIN'])
     if (!resolved) return false
     try {
-      // External, detached process — never a pane. unref so it can't hold quit.
-      const child = execFile(resolved, [...parts.slice(1), s.cwd], { cwd: s.cwd })
+      // External, detached, fire-and-forget process — never a pane. stdio
+      // ignored + unref so it can neither hold quit nor be killed by our pipe
+      // lifetime; async spawn failures get a log line instead of vanishing.
+      const child = spawn(resolved, [...parts.slice(1), s.cwd], {
+        cwd: s.cwd,
+        detached: true,
+        stdio: 'ignore'
+      })
+      child.on('error', (err) => console.error('editor launch failed', err))
       child.unref()
     } catch {
       return false

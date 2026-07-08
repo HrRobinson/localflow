@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { AgentId, AgentInfo } from '../../../shared/types'
+import KeybindingsEditor from './KeybindingsEditor'
 
 const card =
   'bg-surface-raised flex flex-col gap-2.5 rounded-[10px] border border-white/10 p-3.5 text-left'
@@ -87,12 +88,9 @@ export default function Settings(): React.JSX.Element {
         </div>
       </section>
 
-      <section className={`${card} opacity-60`}>
+      <section className="flex flex-col gap-3">
         <h3 className="m-0 text-[15px] font-semibold tracking-[-0.01em]">Keybindings</h3>
-        <p className="m-0 text-[13px] text-gray-500">
-          Remap focus/swap/enlarge actions. Coming in M4 — for now, edit keybindings.json in the
-          app&apos;s userData directory and restart.
-        </p>
+        <KeybindingsEditor />
       </section>
 
       <section className={`${card} opacity-60`}>

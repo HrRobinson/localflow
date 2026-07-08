@@ -1,22 +1,25 @@
 import { readFileSync } from 'node:fs'
-import { WORKSPACE_MIN, WORKSPACE_MAX } from '../shared/workspace'
 
 /**
  * Optional workspace names, hand-written in config.json as
  * `"workspaces": { "3": "backend" }` (config-as-code; the Settings GUI for
  * this arrives in M4). config.json is user-edited: validate every entry at
  * the boundary and drop anything malformed rather than throwing.
+ *
+ * Only canonical single-digit keys "1"-"9" (the WORKSPACE_MIN..WORKSPACE_MAX
+ * range) are accepted — numeric aliases like "01", "1.0", " 1", "1e0" are
+ * dropped, not coerced, so they can never silently collide with the
+ * canonical key.
  */
 export function parseWorkspaceNames(raw: unknown): Record<string, string> {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {}
   const out: Record<string, string> = {}
   for (const [key, value] of Object.entries(raw)) {
-    const n = Number(key)
-    if (!Number.isInteger(n) || n < WORKSPACE_MIN || n > WORKSPACE_MAX) continue
+    if (!/^[1-9]$/.test(key)) continue
     if (typeof value !== 'string') continue
     const trimmed = value.trim()
     if (trimmed.length === 0) continue
-    out[String(n)] = trimmed
+    out[key] = trimmed
   }
   return out
 }

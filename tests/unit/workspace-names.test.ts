@@ -25,4 +25,13 @@ describe('parseWorkspaceNames', () => {
   it('trims whitespace-padded names', () => {
     expect(parseWorkspaceNames({ '7': '  infra  ' })).toEqual({ '7': 'infra' })
   })
+
+  it('drops non-canonical numeric keys so they cannot collide with canonical ones', () => {
+    expect(parseWorkspaceNames({ '01': 'a' })).toEqual({})
+    expect(parseWorkspaceNames({ '1.0': 'b' })).toEqual({})
+    expect(parseWorkspaceNames({ ' 1': 'c' })).toEqual({})
+    expect(parseWorkspaceNames({ '1e0': 'd' })).toEqual({})
+    // A canonical key always wins outright — the alias is simply ignored.
+    expect(parseWorkspaceNames({ '1': 'web', '01': 'shadow' })).toEqual({ '1': 'web' })
+  })
 })

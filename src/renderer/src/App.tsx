@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import TerminalPane from './components/TerminalPane'
+import BrowserPane from './components/BrowserPane'
 import Landing from './components/Landing'
 import Settings from './components/Settings'
 import Sidebar from './components/Sidebar'
@@ -215,13 +216,7 @@ export default function App(): React.JSX.Element {
     // that would otherwise be swallowed or misinterpreted by the terminal.
     // Unmatched events are left completely untouched, falling through to
     // whichever terminal has focus.
-    const onKey = (e: KeyboardEvent): void => {
-      const match = bindings.find(([, binding]) => eventMatches(binding, e))
-      if (!match) return
-      const [action] = match
-      e.preventDefault()
-      e.stopPropagation()
-
+    const runAction = (action: KeyAction): void => {
       // go-up is available everywhere: shrink an enlarged pane, else leave
       // the environment view entirely. Same shrink-else-home semantics as
       // before this became a bound action.
@@ -304,8 +299,19 @@ export default function App(): React.JSX.Element {
         setOrder((cur) => swapInOrder(cur, activeId, neighbor))
       }
     }
+    const onKey = (e: KeyboardEvent): void => {
+      const match = bindings.find(([, binding]) => eventMatches(binding, e))
+      if (!match) return
+      e.preventDefault()
+      e.stopPropagation()
+      runAction(match[0])
+    }
+    const offForwarded = window.localflow.onKeyAction((action) => runAction(action))
     window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
+    return () => {
+      offForwarded()
+      window.removeEventListener('keydown', onKey, true)
+    }
   }, [])
 
   const showEnvironment =
@@ -336,18 +342,31 @@ export default function App(): React.JSX.Element {
             {order
               .map((id) => sessions.find((s) => s.id === id))
               .filter((s): s is SessionInfo => s != null && s.environment === environment)
-              .map((s) => (
-                <TerminalPane
-                  key={s.id}
-                  session={s}
-                  enlarged={enlarged === s.id}
-                  active={activeId === s.id}
-                  onToggleEnlarge={() => setEnlarged((cur) => (cur === s.id ? null : s.id))}
-                  onActivate={() => setActiveId(s.id)}
-                  onRestart={(fresh) => void restart(s.id, fresh)}
-                  onClose={() => void closeTerminal(s.id)}
-                />
-              ))}
+              .map((s) =>
+                s.kind === 'browser' ? (
+                  <BrowserPane
+                    key={s.id}
+                    session={s}
+                    enlarged={enlarged === s.id}
+                    active={activeId === s.id}
+                    onToggleEnlarge={() => setEnlarged((cur) => (cur === s.id ? null : s.id))}
+                    onActivate={() => setActiveId(s.id)}
+                    onReopen={() => void restart(s.id, false)}
+                    onClose={() => void closeTerminal(s.id)}
+                  />
+                ) : (
+                  <TerminalPane
+                    key={s.id}
+                    session={s}
+                    enlarged={enlarged === s.id}
+                    active={activeId === s.id}
+                    onToggleEnlarge={() => setEnlarged((cur) => (cur === s.id ? null : s.id))}
+                    onActivate={() => setActiveId(s.id)}
+                    onRestart={(fresh) => void restart(s.id, fresh)}
+                    onClose={() => void closeTerminal(s.id)}
+                  />
+                )
+              )}
           </div>
         ) : view === 'settings' ? (
           <Settings />

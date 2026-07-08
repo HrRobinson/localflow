@@ -175,14 +175,15 @@ with." First non-terminal pane type: an embedded **browser pane**
 
 ## M4 — Settings UI
 
+**Superseded by docs/superpowers/specs/2026-07-08-m4-settings-design.md
+(approved design; scope = keybindings editor + agent management + themes).**
+
 - Keybindings editor (click binding, press keys).
 - Agent management (paths, extra args, default agent).
-- **Provider tokens (user request 2026-07-07):** connect agents via API
-  tokens/keys per provider (e.g. ANTHROPIC_API_KEY, OPENAI_API_KEY,
-  GEMINI_API_KEY) configured in Settings and injected into that agent's
-  spawn env. Storage MUST use the OS keychain via Electron `safeStorage` —
-  never plain-text config.json. Config-as-code story: the config file keeps
-  a reference/alias, the secret itself lives in the keychain.
+- **Provider tokens — DROPPED (user decision 2026-07-08):** every supported
+  agent authenticates in-service with its own subscription or credit
+  account, so localflow never stores provider secrets. The safeStorage
+  design that stood here is void; do not resurrect it.
 - **Local LLMs (user request 2026-07-07):** first-class support for agents
   running against local models — per-agent env can point at local endpoints
   (e.g. Ollama's OpenAI-compatible API via base-URL overrides), and the
@@ -212,6 +213,9 @@ with." First non-terminal pane type: an embedded **browser pane**
 
 ## M7 — Abstract activity view (for non-technical "vibe coders")
 
+**Superseded by docs/superpowers/specs/2026-07-08-m7-activity-design.md
+(approved design; feed page + Overview stats strip folded in).**
+
 - An alternative to raw terminals: a plain-language activity feed / flow
   visualization per session ("editing 3 files", "running tests", "waiting for
   your approval") derived from the same hook events that drive status colors.
@@ -240,6 +244,9 @@ with." First non-terminal pane type: an embedded **browser pane**
   breadcrumb bar ships first (possibly with M3 workspaces).
 
 ## M6 — Changes / diff review
+
+**Superseded by docs/superpowers/specs/2026-07-08-m6-changes-design.md
+(approved design; read-only v1).**
 
 - Per-session Changes view (GitHub Desktop-style): git status file list of the
   session's cwd, syntax-highlighted diffs, `j/k` file/hunk navigation.

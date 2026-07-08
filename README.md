@@ -83,6 +83,19 @@ pane, and the sidebar lists non-empty environments with a worst-status dot
 `"environments": { "3": "backend" }`. The Overview always shows every
 session across all environments.
 
+## Browser panes
+
+An environment isn't only terminals: pick **Browser…** in the New session
+launcher and give it a URL (scheme optional — `localhost:5173` works) to put
+a web page in the grid — the localhost preview of what your agent is
+building, docs, a PR. Browser panes get a URL bar, back/forward/reload, and
+an open-in-system-browser button; they're violet while open (no status
+feed), persist across restarts at the URL you left them on, and close/reopen
+like any session. Embedded pages are sandboxed hard: permission prompts are
+auto-denied, navigation is confined to http(s), and popups open in your
+system browser. Keyboard combos (`cmd+1…9`, `cmd+u`, …) keep working while a
+page has focus.
+
 The Overview page is intentionally minimal: your latest sessions plus a
 single "New session" control. Agent detection, configured paths, and (later)
 keybindings/themes live on the **Settings** page, reachable from the

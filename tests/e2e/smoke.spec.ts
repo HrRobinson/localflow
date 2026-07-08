@@ -1,8 +1,10 @@
 import { test, expect, _electron as electron, type ElectronApplication } from '@playwright/test'
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join, dirname, basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import type { AddressInfo } from 'node:net'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
@@ -746,4 +748,79 @@ test('environments: switch, move, rollup dot, persistence', async () => {
   const win2 = await app2.firstWindow()
   await expect(win2.locator('[data-nav-environment="3"]')).toBeVisible()
   await app2.close()
+})
+
+test('browser pane: UI creation, chrome, close/reopen, persistence', async () => {
+  // Local page — no external network, no flake. Serves for the whole test.
+  const server = createServer((_req, res) => {
+    res.setHeader('Content-Type', 'text/html')
+    res.end('<!doctype html><title>fixture-page</title><h1>hello from fixture</h1>')
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const pageUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`
+
+  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const app = await launchApp(userData)
+  const win = await app.firstWindow()
+  await win.setViewportSize({ width: 1400, height: 900 })
+  await expect(win.locator('.new-session')).toBeVisible()
+
+  // Fully UI-driven creation — browser panes need no folder picker, so this
+  // is the first pane type whose whole creation path runs headless.
+  await win.locator('.landing select').selectOption('browser')
+  await expect(win.locator('.new-session')).toBeDisabled()
+  await win.locator('.url-input').fill(pageUrl)
+  await expect(win.locator('.new-session')).toBeEnabled()
+  await win.locator('.new-session').click()
+
+  // The pane mounts in the environment grid, violet (running), webview live.
+  const pane = win.locator('.pane')
+  await expect(pane).toHaveCount(1)
+  await expect(pane).toHaveAttribute('data-status', 'running')
+  await expect(pane.locator('.browser-view')).toHaveAttribute('src', pageUrl)
+  await expect(pane.locator('.url-bar')).toHaveValue(pageUrl)
+
+  // Chrome present; back/forward disabled on a fresh page, reload enabled.
+  await expect(pane.locator('.nav-back')).toBeDisabled()
+  await expect(pane.locator('.nav-forward')).toBeDisabled()
+  await expect(pane.locator('.nav-reload')).toBeEnabled()
+  await expect(pane.locator('.open-external')).toBeEnabled()
+
+  // Close → gray exited with the Reopen overlay (never deletes).
+  await pane.getByRole('button', { name: 'close', exact: true }).click()
+  await expect(pane).toHaveAttribute('data-status', 'exited')
+  await expect(pane.getByRole('button', { name: 'Reopen' })).toBeVisible()
+  await expect(pane.locator('.browser-view')).toHaveCount(0)
+
+  // Reopen → running again at the stored URL.
+  await pane.getByRole('button', { name: 'Reopen' }).click()
+  await expect(pane).toHaveAttribute('data-status', 'running')
+  await expect(pane.locator('.browser-view')).toHaveAttribute('src', pageUrl)
+
+  // Overview row: url subtitle, browser chip.
+  await win.getByRole('button', { name: 'Overview', exact: true }).click()
+  const row = win.locator('.session-row')
+  await expect(row).toContainText('browser')
+  await expect(row).toContainText(pageUrl)
+
+  await app.close()
+
+  // Relaunch: kind/url/environment persisted; pane restores as exited.
+  const saved = JSON.parse(readFileSync(join(userData, 'sessions.json'), 'utf8')) as Array<{
+    kind?: string
+    url?: string
+    environment?: number
+  }>
+  expect(saved[0]?.kind).toBe('browser')
+  expect(saved[0]?.url).toBe(pageUrl)
+  expect(saved[0]?.environment).toBe(1)
+
+  const app2 = await launchApp(userData)
+  const win2 = await app2.firstWindow()
+  const row2 = win2.locator('.session-row')
+  await expect(row2).toBeVisible()
+  await expect(row2.getByRole('button', { name: 'reopen', exact: true })).toBeVisible()
+
+  await app2.close()
+  server.close()
 })

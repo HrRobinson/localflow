@@ -77,7 +77,7 @@ Research (2026-07-06) confirmed both have Claude-like hooks systems:
 ## M3 — Workspaces (spec written 2026-07-08)
 
 AeroSpace-style workspaces: named containers for sessions, switched and
-managed entirely from the keyboard, glanceable from the sidebar.
+managed entirely from the keyboard, glanceable from the sidebar. **Renamed workspaces → environments in M3.5.**
 
 **Model.**
 
@@ -124,6 +124,8 @@ managed entirely from the keyboard, glanceable from the sidebar.
   M4); no workspace-scoped keybindings.
 
 ## M3.5 — Environments: browser panes (user idea 2026-07-08)
+
+**Superseded by docs/superpowers/specs/2026-07-08-m35-environments-design.md (approved design; shipped).**
 
 The grid generalizes beyond terminals: a pane is "a thing you're working
 with." First non-terminal pane type: an embedded **browser pane**

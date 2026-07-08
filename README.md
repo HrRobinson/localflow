@@ -68,6 +68,13 @@ press `cmd+escape` to shrink it back (bare Escape always goes to the agent).
 If a session has exited, its pane offers **Resume conversation** (relaunching
 with `claude --continue`, so you don't lose context) or **Start fresh**.
 
+When a session turns yellow (needs you), you can answer it without entering
+the terminal: an **approve** control appears on the pane header and on the
+session's Overview row. It always shows a peek of the agent's last output
+lines first — approving sends a single Enter to the session, accepting
+whatever prompt the agent is showing. `cmd+u` jumps straight to the next
+waiting pane (press again to cycle).
+
 The Overview page is intentionally minimal: your latest sessions plus a
 single "New session" control. Agent detection, configured paths, and (later)
 keybindings/themes live on the **Settings** page, reachable from the
@@ -102,6 +109,7 @@ given direction), so they work regardless of grid layout.
 | New session              | `cmd+enter`                                                   | jumps to Overview                                                                                                                                               |
 | Toggle sidebar           | `cmd+b`                                                       | hides/shows the sidebar (fullscreen-style focus mode)                                                                                                           |
 | Go up                    | `cmd+escape`                                                  | shrinks an enlarged pane, else goes to Overview                                                                                                                 |
+| Jump to attention        | `cmd+u`                                                       | focuses + enlarges the next pane that needs you; press again to cycle through all waiting panes                                                                 |
 
 Bare `Escape`, `Enter`, arrow keys, and every unmodified keystroke always
 reach the active terminal untouched — localflow only intercepts the exact
@@ -130,7 +138,8 @@ The file is a flat JSON object mapping action name to binding string:
   "close-pane": "cmd+w",
   "new-session": "cmd+enter",
   "go-up": "cmd+escape",
-  "toggle-sidebar": "cmd+b"
+  "toggle-sidebar": "cmd+b",
+  "focus-needs-you": "cmd+u"
 }
 ```
 

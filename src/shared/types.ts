@@ -9,6 +9,8 @@ export interface HookEvent {
 
 export type AgentId = 'claude' | 'codex' | 'gemini' | 'custom'
 
+export type SessionKind = 'terminal' | 'browser'
+
 export interface LastAgent {
   agentId: AgentId
   /** Only present when agentId === 'custom'. */
@@ -24,6 +26,10 @@ export interface SessionInfo {
   command: string
   /** Environment 1-9 this session lives on (one per customer/project, M3.5 rename). */
   environment: number
+  /** What this pane hosts. Absent in pre-M3.5 saved files ⇒ 'terminal'. */
+  kind: SessionKind
+  /** Browser panes only: the current URL, persisted as the user browses. */
+  url?: string
   message?: string
 }
 

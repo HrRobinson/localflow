@@ -11,6 +11,10 @@ const api: LocalflowApi = {
   renameSession: (id: string, name: string) => ipcRenderer.invoke('session:rename', id, name),
   setEnvironment: (id: string, environment: number) =>
     ipcRenderer.invoke('session:setEnvironment', id, environment),
+  createBrowserSession: (url: string, environment?: number) =>
+    ipcRenderer.invoke('session:createBrowser', url, environment),
+  setSessionUrl: (id: string, url: string) => ipcRenderer.invoke('session:setUrl', id, url),
+  openExternal: (url: string) => ipcRenderer.send('shell:openExternal', url),
   listSessions: () => ipcRenderer.invoke('session:list'),
   peekSession: (id: string, maxLines?: number) => ipcRenderer.invoke('session:peek', id, maxLines),
   listAgents: () => ipcRenderer.invoke('agents:list'),

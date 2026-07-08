@@ -44,4 +44,11 @@ describe('persistence', () => {
     expect(loaded.find((s) => s.id === 'a')?.environment).toBe(3)
     expect(loaded.find((s) => s.id === 'b')?.environment).toBeUndefined()
   })
+  it('round-trips kind and url for browser panes', () => {
+    const file = join(mkdtempSync(join(tmpdir(), 'localflow-p-')), 'sessions.json')
+    saveSessions(file, [{ id: 'b', cwd: '', kind: 'browser', url: 'https://example.com/' }])
+    const loaded = loadSavedSessions(file)
+    expect(loaded[0]?.kind).toBe('browser')
+    expect(loaded[0]?.url).toBe('https://example.com/')
+  })
 })

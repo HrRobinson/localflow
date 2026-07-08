@@ -9,7 +9,8 @@ const session = (id: string, status: SessionInfo['status'], environment = 1): Se
   status,
   agentId: 'claude',
   command: 'claude',
-  environment
+  environment,
+  kind: 'terminal'
 })
 
 const order = ['a', 'b', 'c', 'd']

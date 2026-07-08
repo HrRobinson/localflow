@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { existsSync, writeFileSync } from 'node:fs'
 import type { AgentId } from '../shared/types'
 import { clampEnvironment } from '../shared/environment'
+import { normalizeHttpUrl } from '../shared/urls'
 import { startHookServer } from './hook-server'
 import { SessionManager, type SpawnSpec } from './session-manager'
 import { loadSavedSessions, saveSessions } from './persistence'
@@ -134,18 +135,26 @@ app.whenReady().then(async () => {
   manager.onSessionsChanged(() =>
     saveSessions(
       sessionsFile,
-      manager.list().map(({ id, cwd, agentId, command, name, environment }) => ({
+      manager.list().map(({ id, cwd, agentId, command, name, environment, kind, url }) => ({
         id,
         cwd,
         agentId,
         command,
         name,
-        environment
+        environment,
+        kind,
+        url
       }))
     )
   )
 
   for (const saved of loadSavedSessions(sessionsFile)) {
+    if (saved.kind === 'browser') {
+      // restoreBrowser validates the stored URL; a hand-corrupted entry is
+      // dropped rather than restored as an unloadable pane.
+      manager.restoreBrowser(saved.id, saved.url ?? '', saved.name, saved.environment)
+      continue
+    }
     const agentId = VALID_AGENTS.includes(saved.agentId as AgentId)
       ? (saved.agentId as AgentId)
       : 'claude'
@@ -187,6 +196,15 @@ app.whenReady().then(async () => {
   ipcMain.handle('session:rename', (_e, id: string, name: string) => manager.rename(id, name))
   ipcMain.handle('session:setEnvironment', (_e, id: string, environment: number) =>
     manager.setEnvironment(id, environment)
+  )
+  ipcMain.handle('session:createBrowser', (_e, url: string, environment?: number) => {
+    // Validate at the boundary; manager.createBrowser re-validates (throws),
+    // so reject cleanly here instead of surfacing an exception to the bridge.
+    if (typeof url !== 'string' || normalizeHttpUrl(url) === null) return null
+    return manager.createBrowser(url, clampEnvironment(environment))
+  })
+  ipcMain.handle('session:setUrl', (_e, id: string, url: string) =>
+    typeof url === 'string' ? manager.setUrl(id, url) : null
   )
   ipcMain.handle('session:list', () => manager.list())
   ipcMain.handle('session:peek', (_e, id: string, maxLines?: number) => {

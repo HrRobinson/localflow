@@ -11,6 +11,10 @@ export interface SavedSession {
   name?: string
   /** Environment 1-9; absent on files predating M3 (falls back to 1). */
   environment?: number
+  /** 'browser' for browser panes; absent ⇒ 'terminal'. */
+  kind?: string
+  /** Browser panes only. */
+  url?: string
 }
 
 export function loadSavedSessions(file: string): SavedSession[] {

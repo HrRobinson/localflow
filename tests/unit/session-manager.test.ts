@@ -212,7 +212,8 @@ describe('SessionManager', () => {
       status: 'exited',
       agentId: 'claude',
       command: 'fake-claude',
-      environment: 1
+      environment: 1,
+      kind: 'terminal'
     })
     expect(spawnCalls).toHaveLength(0)
   })
@@ -482,6 +483,56 @@ describe('SessionManager', () => {
       mgr.closeTerminal(info.id)
       const restarted = mgr.restart(info.id)
       expect(restarted.environment).toBe(4)
+    })
+  })
+
+  describe('browser sessions', () => {
+    it('createBrowser makes a running, pty-less record named after the host', () => {
+      const info = mgr.createBrowser('https://docs.example.com/guide', 3)
+      expect(info.kind).toBe('browser')
+      expect(info.status).toBe('running')
+      expect(info.url).toBe('https://docs.example.com/guide')
+      expect(info.name).toBe('docs.example.com')
+      expect(info.environment).toBe(3)
+      expect(info.cwd).toBe('')
+    })
+
+    it('closeTerminal exits a browser pane; restart reopens it', () => {
+      const info = mgr.createBrowser('https://example.com/', 1)
+      mgr.closeTerminal(info.id)
+      expect(mgr.list().find((s) => s.id === info.id)?.status).toBe('exited')
+      const reopened = mgr.restart(info.id)
+      expect(reopened.status).toBe('running')
+      expect(reopened.url).toBe('https://example.com/')
+    })
+
+    it('write/resize/peek are safe no-ops on browser panes', () => {
+      const info = mgr.createBrowser('https://example.com/', 1)
+      expect(() => mgr.write(info.id, 'x')).not.toThrow()
+      expect(() => mgr.resize(info.id, 80, 24)).not.toThrow()
+      expect(mgr.peek(info.id)).toEqual([])
+    })
+
+    it('setUrl updates and persists-notifies; rejects unknown ids', () => {
+      const info = mgr.createBrowser('https://example.com/', 1)
+      const updated = mgr.setUrl(info.id, 'https://example.com/deep/page')
+      expect(updated?.url).toBe('https://example.com/deep/page')
+      expect(mgr.setUrl('nope', 'https://x.y/')).toBeNull()
+    })
+
+    it('restoreBrowser recreates an exited pane; invalid url yields null', () => {
+      const info = mgr.restoreBrowser('rb-1', 'https://example.com/', 'My docs', 2)
+      expect(info?.status).toBe('exited')
+      expect(info?.kind).toBe('browser')
+      expect(info?.environment).toBe(2)
+      expect(info?.name).toBe('My docs')
+      expect(mgr.restoreBrowser('rb-2', 'file:///etc/passwd')).toBeNull()
+    })
+
+    it('hook events never touch browser panes', () => {
+      const info = mgr.createBrowser('https://example.com/', 1)
+      mgr.applyHookEvent({ paneId: info.id, event: 'Notification' })
+      expect(mgr.list().find((s) => s.id === info.id)?.status).toBe('running')
     })
   })
 })

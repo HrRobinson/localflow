@@ -266,3 +266,58 @@ describe('DEFAULT_BINDINGS', () => {
     expect(DEFAULT_BINDINGS['toggle-sidebar']).toBe('cmd+b')
   })
 })
+
+describe('workspace bindings', () => {
+  it('defaults workspace-N to cmd+N and move-to-workspace-N to ctrl+N', () => {
+    for (let n = 1; n <= 9; n++) {
+      expect(DEFAULT_BINDINGS[`workspace-${n}` as KeyAction]).toBe(`cmd+${n}`)
+      expect(DEFAULT_BINDINGS[`move-to-workspace-${n}` as KeyAction]).toBe(`ctrl+${n}`)
+    }
+  })
+
+  it('matches a digit binding via e.code when shift turns the key into a symbol', () => {
+    const parsed = parseBinding('cmd+shift+1')!
+    // US layout: shift+1 reports key '!' — only e.code identifies the digit.
+    const event = {
+      key: '!',
+      code: 'Digit1',
+      metaKey: true,
+      ctrlKey: false,
+      altKey: false,
+      shiftKey: true
+    }
+    expect(eventMatches(parsed, event)).toBe(true)
+  })
+
+  it('still matches a plain digit binding via e.key without a code', () => {
+    const parsed = parseBinding('cmd+3')!
+    const event = { key: '3', metaKey: true, ctrlKey: false, altKey: false, shiftKey: false }
+    expect(eventMatches(parsed, event)).toBe(true)
+  })
+
+  it('does not cross-match different digits', () => {
+    const parsed = parseBinding('cmd+shift+1')!
+    const event = {
+      key: '@',
+      code: 'Digit2',
+      metaKey: true,
+      ctrlKey: false,
+      altKey: false,
+      shiftKey: true
+    }
+    expect(eventMatches(parsed, event)).toBe(false)
+  })
+
+  it('letter bindings are unaffected by the code fallback', () => {
+    const parsed = parseBinding('cmd+shift+h')!
+    const event = {
+      key: 'H',
+      code: 'KeyH',
+      metaKey: true,
+      ctrlKey: false,
+      altKey: false,
+      shiftKey: true
+    }
+    expect(eventMatches(parsed, event)).toBe(true)
+  })
+})

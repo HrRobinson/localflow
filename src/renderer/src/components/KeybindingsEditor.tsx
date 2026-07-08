@@ -164,18 +164,27 @@ export default function KeybindingsEditor(): React.JSX.Element {
         }
       })
     }
+    // OS-level focus loss mid-capture (app switch, screen lock) cancels: a
+    // stranded guard attribute would silence App's dispatcher app-wide.
+    const onBlur = (): void => setCapturing(null)
     window.addEventListener('keydown', handler, true)
+    window.addEventListener('blur', onBlur)
     return () => {
       delete document.documentElement.dataset.capturingKeybind
       window.removeEventListener('keydown', handler, true)
+      window.removeEventListener('blur', onBlur)
     }
   }, [capturing])
 
+  // Any reset click means the user abandoned an in-flight capture: disarm it
+  // so the row shows the just-reset binding and the guard attribute clears.
   const resetAll = (): void => {
+    setCapturing(null)
     setPendingIssue(null)
     void window.localflow.resetAllKeybindings().then(setBindings)
   }
   const resetOne = (action: KeyAction): void => {
+    setCapturing(null)
     setPendingIssue((cur) => (cur?.action === action ? null : cur))
     void window.localflow.resetKeybinding(action).then(setBindings)
   }

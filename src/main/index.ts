@@ -11,6 +11,7 @@ import { AgentRegistry } from './agent-registry'
 import { loadOrCreateKeybindings } from './keybindings-file'
 import { loadEnvironmentNames } from './environment-names'
 import { installWebviewPolicy } from './webview-policy'
+import { gitStatus, gitDiff } from './git'
 
 if (process.env['LOCALFLOW_USER_DATA']) {
   app.setPath('userData', process.env['LOCALFLOW_USER_DATA'])
@@ -216,6 +217,20 @@ app.whenReady().then(async () => {
   ipcMain.handle('session:setUrl', (_e, id: string, url: string) =>
     typeof url === 'string' ? manager.setUrl(id, url) : null
   )
+  ipcMain.handle('git:status', (_e, id: string) => {
+    // cwd is resolved from the session record here — NEVER trusted from the
+    // renderer. Browser panes (and unknown ids) have no working tree.
+    const s = manager.get(id)
+    if (!s || s.kind !== 'terminal') return { repo: false }
+    return gitStatus(s.cwd)
+  })
+  ipcMain.handle('git:diff', (_e, id: string, path: string, staged: boolean) => {
+    const s = manager.get(id)
+    if (!s || s.kind !== 'terminal' || typeof path !== 'string') {
+      return { text: '', truncated: false }
+    }
+    return gitDiff(s.cwd, path, staged === true)
+  })
   ipcMain.handle('session:list', () => manager.list())
   ipcMain.handle('session:peek', (_e, id: string, maxLines?: number) => {
     // Clamp at the boundary: the renderer is not trusted with the range.

@@ -403,6 +403,12 @@ export class SessionManager {
     return [...this.sessions.values()].map((r) => ({ ...r.info }))
   }
 
+  /** A snapshot of one session's info, or null if the id is unknown. */
+  get(id: string): SessionInfo | null {
+    const rec = this.sessions.get(id)
+    return rec ? { ...rec.info } : null
+  }
+
   /** Last `maxLines` cleaned output lines — the approve control's peek. */
   peek(id: string, maxLines = 5): string[] {
     const rec = this.sessions.get(id)

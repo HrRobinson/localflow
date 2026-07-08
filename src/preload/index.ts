@@ -41,7 +41,10 @@ const api: LocalflowApi = {
     ipcRenderer.on('keybinding:action', listener)
     return () => ipcRenderer.removeListener('keybinding:action', listener)
   },
-  getEnvironmentNames: () => ipcRenderer.invoke('environments:getNames')
+  getEnvironmentNames: () => ipcRenderer.invoke('environments:getNames'),
+  gitStatus: (id: string) => ipcRenderer.invoke('git:status', id),
+  gitDiff: (id: string, path: string, staged: boolean) =>
+    ipcRenderer.invoke('git:diff', id, path, staged)
 }
 
 contextBridge.exposeInMainWorld('localflow', api)

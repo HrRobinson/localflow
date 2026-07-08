@@ -1,5 +1,6 @@
 import type { AgentId, AgentInfo, LastAgent, SessionInfo, SessionStatus } from './types'
 import type { KeyAction } from './keybindings'
+import type { GitStatus, DiffResult } from './git'
 
 export interface LocalflowApi {
   /**
@@ -46,4 +47,8 @@ export interface LocalflowApi {
   onKeyAction(cb: (action: KeyAction) => void): () => void
   /** Optional hand-configured environment names from config.json ("3" -> "backend"). */
   getEnvironmentNames(): Promise<Record<string, string>>
+  /** Working-tree status for a session's repo. `repo:false` when the cwd isn't a git repo (or the session has none). */
+  gitStatus(id: string): Promise<GitStatus>
+  /** Diff text for one path at one layer. Untracked files come back as full additions; size-capped. */
+  gitDiff(id: string, path: string, staged: boolean): Promise<DiffResult>
 }

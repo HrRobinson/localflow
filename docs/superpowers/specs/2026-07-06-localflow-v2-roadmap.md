@@ -94,7 +94,8 @@ managed entirely from the keyboard, glanceable from the sidebar.
 - `workspace-1…9` (default `cmd+1…9`): switch to that workspace's terminals
   grid. Switching to an empty workspace shows the grid's empty state with a
   "New session here" affordance.
-- `move-to-workspace-1…9` (default `cmd+shift+1…9`): move the active pane's
+- `move-to-workspace-1…9` (default `ctrl+1…9`; decided 2026-07-08 — macOS
+  globally owns cmd+shift+3/4/5 for screenshots): move the active pane's
   session to that workspace; focus follows per AeroSpace's
   `move-node-to-workspace --focus-follows-window` feel (decide during
   planning; default: focus stays, pane leaves the grid).

@@ -9,6 +9,8 @@ export interface SavedSession {
   command?: string
   /** User-editable label; absent on files predating M1.6 (falls back to basename(cwd)). */
   name?: string
+  /** Workspace 1-9; absent on files predating M3 (falls back to 1). */
+  workspace?: number
 }
 
 export function loadSavedSessions(file: string): SavedSession[] {

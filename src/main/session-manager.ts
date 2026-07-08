@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { basename } from 'node:path'
 import { spawn as ptySpawn } from 'node-pty'
 import type { AgentId, HookEvent, SessionInfo, SessionStatus } from '../shared/types'
+import { clampWorkspace } from '../shared/workspace'
 import { transition } from './state-machine'
 import { hasHookAdapter, type HookAdapterKind } from '../shared/agents'
 import { buildHookInjection } from './hook-adapter'
@@ -88,11 +89,17 @@ export class SessionManager {
     this.changedCbs.push(cb)
   }
 
-  create(cwd: string, spec: SpawnSpec): SessionInfo {
-    return this.spawn(randomUUID(), cwd, spec, false, basename(cwd))
+  create(cwd: string, spec: SpawnSpec, workspace: number): SessionInfo {
+    return this.spawn(randomUUID(), cwd, spec, false, basename(cwd), clampWorkspace(workspace))
   }
 
-  restore(id: string, cwd: string, spec: SpawnSpec, name?: string): SessionInfo {
+  restore(
+    id: string,
+    cwd: string,
+    spec: SpawnSpec,
+    name?: string,
+    workspace?: unknown
+  ): SessionInfo {
     // Defense in depth: a hand-edited sessions.json can hand us a non-string
     // name (e.g. `"name": 123`) — treat that as absent rather than throwing
     // on .trim() before IPC is even registered. Store the trimmed value so
@@ -104,7 +111,8 @@ export class SessionManager {
       name: trimmed.length > 0 ? trimmed : basename(cwd),
       status: 'exited',
       agentId: spec.agentId,
-      command: spec.command
+      command: spec.command,
+      workspace: clampWorkspace(workspace)
     }
     this.sessions.set(id, { info, spec, pty: null, spawnedAt: 0, tail: '' })
     this.changedCbs.forEach((cb) => cb())
@@ -115,7 +123,7 @@ export class SessionManager {
   restart(id: string, fresh = false): SessionInfo {
     const rec = this.sessions.get(id)
     if (!rec || rec.info.status !== 'exited') throw new Error(`cannot restart session ${id}`)
-    return this.spawn(id, rec.info.cwd, rec.spec, !fresh, rec.info.name)
+    return this.spawn(id, rec.info.cwd, rec.spec, !fresh, rec.info.name, rec.info.workspace)
   }
 
   private spawn(
@@ -123,7 +131,8 @@ export class SessionManager {
     cwd: string,
     spec: SpawnSpec,
     resume: boolean,
-    name: string
+    name: string,
+    workspace: number
   ): SessionInfo {
     const info: SessionInfo = {
       id,
@@ -132,7 +141,8 @@ export class SessionManager {
       // Hook-fed agents report their own states; others we only know as alive.
       status: hasHookAdapter(spec.hookAdapter) ? 'idle' : 'running',
       agentId: spec.agentId,
-      command: spec.command
+      command: spec.command,
+      workspace
     }
     let pty: PtyLike
     try {
@@ -272,6 +282,15 @@ export class SessionManager {
       rec.info.name = trimmed
       this.changedCbs.forEach((cb) => cb())
     }
+    return { ...rec.info }
+  }
+
+  /** Moves a session to another workspace (1-9, clamped). Null for unknown id. */
+  setWorkspace(id: string, workspace: number): SessionInfo | null {
+    const rec = this.sessions.get(id)
+    if (!rec) return null
+    rec.info.workspace = clampWorkspace(workspace)
+    this.changedCbs.forEach((cb) => cb())
     return { ...rec.info }
   }
 

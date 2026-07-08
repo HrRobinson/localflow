@@ -13,6 +13,24 @@ export type KeyAction =
   | 'go-up'
   | 'toggle-sidebar'
   | 'focus-needs-you'
+  | 'workspace-1'
+  | 'workspace-2'
+  | 'workspace-3'
+  | 'workspace-4'
+  | 'workspace-5'
+  | 'workspace-6'
+  | 'workspace-7'
+  | 'workspace-8'
+  | 'workspace-9'
+  | 'move-to-workspace-1'
+  | 'move-to-workspace-2'
+  | 'move-to-workspace-3'
+  | 'move-to-workspace-4'
+  | 'move-to-workspace-5'
+  | 'move-to-workspace-6'
+  | 'move-to-workspace-7'
+  | 'move-to-workspace-8'
+  | 'move-to-workspace-9'
 
 export const DEFAULT_BINDINGS: Record<KeyAction, string> = {
   'focus-left': 'cmd+h',
@@ -28,7 +46,25 @@ export const DEFAULT_BINDINGS: Record<KeyAction, string> = {
   'new-session': 'cmd+enter',
   'go-up': 'cmd+escape',
   'toggle-sidebar': 'cmd+b',
-  'focus-needs-you': 'cmd+u'
+  'focus-needs-you': 'cmd+u',
+  'workspace-1': 'cmd+1',
+  'workspace-2': 'cmd+2',
+  'workspace-3': 'cmd+3',
+  'workspace-4': 'cmd+4',
+  'workspace-5': 'cmd+5',
+  'workspace-6': 'cmd+6',
+  'workspace-7': 'cmd+7',
+  'workspace-8': 'cmd+8',
+  'workspace-9': 'cmd+9',
+  'move-to-workspace-1': 'ctrl+1',
+  'move-to-workspace-2': 'ctrl+2',
+  'move-to-workspace-3': 'ctrl+3',
+  'move-to-workspace-4': 'ctrl+4',
+  'move-to-workspace-5': 'ctrl+5',
+  'move-to-workspace-6': 'ctrl+6',
+  'move-to-workspace-7': 'ctrl+7',
+  'move-to-workspace-8': 'ctrl+8',
+  'move-to-workspace-9': 'ctrl+9'
 }
 
 /**
@@ -55,6 +91,8 @@ export interface KeyEventLike {
   ctrlKey: boolean
   altKey: boolean
   shiftKey: boolean
+  /** KeyboardEvent.code — needed to identify digits under shift (key becomes '!' etc.). */
+  code?: string
 }
 
 const NAMED_KEY_MAP: Record<string, string> = {
@@ -140,6 +178,12 @@ export function eventMatches(binding: ParsedBinding, e: KeyEventLike): boolean {
     binding.shift !== e.shiftKey
   ) {
     return false
+  }
+
+  // Digits need physical-key matching: shift+1 reports key '!' (layout-
+  // dependent), so a digit binding also accepts the matching e.code.
+  if (/^[0-9]$/.test(binding.key) && e.code === `Digit${binding.key}`) {
+    return true
   }
 
   // Check key case-insensitively

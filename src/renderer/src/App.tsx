@@ -13,6 +13,7 @@ import {
   type KeyAction,
   type ParsedBinding
 } from '../../shared/keybindings'
+import { clampWorkspace } from '../../shared/workspace'
 import type { AgentId, SessionInfo } from '../../shared/types'
 
 // Which pane-nav direction each focus-*/swap-* action moves in.
@@ -39,6 +40,10 @@ export default function App(): React.JSX.Element {
   const [order, setOrder] = useState<string[]>([])
   // The app opens on the home overview; terminals are entered explicitly.
   const [view, setView] = useState<'home' | 'terminals' | 'settings'>('home')
+  // Which workspace's grid is visible. Sessions on other workspaces stay
+  // mounted-invisible? No — they simply don't render; their ptys live in
+  // main regardless, so nothing is lost when a pane isn't shown.
+  const [workspace, setWorkspace] = useState(1)
 
   const refresh = useCallback(async () => {
     const list = await window.localflow.listSessions()
@@ -70,7 +75,12 @@ export default function App(): React.JSX.Element {
   }, [refresh])
 
   const createSession = async (agentId: AgentId, customCommand?: string): Promise<void> => {
-    const created = await window.localflow.createSession(agentId, undefined, customCommand)
+    const created = await window.localflow.createSession(
+      agentId,
+      undefined,
+      customCommand,
+      workspace
+    )
     if (created) {
       setView('terminals')
       // A pane enlarged before we left the terminals view would otherwise
@@ -103,13 +113,22 @@ export default function App(): React.JSX.Element {
     setEnlarged((cur) => (cur === id ? null : cur))
     setActiveId((cur) => {
       if (cur !== id) return cur
+      const visible = order.filter(
+        (oid) => oid !== id && sessions.find((s) => s.id === oid)?.workspace === workspace
+      )
       const idx = order.indexOf(id)
-      if (idx === -1) return null
-      return order[idx + 1] ?? order[idx - 1] ?? null
+      const after = order.slice(idx + 1).find((oid) => visible.includes(oid))
+      const before = [...order.slice(0, idx)].reverse().find((oid) => visible.includes(oid))
+      return after ?? before ?? null
     })
     await refresh()
   }
   const openSession = (id: string): void => {
+    // Opening a session anywhere (sidebar, overview, cmd+u) must also make
+    // its workspace the visible one — a focused pane in a hidden workspace
+    // would be unreachable.
+    const target = sessions.find((s) => s.id === id)
+    if (target) setWorkspace(target.workspace)
     setView('terminals')
     setEnlarged(sessions.length > 1 ? id : null)
     setActiveId(id)
@@ -119,15 +138,64 @@ export default function App(): React.JSX.Element {
   // e.g. with restored sessions activeId starts out null.
   const enterTerminals = (): void => {
     setView('terminals')
-    setActiveId((cur) => (cur !== null && order.includes(cur) ? cur : (order[0] ?? null)))
+    setActiveId((cur) => {
+      const visible = order.filter(
+        (id) => sessions.find((s) => s.id === id)?.workspace === workspace
+      )
+      return cur !== null && visible.includes(cur) ? cur : (visible[0] ?? null)
+    })
+  }
+  // Switching workspaces re-scopes focus: the active/enlarged pane must be
+  // one of the target workspace's panes, or null.
+  const switchWorkspace = (n: number): void => {
+    const target = clampWorkspace(n)
+    setWorkspace(target)
+    setView('terminals')
+    const firstVisible =
+      order.find((id) => sessions.find((s) => s.id === id)?.workspace === target) ?? null
+    setActiveId((cur) =>
+      cur !== null && sessions.find((s) => s.id === cur)?.workspace === target ? cur : firstVisible
+    )
+    setEnlarged((cur) =>
+      cur !== null && sessions.find((s) => s.id === cur)?.workspace === target ? cur : null
+    )
+  }
+  const moveToWorkspace = async (id: string, n: number): Promise<void> => {
+    await window.localflow.setWorkspace(id, n)
+    // The pane leaves the visible grid (spec: focus stays behind): re-scope
+    // focus/enlarge exactly like a closed pane. afterPaneGone ends with its
+    // own refresh(), so no separate refresh is needed here.
+    await afterPaneGone(id)
   }
 
   // The dispatcher's keydown handler is a stable closure attached once on
   // mount, so it reads current state through a ref kept in sync every
   // render rather than through the effect's own stale closure.
-  const liveRef = useRef({ view, activeId, order, enlarged, sessions, closeTerminal, openSession })
+  const liveRef = useRef({
+    view,
+    activeId,
+    order,
+    enlarged,
+    sessions,
+    workspace,
+    closeTerminal,
+    openSession,
+    switchWorkspace,
+    moveToWorkspace
+  })
   useEffect(() => {
-    liveRef.current = { view, activeId, order, enlarged, sessions, closeTerminal, openSession }
+    liveRef.current = {
+      view,
+      activeId,
+      order,
+      enlarged,
+      sessions,
+      workspace,
+      closeTerminal,
+      openSession,
+      switchWorkspace,
+      moveToWorkspace
+    }
   })
 
   useEffect(() => {
@@ -181,9 +249,14 @@ export default function App(): React.JSX.Element {
         const target = nextNeedsYou(
           live.order,
           live.sessions,
-          live.view === 'terminals' ? live.activeId : null
+          live.view === 'terminals' ? live.activeId : null,
+          live.workspace
         )
         if (target) live.openSession(target)
+        return
+      }
+      if (action.startsWith('workspace-')) {
+        liveRef.current.switchWorkspace(Number(action.slice('workspace-'.length)))
         return
       }
 
@@ -193,6 +266,10 @@ export default function App(): React.JSX.Element {
       if (live.view !== 'terminals' || live.activeId === null) return
       const activeId = live.activeId
 
+      if (action.startsWith('move-to-workspace-')) {
+        void live.moveToWorkspace(activeId, Number(action.slice('move-to-workspace-'.length)))
+        return
+      }
       if (action === 'enlarge-toggle') {
         setEnlarged((cur) => (cur === activeId ? null : activeId))
         return
@@ -229,7 +306,7 @@ export default function App(): React.JSX.Element {
     return () => window.removeEventListener('keydown', onKey, true)
   }, [])
 
-  const showTerminals = view === 'terminals' && sessions.length > 0
+  const showTerminals = view === 'terminals' && sessions.some((s) => s.workspace === workspace)
 
   return (
     <div className="flex min-h-0 flex-1">
@@ -238,6 +315,8 @@ export default function App(): React.JSX.Element {
           sessions={sessions}
           view={showTerminals ? 'terminals' : view === 'settings' ? 'settings' : 'home'}
           activeId={activeId}
+          workspace={workspace}
+          onSwitchWorkspace={switchWorkspace}
           onHome={() => setView('home')}
           onTerminals={enterTerminals}
           onSettings={() => setView('settings')}
@@ -253,7 +332,7 @@ export default function App(): React.JSX.Element {
           <div className="grid flex-1 auto-rows-[minmax(300px,1fr)] grid-cols-[repeat(auto-fit,minmax(460px,1fr))] gap-2.5 overflow-auto px-3 pt-3 pb-3">
             {order
               .map((id) => sessions.find((s) => s.id === id))
-              .filter((s): s is SessionInfo => s != null)
+              .filter((s): s is SessionInfo => s != null && s.workspace === workspace)
               .map((s) => (
                 <TerminalPane
                   key={s.id}

@@ -96,6 +96,19 @@ body {
   background: var(--running);
 }
 
+[data-nav-workspace] .dot[data-status='working'] {
+  background: var(--working);
+}
+[data-nav-workspace] .dot[data-status='needs-you'] {
+  background: var(--needs-you);
+}
+[data-nav-workspace] .dot[data-status='idle'] {
+  background: var(--idle);
+}
+[data-nav-workspace] .dot[data-status='running'] {
+  background: var(--running);
+}
+
 .session-status[data-status='needs-you'] {
   color: var(--needs-you);
 }

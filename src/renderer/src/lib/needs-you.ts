@@ -1,25 +1,28 @@
 import type { SessionInfo } from '../../../shared/types'
 
 /**
- * Picks the pane the jump-to-attention key should land on: the first
- * needs-you session strictly after `activeId` in display order, wrapping —
- * so repeated presses cycle through every waiting pane, and the active pane
- * itself is returned only when it is the sole one waiting. `activeId` null
- * or unknown (e.g. pressed from the home overview) starts the scan from the
- * top of the order. Pure; returns null when nothing needs attention.
+ * Picks the pane the jump-to-attention key should land on. Candidates are
+ * every needs-you session, ordered: current-workspace panes first (in
+ * display order), then panes on other workspaces (in display order) —
+ * attention outranks workspace boundaries, but nearby panes win ties.
+ * The result is the candidate strictly after `activeId` in that combined
+ * ring, wrapping — so repeated presses cycle through every waiting pane
+ * everywhere. `activeId` null or unknown starts from the ring's top.
+ * Pure; returns null when nothing needs attention.
  */
 export function nextNeedsYou(
   order: string[],
   sessions: SessionInfo[],
-  activeId: string | null
+  activeId: string | null,
+  currentWorkspace: number
 ): string | null {
-  if (order.length === 0) return null
-  const waiting = new Set(sessions.filter((s) => s.status === 'needs-you').map((s) => s.id))
-  if (waiting.size === 0) return null
-  const start = activeId === null ? -1 : order.indexOf(activeId)
-  for (let i = 1; i <= order.length; i++) {
-    const id = order[(start + i) % order.length]
-    if (waiting.has(id)) return id
-  }
-  return null
+  const byId = new Map(sessions.map((s) => [s.id, s]))
+  const waiting = order.filter((id) => byId.get(id)?.status === 'needs-you')
+  if (waiting.length === 0) return null
+  const ring = [
+    ...waiting.filter((id) => byId.get(id)!.workspace === currentWorkspace),
+    ...waiting.filter((id) => byId.get(id)!.workspace !== currentWorkspace)
+  ]
+  const start = activeId === null ? -1 : ring.indexOf(activeId)
+  return ring[(start + 1) % ring.length] ?? null
 }

@@ -1,17 +1,21 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
 import { join } from 'node:path'
 import { existsSync, writeFileSync } from 'node:fs'
+import { execFile } from 'node:child_process'
 import type { AgentId } from '../shared/types'
 import { clampEnvironment } from '../shared/environment'
 import { normalizeHttpUrl, isHttpUrl } from '../shared/urls'
 import { startHookServer } from './hook-server'
 import { SessionManager, type SpawnSpec } from './session-manager'
 import { loadSavedSessions, saveSessions } from './persistence'
-import { AgentRegistry } from './agent-registry'
+import { AgentRegistry, whichViaLoginShell } from './agent-registry'
 import { loadOrCreateKeybindings } from './keybindings-file'
 import { loadEnvironmentNames } from './environment-names'
 import { installWebviewPolicy } from './webview-policy'
 import { gitStatus, gitDiff } from './git'
+import { describeTool } from './tools'
+import { loadEditorCommand, DEFAULT_EDITOR_COMMAND } from './editor-config'
+import type { Capabilities } from '../shared/git'
 
 if (process.env['LOCALFLOW_USER_DATA']) {
   app.setPath('userData', process.env['LOCALFLOW_USER_DATA'])
@@ -231,6 +235,62 @@ app.whenReady().then(async () => {
     }
     return gitDiff(s.cwd, path, staged === true)
   })
+
+  // Escape-hatch tool resolution. An absolute-path env override is honored via
+  // existsSync (tests point these at nonexistent/fixture paths so the suite
+  // never spawns a real login shell); otherwise the same login-shell PATH
+  // lookup agents use.
+  const resolveTool = (bin: string, override?: string): Promise<string | null> =>
+    override ? Promise.resolve(existsSync(override) ? override : null) : whichViaLoginShell(bin)
+
+  // Probed once and cached: a login-shell lookup is expensive, and the Changes
+  // view re-enters often. Newly installed tools / edited editorCommand apply on
+  // next launch — same resolution-caching trade-off AgentRegistry makes.
+  let capsCache: Capabilities | null = null
+  ipcMain.handle('git:capabilities', async (): Promise<Capabilities> => {
+    if (capsCache) return capsCache
+    const editorCommand = loadEditorCommand(join(userData, 'config.json'))
+    const editorBin = editorCommand.split(/\s+/).filter(Boolean)[0] ?? DEFAULT_EDITOR_COMMAND
+    const [lazygitPath, editorPath] = await Promise.all([
+      resolveTool('lazygit', process.env['LOCALFLOW_LAZYGIT_BIN']),
+      resolveTool(editorBin, process.env['LOCALFLOW_EDITOR_BIN'])
+    ])
+    capsCache = {
+      lazygit: describeTool('lazygit', lazygitPath),
+      editor: { ...describeTool(editorBin, editorPath), command: editorCommand }
+    }
+    return capsCache
+  })
+
+  ipcMain.handle('git:openLazygit', async (_e, id: string) => {
+    const s = manager.get(id)
+    if (!s || s.kind !== 'terminal' || !s.cwd) return null
+    const lazygitPath = await resolveTool('lazygit', process.env['LOCALFLOW_LAZYGIT_BIN'])
+    if (!lazygitPath) return null
+    // Reuse the custom-agent plumbing verbatim: a durable custom session running
+    // lazygit (by resolved absolute path — a GUI app's env lacks the login PATH)
+    // in the reviewed session's OWN cwd + environment. cwd comes from the record.
+    return manager.create(s.cwd, specFor('custom', lazygitPath), s.environment)
+  })
+
+  ipcMain.handle('git:openEditor', async (_e, id: string) => {
+    const s = manager.get(id)
+    if (!s || s.kind !== 'terminal' || !s.cwd) return false
+    const editorCommand = loadEditorCommand(join(userData, 'config.json'))
+    const parts = editorCommand.split(/\s+/).filter(Boolean)
+    const bin = parts[0] ?? DEFAULT_EDITOR_COMMAND
+    const resolved = await resolveTool(bin, process.env['LOCALFLOW_EDITOR_BIN'])
+    if (!resolved) return false
+    try {
+      // External, detached process — never a pane. unref so it can't hold quit.
+      const child = execFile(resolved, [...parts.slice(1), s.cwd], { cwd: s.cwd })
+      child.unref()
+    } catch {
+      return false
+    }
+    return true
+  })
+
   ipcMain.handle('session:list', () => manager.list())
   ipcMain.handle('session:peek', (_e, id: string, maxLines?: number) => {
     // Clamp at the boundary: the renderer is not trusted with the range.

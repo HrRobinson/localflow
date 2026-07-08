@@ -44,7 +44,10 @@ const api: LocalflowApi = {
   getEnvironmentNames: () => ipcRenderer.invoke('environments:getNames'),
   gitStatus: (id: string) => ipcRenderer.invoke('git:status', id),
   gitDiff: (id: string, path: string, staged: boolean) =>
-    ipcRenderer.invoke('git:diff', id, path, staged)
+    ipcRenderer.invoke('git:diff', id, path, staged),
+  getCapabilities: () => ipcRenderer.invoke('git:capabilities'),
+  openLazygit: (id: string) => ipcRenderer.invoke('git:openLazygit', id),
+  openEditor: (id: string) => ipcRenderer.invoke('git:openEditor', id)
 }
 
 contextBridge.exposeInMainWorld('localflow', api)

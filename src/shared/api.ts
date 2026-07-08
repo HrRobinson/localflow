@@ -1,6 +1,6 @@
 import type { AgentId, AgentInfo, LastAgent, SessionInfo, SessionStatus } from './types'
 import type { KeyAction } from './keybindings'
-import type { GitStatus, DiffResult } from './git'
+import type { GitStatus, DiffResult, Capabilities } from './git'
 
 export interface LocalflowApi {
   /**
@@ -51,4 +51,10 @@ export interface LocalflowApi {
   gitStatus(id: string): Promise<GitStatus>
   /** Diff text for one path at one layer. Untracked files come back as full additions; size-capped. */
   gitDiff(id: string, path: string, staged: boolean): Promise<DiffResult>
+  /** lazygit/editor availability + the configured editor command, probed once and cached in main. */
+  getCapabilities(): Promise<Capabilities>
+  /** Spawns a custom `lazygit` terminal session in the session's own cwd + environment. Null when it has no cwd or lazygit is unresolved. */
+  openLazygit(id: string): Promise<SessionInfo | null>
+  /** Opens the session's cwd in the configured editor (external, detached). false when unavailable. */
+  openEditor(id: string): Promise<boolean>
 }

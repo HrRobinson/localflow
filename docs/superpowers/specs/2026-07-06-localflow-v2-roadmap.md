@@ -74,11 +74,90 @@ Research (2026-07-06) confirmed both have Claude-like hooks systems:
   ring buffer in main (already a planned follow-up; this is its first real
   consumer).
 
-## M3 — Workspaces
+## M3 — Workspaces (spec written 2026-07-08)
 
-- AeroSpace-style workspaces 1–9: `cmd-1…9` switch, `cmd-shift-1…9` move pane.
-- Sidebar workspace list with status-rollup dots (see "workspace 3 needs you"
-  at a glance). Sessions persist with workspace assignment.
+AeroSpace-style workspaces: named containers for sessions, switched and
+managed entirely from the keyboard, glanceable from the sidebar.
+
+**Model.**
+
+- Workspaces 1–9 always exist (virtual — no create/delete ceremony, exactly
+  like AeroSpace). A workspace is "empty" or "non-empty"; nothing is stored
+  for empty ones.
+- Every session belongs to exactly one workspace. Existing sessions migrate
+  to workspace 1 on first launch after upgrade (absent field ⇒ 1).
+- Persistence: a `workspace: number` field on each entry in `sessions.json`
+  (config-as-code — hand-editing the file must round-trip with the GUI).
+
+**Keys (all remappable actions in `keybindings.json`).**
+
+- `workspace-1…9` (default `cmd+1…9`): switch to that workspace's terminals
+  grid. Switching to an empty workspace shows the grid's empty state with a
+  "New session here" affordance.
+- `move-to-workspace-1…9` (default `cmd+shift+1…9`): move the active pane's
+  session to that workspace; focus follows per AeroSpace's
+  `move-node-to-workspace --focus-follows-window` feel (decide during
+  planning; default: focus stays, pane leaves the grid).
+- `focus-needs-you` (`cmd+u`) becomes cross-workspace: attention outranks
+  workspace boundaries, so cycling jumps to waiting panes in other
+  workspaces (switching the visible workspace as it goes). Within one
+  press-cycle, current-workspace panes come first.
+
+**Sidebar (the vibe-coder path).**
+
+- Workspace list shows non-empty workspaces plus the current one: number,
+  optional name, and a status-rollup dot — worst status wins
+  (needs-you > working > running > idle > exited) — so "workspace 3 needs
+  you" is visible at a glance. Click to switch; sessions listed under their
+  workspace.
+- Optional workspace names live in `config.json`
+  (`workspaces: { "3": "backend" }`) — GUI rename later (M4 Settings),
+  file first.
+
+**Scope guards.**
+
+- New sessions land on the currently visible workspace.
+- Overview stays global (all sessions, all workspaces) — it is the
+  cross-workspace lens; the terminals/environments grid is per-workspace.
+- No per-workspace layouts or pane sizes (that's theme/layout territory,
+  M4); no workspace-scoped keybindings.
+
+## M3.5 — Environments: browser panes (user idea 2026-07-08)
+
+The grid generalizes beyond terminals: a pane is "a thing you're working
+with." First non-terminal pane type: an embedded **browser pane**
+(Electron `WebContentsView`), opened by URL.
+
+- **Why:** agent-adjacent browsing is the killer case — the localhost
+  preview of the app the agent is building, docs, the PR just opened. A
+  session whose children are "agent terminal + live preview" is the M5
+  parent/child tree made real (M8's web-IDE pane becomes just another
+  browser pane).
+- **Rename lands here:** the "Terminals" view becomes **"Environments"**
+  the moment the first non-terminal pane ships — one naming pass together
+  with the M3 (workspace) and M5 (session > child) vocabulary so all three
+  levels stay coherent. Not before: don't label a capability that doesn't
+  exist.
+- **Reality check on native apps (researched 2026-07-08):** embedding a
+  running native app's window (Spotify desktop, etc.) inside localflow is
+  impossible on macOS — the OS does not allow cross-process window
+  reparenting, and screen-capture tricks are non-interactive hacks. On
+  Linux it is *technically* possible on X11 (XEmbed / XReparentWindow) but
+  the tech is effectively dead, Electron does not expose it, and Wayland
+  forbids cross-client embedding by design — not worth building for one
+  dying display server. Managing native windows beside localflow remains
+  AeroSpace's job. What DOES work everywhere: web apps in a webview, and
+  CLI/TUI apps by path via the existing custom-command agent.
+- **Scope guards:** DRM'd web players (Spotify web needs Widevine, absent
+  from stock Electron) are explicitly out of scope initially. Browser panes
+  get status color gray/violet (no status feed) unless a dev-server
+  adapter is invented later.
+- **Security (binding):** browser panes are stricter than the app window —
+  `sandbox: true`, no node integration, no preload beyond what pane chrome
+  needs, deny-all permission handler (camera/mic/notifications), navigation
+  allowed only within the pane (never the app shell), external targets to
+  the system browser. The existing nav-guard/contextIsolation posture must
+  extend to every embedded view.
 
 ## M1.5 — Simplified Overview + Settings page (user request 2026-07-07)
 

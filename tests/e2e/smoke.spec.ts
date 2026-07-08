@@ -689,12 +689,14 @@ test('workspaces: switch, move, rollup dot, persistence', async () => {
   await expect(win.locator('.pane')).toHaveCount(1)
   await expect(paneA).toBeVisible()
 
-  // cmd+u from workspace 3's quiet sibling: pane a is already here and
-  // waiting — it gets focused+enlarged (2 sessions exist overall).
+  // cmd+u from quiet workspace 1 must jump cross-workspace to pane a,
+  // still waiting on workspace 3 — focusing and enlarging it (2 sessions
+  // exist overall).
   await win.keyboard.press('Meta+Digit1')
   await win.keyboard.press('Meta+u')
   await expect(paneA).toBeVisible()
   await expect(paneA).toHaveClass(/active/)
+  await expect(paneA).toHaveClass(/enlarged/)
 
   await app.close()
 

@@ -17,6 +17,8 @@ export interface LocalflowApi {
   /** Renames a session; empty/whitespace name is a no-op. Returns the updated info, or null if the id is unknown. */
   renameSession(id: string, name: string): Promise<SessionInfo | null>
   listSessions(): Promise<SessionInfo[]>
+  /** Last few cleaned output lines of a session — the approve control's peek. */
+  peekSession(id: string, maxLines?: number): Promise<string[]>
   listAgents(): Promise<AgentInfo[]>
   /** Opens a file picker to locate the agent binary; returns the updated list. */
   setAgentPath(agentId: AgentId): Promise<AgentInfo[] | null>

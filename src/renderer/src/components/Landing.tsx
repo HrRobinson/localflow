@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { AgentId, AgentInfo, SessionInfo } from '../../../shared/types'
 import { AGENT_PRESETS } from '../../../shared/agents'
+import ApproveButton from './ApproveButton'
 
 interface Props {
   sessions: SessionInfo[]
@@ -210,6 +211,12 @@ export default function Landing({
                     {STATUS_LABEL[s.status]}
                   </span>
                   <span className="flex w-[190px] justify-end gap-1.5">
+                    {s.status === 'needs-you' && (
+                      <ApproveButton
+                        sessionId={s.id}
+                        buttonClassName={`${rowBtnBase} border border-yellow-500/50 bg-yellow-500/10 px-2.5 text-yellow-300 hover:bg-yellow-500/20`}
+                      />
+                    )}
                     {s.status === 'exited' ? (
                       <>
                         <button

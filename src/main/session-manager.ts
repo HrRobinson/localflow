@@ -5,6 +5,7 @@ import type { AgentId, HookEvent, SessionInfo, SessionStatus } from '../shared/t
 import { transition } from './state-machine'
 import { hasHookAdapter, type HookAdapterKind } from '../shared/agents'
 import { buildHookInjection } from './hook-adapter'
+import { ANSI_RE, extractPeekLines } from './peek'
 
 export interface PtyLike {
   onData(cb: (d: string) => void): void
@@ -64,26 +65,6 @@ interface Record_ {
    * to avoid double-processing an already-handled transition. */
   closedByUser?: boolean
 }
-
-// Strips ANSI/VT escape sequences per the ECMA-48 grammar: CSI with full
-// parameter bytes (covers private-mode like ESC[>0q), OSC titles ended by
-// BEL/ST, DCS-family strings, other C1 escapes, and stray control bytes.
-// Also covers the 8-bit C1 CSI () form some agents/terminfo emit
-// instead of the 7-bit ESC[ prefix — same CSI grammar, single code unit.
-// Partial stripping here leaks garbage like "0q4mu" into user messages.
-
-const ANSI_RE = new RegExp(
-  [
-    '\\u001b\\[[0-9:;<=>?]*[ -/]*[@-~]',
-    '\\u009b[0-9:;<=>?]*[ -/]*[@-~]',
-    '\\u001b\\][^\\u0007\\u001b]*(?:\\u0007|\\u001b\\\\)?',
-    '\\u001b[PX^_][^\\u001b]*(?:\\u001b\\\\)?',
-    '\\u001b[ -/]+[0-~]',
-    '\\u001b[@-Z\\\\-_]',
-    '[\\u0000-\\u0008\\u000b-\\u001f\\u007f]'
-  ].join('|'),
-  'g'
-)
 
 const INSTANT_EXIT_MS = 5000
 
@@ -192,11 +173,12 @@ export class SessionManager {
     pty.onData((d) => {
       if (this.disposed) return
       if (this.sessions.get(id) !== rec) return
-      // Keep a generous raw tail: ANSI stripping happens at exit, and the
-      // shown message is the LAST 160 chars — a front-cut escape fragment
-      // 2000 chars upstream can never reach it (the 500-char buffer could
-      // cut a sequence right next to the visible text).
-      rec.tail = (rec.tail + d).slice(-2000)
+      // Keep a generous raw tail. Two consumers: the instant-exit message
+      // (last 160 cleaned chars — a front-cut escape fragment far upstream
+      // can never reach it) and the approve peek (last few cleaned lines).
+      // TUI agents redraw whole frames of ANSI per keystroke, so raw chars
+      // are mostly escapes — 16 KiB keeps a real screenful of visible text.
+      rec.tail = (rec.tail + d).slice(-16384)
       this.dataCbs.forEach((cb) => cb(id, d))
     })
     pty.onExit(() => {
@@ -314,6 +296,13 @@ export class SessionManager {
 
   list(): SessionInfo[] {
     return [...this.sessions.values()].map((r) => ({ ...r.info }))
+  }
+
+  /** Last `maxLines` cleaned output lines — the approve control's peek. */
+  peek(id: string, maxLines = 5): string[] {
+    const rec = this.sessions.get(id)
+    if (!rec) return []
+    return extractPeekLines(rec.tail, maxLines)
   }
 
   private now(): number {

@@ -5,6 +5,7 @@ import Settings from './components/Settings'
 import Sidebar from './components/Sidebar'
 import { reconcileOrder } from './lib/order'
 import { pickNeighbor, swapInOrder, type PaneRect, type Direction } from './lib/pane-nav'
+import { nextNeedsYou } from './lib/needs-you'
 import {
   parseBinding,
   eventMatches,
@@ -124,9 +125,9 @@ export default function App(): React.JSX.Element {
   // The dispatcher's keydown handler is a stable closure attached once on
   // mount, so it reads current state through a ref kept in sync every
   // render rather than through the effect's own stale closure.
-  const liveRef = useRef({ view, activeId, order, enlarged, closeTerminal })
+  const liveRef = useRef({ view, activeId, order, enlarged, sessions, closeTerminal, openSession })
   useEffect(() => {
-    liveRef.current = { view, activeId, order, enlarged, closeTerminal }
+    liveRef.current = { view, activeId, order, enlarged, sessions, closeTerminal, openSession }
   })
 
   useEffect(() => {
@@ -168,6 +169,21 @@ export default function App(): React.JSX.Element {
       }
       if (action === 'toggle-sidebar') {
         setSidebarVisible((cur) => !cur)
+        return
+      }
+      // Jump-to-attention works from any view: from home/settings it enters
+      // the terminals view on the first waiting pane; inside terminals it
+      // cycles relative to the active pane. openSession supplies the
+      // focus+enlarge semantics (enlarge only when there is more than one
+      // session, same as clicking a row).
+      if (action === 'focus-needs-you') {
+        const live = liveRef.current
+        const target = nextNeedsYou(
+          live.order,
+          live.sessions,
+          live.view === 'terminals' ? live.activeId : null
+        )
+        if (target) live.openSession(target)
         return
       }
 

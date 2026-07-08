@@ -10,6 +10,7 @@ const api: LocalflowApi = {
   deleteSession: (id: string) => ipcRenderer.invoke('session:delete', id),
   renameSession: (id: string, name: string) => ipcRenderer.invoke('session:rename', id, name),
   listSessions: () => ipcRenderer.invoke('session:list'),
+  peekSession: (id: string, maxLines?: number) => ipcRenderer.invoke('session:peek', id, maxLines),
   listAgents: () => ipcRenderer.invoke('agents:list'),
   setAgentPath: (agentId: AgentId) => ipcRenderer.invoke('agents:setPath', agentId),
   getLastAgent: () => ipcRenderer.invoke('agents:getLastAgent'),

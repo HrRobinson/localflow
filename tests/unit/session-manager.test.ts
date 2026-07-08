@@ -433,4 +433,22 @@ describe('SessionManager', () => {
     expect(messages.join('')).toContain('Could not start')
     expect(restarted?.message).toContain('Could not start')
   })
+
+  describe('peek', () => {
+    it('returns the last cleaned lines of a live session output', () => {
+      const info = mgr.create('/p', claudeSpec)
+      ptys[0].dataCb?.('[1mDo you want to run npm test?[0m\n(y/n)\n')
+      expect(mgr.peek(info.id)).toEqual(['Do you want to run npm test?', '(y/n)'])
+    })
+
+    it('respects maxLines', () => {
+      const info = mgr.create('/p', claudeSpec)
+      ptys[0].dataCb?.('a\nb\nc\n')
+      expect(mgr.peek(info.id, 2)).toEqual(['b', 'c'])
+    })
+
+    it('returns [] for an unknown session id', () => {
+      expect(mgr.peek('nope')).toEqual([])
+    })
+  })
 })

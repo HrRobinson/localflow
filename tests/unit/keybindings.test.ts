@@ -5,6 +5,7 @@ import {
   mergeBindings,
   serializeKeyEvent,
   findConflicts,
+  applyBindingChange,
   DEFAULT_BINDINGS,
   type KeyAction,
   type ParsedBinding,
@@ -393,5 +394,45 @@ describe('findConflicts', () => {
 
   it('returns [] for an unparseable candidate', () => {
     expect(findConflicts({ ...DEFAULT_BINDINGS }, 'close-pane', 'nonsense')).toEqual([])
+  })
+})
+
+describe('applyBindingChange', () => {
+  it('rejects a conflicting binding and leaves the map unchanged', () => {
+    const b = { ...DEFAULT_BINDINGS }
+    // cmd+h is focus-left's default; close-pane may not take it silently.
+    const result = applyBindingChange(b, 'close-pane', 'cmd+h')
+    expect(result).toEqual({ ok: false, reason: 'conflict', conflicts: ['focus-left'] })
+    expect(b).toEqual(DEFAULT_BINDINGS)
+  })
+
+  it('rejects an unparseable binding as invalid', () => {
+    const b = { ...DEFAULT_BINDINGS }
+    const result = applyBindingChange(b, 'close-pane', 'nonsense')
+    expect(result).toEqual({ ok: false, reason: 'invalid', conflicts: [] })
+    expect(b).toEqual(DEFAULT_BINDINGS)
+  })
+
+  it('accepts a valid, conflict-free change without mutating the input', () => {
+    const b = { ...DEFAULT_BINDINGS }
+    const result = applyBindingChange(b, 'close-pane', 'cmd+y')
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.changed).toBe(true)
+      expect(result.bindings['close-pane']).toBe('cmd+y')
+      expect(result.bindings['focus-left']).toBe(DEFAULT_BINDINGS['focus-left'])
+    }
+    // Input map is never mutated — main swaps in the returned copy.
+    expect(b['close-pane']).toBe(DEFAULT_BINDINGS['close-pane'])
+  })
+
+  it('treats setting the current binding again as a successful no-op', () => {
+    const b = { ...DEFAULT_BINDINGS }
+    const result = applyBindingChange(b, 'focus-left', 'cmd+h')
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.changed).toBe(false)
+      expect(result.bindings).toBe(b)
+    }
   })
 })

@@ -1,5 +1,5 @@
 import type { AgentId, AgentInfo, LastAgent, SessionInfo, SessionStatus } from './types'
-import type { KeyAction } from './keybindings'
+import type { BindingChangeResult, KeyAction } from './keybindings'
 
 export interface LocalflowApi {
   /**
@@ -42,8 +42,12 @@ export interface LocalflowApi {
   onData(cb: (id: string, data: string) => void): () => void
   onStatus(cb: (id: string, status: SessionStatus) => void): () => void
   getKeybindings(): Promise<Record<KeyAction, string>>
-  /** Rebinds one action live. Null when the binding string is unparseable. */
-  setKeybinding(action: KeyAction, binding: string): Promise<Record<KeyAction, string> | null>
+  /**
+   * Rebinds one action live. Rejected with a typed reason when the binding
+   * string is unparseable or the combo is held by another action; a re-set
+   * of the current value succeeds with `changed: false` (nothing written).
+   */
+  setKeybinding(action: KeyAction, binding: string): Promise<BindingChangeResult>
   /** Restores one action to its default binding. Returns the full map. */
   resetKeybinding(action: KeyAction): Promise<Record<KeyAction, string>>
   /** Restores every binding to defaults. Returns the full map. */

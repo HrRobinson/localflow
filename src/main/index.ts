@@ -11,7 +11,12 @@ import { AgentRegistry } from './agent-registry'
 import { loadOrCreateKeybindings, writeKeybindings } from './keybindings-file'
 import { loadEnvironmentNames } from './environment-names'
 import { installWebviewPolicy } from './webview-policy'
-import { DEFAULT_BINDINGS, parseBinding, type KeyAction } from '../shared/keybindings'
+import {
+  DEFAULT_BINDINGS,
+  applyBindingChange,
+  type BindingChangeResult,
+  type KeyAction
+} from '../shared/keybindings'
 
 if (process.env['LOCALFLOW_USER_DATA']) {
   app.setPath('userData', process.env['LOCALFLOW_USER_DATA'])
@@ -244,10 +249,16 @@ app.whenReady().then(async () => {
     sendToWindow('keybindings:changed', next)
     return next
   }
-  ipcMain.handle('keybindings:set', (_e, action: string, binding: string) => {
-    if (!(action in DEFAULT_BINDINGS) || typeof binding !== 'string') return null
-    if (parseBinding(binding) === null) return null
-    return applyKeybindings({ ...keybindings, [action as KeyAction]: binding })
+  ipcMain.handle('keybindings:set', (_e, action: string, binding: string): BindingChangeResult => {
+    if (!(action in DEFAULT_BINDINGS) || typeof binding !== 'string') {
+      return { ok: false, reason: 'invalid', conflicts: [] }
+    }
+    // Conflicts are rejected here, not just surfaced in the UI: main's IPC is
+    // the gatekeeper for keybindings.json, so no caller can persist a combo
+    // another action already holds. A no-op re-set skips the write + push.
+    const result = applyBindingChange(keybindings, action as KeyAction, binding)
+    if (result.ok && result.changed) applyKeybindings(result.bindings)
+    return result
   })
   ipcMain.handle('keybindings:reset', (_e, action: string) => {
     if (!(action in DEFAULT_BINDINGS)) return keybindings

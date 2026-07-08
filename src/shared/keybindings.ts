@@ -266,6 +266,35 @@ export function findConflicts(
     .map(([a]) => a)
 }
 
+/**
+ * Result of attempting a single rebind. The editor needs to distinguish
+ * "that string is not a binding" from "that combo is taken by X", so
+ * rejections carry a reason plus the conflicting actions.
+ */
+export type BindingChangeResult =
+  | { ok: true; bindings: Record<KeyAction, string>; changed: boolean }
+  | { ok: false; reason: 'invalid' | 'conflict'; conflicts: KeyAction[] }
+
+/**
+ * Validates and applies one rebind, pure: unparseable bindings and combos
+ * already held by another action are rejected (the spec's "conflicts are
+ * shown, not silently allowed" — main's IPC is the gatekeeper for
+ * keybindings.json). Re-setting the current value is a successful no-op
+ * (`changed: false`, same map back) so callers can skip the write + push.
+ * Never mutates the input map; an accepted change returns a fresh copy.
+ */
+export function applyBindingChange(
+  bindings: Record<KeyAction, string>,
+  action: KeyAction,
+  binding: string
+): BindingChangeResult {
+  if (parseBinding(binding) === null) return { ok: false, reason: 'invalid', conflicts: [] }
+  const conflicts = findConflicts(bindings, action, binding)
+  if (conflicts.length > 0) return { ok: false, reason: 'conflict', conflicts }
+  if (bindings[action] === binding) return { ok: true, bindings, changed: false }
+  return { ok: true, bindings: { ...bindings, [action]: binding }, changed: true }
+}
+
 export function mergeBindings(user: unknown): Record<KeyAction, string> {
   // Start with defaults
   const result = { ...DEFAULT_BINDINGS }

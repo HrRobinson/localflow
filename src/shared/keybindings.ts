@@ -190,6 +190,82 @@ export function eventMatches(binding: ParsedBinding, e: KeyEventLike): boolean {
   return binding.key.toLowerCase() === e.key.toLowerCase()
 }
 
+const MODIFIER_KEYS = new Set(['Meta', 'Control', 'Alt', 'Shift'])
+
+// Inverse of NAMED_KEY_MAP: KeyboardEvent.key/'code' spelling -> binding token.
+const NAMED_KEY_REVERSE: Record<string, string> = {
+  Enter: 'enter',
+  Escape: 'escape',
+  Tab: 'tab',
+  ' ': 'space',
+  ArrowLeft: 'arrow-left',
+  ArrowRight: 'arrow-right',
+  ArrowUp: 'arrow-up',
+  ArrowDown: 'arrow-down'
+}
+
+/**
+ * Turns a captured KeyboardEvent into the binding grammar (`cmd+shift+x`),
+ * or null when the press is not a committable binding yet: a bare modifier
+ * (still waiting for the real key) or a key with no modifier (bindings
+ * require at least one, matching parseBinding). Modifiers are emitted in the
+ * canonical order cmd, ctrl, alt, shift. Digits come from e.code so a
+ * shift-mangled e.key ('!' for '1') still serializes to the physical digit.
+ */
+export function serializeKeyEvent(e: KeyEventLike): string | null {
+  if (MODIFIER_KEYS.has(e.key)) return null
+  const mods: string[] = []
+  if (e.metaKey) mods.push('cmd')
+  if (e.ctrlKey) mods.push('ctrl')
+  if (e.altKey) mods.push('alt')
+  if (e.shiftKey) mods.push('shift')
+  if (mods.length === 0) return null
+
+  const digit = e.code ? /^Digit([0-9])$/.exec(e.code) : null
+  let key: string
+  if (digit) {
+    key = digit[1]
+  } else if (NAMED_KEY_REVERSE[e.key]) {
+    key = NAMED_KEY_REVERSE[e.key]
+  } else if (e.code && /^Key([A-Z])$/.test(e.code)) {
+    key = e.code.slice(3).toLowerCase()
+  } else if (e.key.length === 1) {
+    key = e.key.toLowerCase()
+  } else {
+    return null
+  }
+  return [...mods, key].join('+')
+}
+
+/**
+ * Other actions whose current binding parses to the same combo as `binding`
+ * would for `action`. The editor shows these instead of silently letting two
+ * actions collide. Returns [] when the candidate is unparseable (nothing to
+ * conflict with yet).
+ */
+export function findConflicts(
+  bindings: Record<KeyAction, string>,
+  action: KeyAction,
+  binding: string
+): KeyAction[] {
+  const target = parseBinding(binding)
+  if (!target) return []
+  return bindingEntries(bindings)
+    .filter(([a, b]) => {
+      if (a === action) return false
+      const p = parseBinding(b)
+      return (
+        p != null &&
+        p.cmd === target.cmd &&
+        p.ctrl === target.ctrl &&
+        p.alt === target.alt &&
+        p.shift === target.shift &&
+        p.key.toLowerCase() === target.key.toLowerCase()
+      )
+    })
+    .map(([a]) => a)
+}
+
 export function mergeBindings(user: unknown): Record<KeyAction, string> {
   // Start with defaults
   const result = { ...DEFAULT_BINDINGS }

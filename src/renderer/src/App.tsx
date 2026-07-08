@@ -211,14 +211,18 @@ export default function App(): React.JSX.Element {
   })
 
   useEffect(() => {
+    // Refilled IN PLACE (not reassigned) so the stable onKey closure below
+    // always reads the current set — this is the live-rebind path.
     const bindings: [KeyAction, ParsedBinding][] = []
-    void (async () => {
-      const raw = await window.localflow.getKeybindings()
+    const loadBindings = (raw: Record<KeyAction, string>): void => {
+      bindings.length = 0
       for (const [action, binding] of bindingEntries(raw)) {
         const parsed = parseBinding(binding)
         if (parsed) bindings.push([action, parsed])
       }
-    })()
+    }
+    void window.localflow.getKeybindings().then(loadBindings)
+    const offChanged = window.localflow.onKeybindingsChanged(loadBindings)
 
     // Capture phase: this dispatcher runs before terminal xterm instances
     // see the event, so it can claim bound combos (cmd+w, cmd+enter, ...)
@@ -309,6 +313,9 @@ export default function App(): React.JSX.Element {
       }
     }
     const onKey = (e: KeyboardEvent): void => {
+      // While a keybinding capture is armed, the editor owns the keyboard —
+      // a captured combo that is currently bound must not fire its action.
+      if (document.documentElement.dataset.capturingKeybind === '1') return
       const match = bindings.find(([, binding]) => eventMatches(binding, e))
       if (!match) return
       e.preventDefault()
@@ -318,6 +325,7 @@ export default function App(): React.JSX.Element {
     const offForwarded = window.localflow.onKeyAction((action) => runAction(action))
     window.addEventListener('keydown', onKey, true)
     return () => {
+      offChanged()
       offForwarded()
       window.removeEventListener('keydown', onKey, true)
     }

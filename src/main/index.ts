@@ -8,9 +8,10 @@ import { startHookServer } from './hook-server'
 import { SessionManager, type SpawnSpec } from './session-manager'
 import { loadSavedSessions, saveSessions } from './persistence'
 import { AgentRegistry } from './agent-registry'
-import { loadOrCreateKeybindings } from './keybindings-file'
+import { loadOrCreateKeybindings, writeKeybindings } from './keybindings-file'
 import { loadEnvironmentNames } from './environment-names'
 import { installWebviewPolicy } from './webview-policy'
+import { DEFAULT_BINDINGS, parseBinding, type KeyAction } from '../shared/keybindings'
 
 if (process.env['LOCALFLOW_USER_DATA']) {
   app.setPath('userData', process.env['LOCALFLOW_USER_DATA'])
@@ -98,7 +99,7 @@ app.whenReady().then(async () => {
 
   const userData = app.getPath('userData')
   const sessionsFile = join(userData, 'sessions.json')
-  const keybindings = loadOrCreateKeybindings(join(userData, 'keybindings.json'))
+  let keybindings = loadOrCreateKeybindings(join(userData, 'keybindings.json'))
 
   const registry = new AgentRegistry(
     join(userData, 'config.json'),
@@ -135,7 +136,7 @@ app.whenReady().then(async () => {
   const sendToWindow = (channel: string, ...args: unknown[]): void => {
     if (win && !win.isDestroyed()) win.webContents.send(channel, ...args)
   }
-  installWebviewPolicy({
+  const webviewPolicy = installWebviewPolicy({
     bindings: keybindings,
     onAction: (action) => sendToWindow('keybinding:action', action)
   })
@@ -231,6 +232,31 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.handle('keybindings:get', () => keybindings)
+
+  // One write path for every keybinding change: persist (hand-editable file
+  // stays the source of truth), update the in-memory copy, re-point the
+  // webview key-forwarder, and push the full map so the renderer dispatcher
+  // re-parses. No restart.
+  const applyKeybindings = (next: Record<KeyAction, string>): Record<KeyAction, string> => {
+    keybindings = next
+    writeKeybindings(join(userData, 'keybindings.json'), next)
+    webviewPolicy.updateBindings(next)
+    sendToWindow('keybindings:changed', next)
+    return next
+  }
+  ipcMain.handle('keybindings:set', (_e, action: string, binding: string) => {
+    if (!(action in DEFAULT_BINDINGS) || typeof binding !== 'string') return null
+    if (parseBinding(binding) === null) return null
+    return applyKeybindings({ ...keybindings, [action as KeyAction]: binding })
+  })
+  ipcMain.handle('keybindings:reset', (_e, action: string) => {
+    if (!(action in DEFAULT_BINDINGS)) return keybindings
+    return applyKeybindings({
+      ...keybindings,
+      [action as KeyAction]: DEFAULT_BINDINGS[action as KeyAction]
+    })
+  })
+  ipcMain.handle('keybindings:resetAll', () => applyKeybindings({ ...DEFAULT_BINDINGS }))
   ipcMain.handle('environments:getNames', () => loadEnvironmentNames(join(userData, 'config.json')))
 
   ipcMain.handle('agents:list', () => registry.list())

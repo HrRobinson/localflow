@@ -42,6 +42,14 @@ export interface LocalflowApi {
   onData(cb: (id: string, data: string) => void): () => void
   onStatus(cb: (id: string, status: SessionStatus) => void): () => void
   getKeybindings(): Promise<Record<KeyAction, string>>
+  /** Rebinds one action live. Null when the binding string is unparseable. */
+  setKeybinding(action: KeyAction, binding: string): Promise<Record<KeyAction, string> | null>
+  /** Restores one action to its default binding. Returns the full map. */
+  resetKeybinding(action: KeyAction): Promise<Record<KeyAction, string>>
+  /** Restores every binding to defaults. Returns the full map. */
+  resetAllKeybindings(): Promise<Record<KeyAction, string>>
+  /** Full binding map pushed from main after any set/reset (live rebinding). */
+  onKeybindingsChanged(cb: (bindings: Record<KeyAction, string>) => void): () => void
   /** Bound combos pressed while a webview has focus, forwarded from main. */
   onKeyAction(cb: (action: KeyAction) => void): () => void
   /** Optional hand-configured environment names from config.json ("3" -> "backend"). */

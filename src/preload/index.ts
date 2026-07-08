@@ -36,6 +36,16 @@ const api: LocalflowApi = {
     return () => ipcRenderer.removeListener('session:status', listener)
   },
   getKeybindings: () => ipcRenderer.invoke('keybindings:get'),
+  setKeybinding: (action: KeyAction, binding: string) =>
+    ipcRenderer.invoke('keybindings:set', action, binding),
+  resetKeybinding: (action: KeyAction) => ipcRenderer.invoke('keybindings:reset', action),
+  resetAllKeybindings: () => ipcRenderer.invoke('keybindings:resetAll'),
+  onKeybindingsChanged: (cb) => {
+    const listener = (_e: IpcRendererEvent, bindings: Record<KeyAction, string>): void =>
+      cb(bindings)
+    ipcRenderer.on('keybindings:changed', listener)
+    return () => ipcRenderer.removeListener('keybindings:changed', listener)
+  },
   onKeyAction: (cb) => {
     const listener = (_e: IpcRendererEvent, action: KeyAction): void => cb(action)
     ipcRenderer.on('keybinding:action', listener)

@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import type { LocalflowApi } from '../shared/api'
 import type { AgentId, AgentOverride, SessionStatus } from '../shared/types'
 import type { KeyAction } from '../shared/keybindings'
+import type { Theme } from '../shared/theme'
 
 const api: LocalflowApi = {
   createSession: (agentId: AgentId, cwd?: string, customCommand?: string, environment?: number) =>
@@ -54,7 +55,19 @@ const api: LocalflowApi = {
     ipcRenderer.on('keybinding:action', listener)
     return () => ipcRenderer.removeListener('keybinding:action', listener)
   },
-  getEnvironmentNames: () => ipcRenderer.invoke('environments:getNames')
+  getEnvironmentNames: () => ipcRenderer.invoke('environments:getNames'),
+  getTheme: () => ipcRenderer.invoke('theme:get'),
+  listThemes: () => ipcRenderer.invoke('theme:list'),
+  setTheme: (name: string) => ipcRenderer.invoke('theme:set', name),
+  openThemesFolder: () => ipcRenderer.send('theme:openFolder'),
+  onThemeChanged: (cb) => {
+    const listener = (
+      _e: IpcRendererEvent,
+      payload: { name: string; theme: Theme; error?: string }
+    ): void => cb(payload)
+    ipcRenderer.on('theme:changed', listener)
+    return () => ipcRenderer.removeListener('theme:changed', listener)
+  }
 }
 
 contextBridge.exposeInMainWorld('localflow', api)

@@ -28,6 +28,9 @@ export default function Settings(): React.JSX.Element {
   const [lastAgentId, setLastAgentId] = useState<AgentId | null>(null)
   // Reserved env keys rejected by main for each agent's last save attempt.
   const [reservedErrors, setReservedErrors] = useState<Partial<Record<AgentId, string[]>>>({})
+  const [themes, setThemes] = useState<string[]>([])
+  const [themeName, setThemeName] = useState<string>('dark')
+  const [themeError, setThemeError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -36,6 +39,15 @@ export default function Settings(): React.JSX.Element {
     })
     void window.localflow.getLastAgent().then((last) => {
       if (!cancelled) setLastAgentId(last?.agentId ?? null)
+    })
+    void window.localflow.listThemes().then((list) => {
+      if (!cancelled) setThemes(list)
+    })
+    void window.localflow.getTheme().then((t) => {
+      if (!cancelled) {
+        setThemeName(t.name)
+        setThemeError(t.error ?? null)
+      }
     })
     return () => {
       cancelled = true
@@ -173,11 +185,40 @@ export default function Settings(): React.JSX.Element {
         <KeybindingsEditor />
       </section>
 
-      <section className={`${card} opacity-60`}>
+      <section className="flex flex-col gap-3">
         <h3 className="m-0 text-[15px] font-semibold tracking-[-0.01em]">Themes</h3>
         <p className="m-0 text-[13px] text-gray-500">
-          App and terminal color themes. Coming in M4.
+          App and terminal colors. Themes are JSON files in your themes folder — edit or add your
+          own; changes apply live.
         </p>
+        <div className="flex items-center gap-2.5">
+          <select
+            className="theme-select bg-surface-raised focus:border-working rounded-md border border-white/[0.14] px-2.5 py-2 text-[13px] text-gray-200 outline-none"
+            value={themeName}
+            aria-label="Theme"
+            onChange={(e) => {
+              const name = e.target.value
+              void window.localflow.setTheme(name).then((t) => {
+                setThemeName(t.name)
+                setThemeError(t.error ?? null)
+              })
+            }}
+          >
+            {themes.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+          <button
+            className={`theme-open-folder ${rowBtn}`}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => window.localflow.openThemesFolder()}
+          >
+            Open themes folder
+          </button>
+        </div>
+        {themeError && <p className="theme-notice m-0 text-[13px] text-yellow-400">{themeError}</p>}
       </section>
     </div>
   )

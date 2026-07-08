@@ -23,6 +23,7 @@
   --bg: #111318;
   --pane-bg: #1a1b1e;
   --running: #8b5cf6;
+  --text: #e5e7eb;
 }
 * {
   box-sizing: border-box;
@@ -30,7 +31,7 @@
 body {
   margin: 0;
   background: var(--bg);
-  color: #e5e7eb;
+  color: var(--text);
   font-family: system-ui, sans-serif;
 }
 #root {

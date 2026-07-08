@@ -8,6 +8,7 @@ import type {
   SessionStatus
 } from './types'
 import type { BindingChangeResult, KeyAction } from './keybindings'
+import type { Theme } from './theme'
 
 export interface LocalflowApi {
   /**
@@ -75,4 +76,14 @@ export interface LocalflowApi {
   onKeyAction(cb: (action: KeyAction) => void): () => void
   /** Optional hand-configured environment names from config.json ("3" -> "backend"). */
   getEnvironmentNames(): Promise<Record<string, string>>
+  /** Current resolved theme; carries an error notice when the file was bad. */
+  getTheme(): Promise<{ name: string; theme: Theme; error?: string }>
+  /** Available theme names (userData/themes/*.json). */
+  listThemes(): Promise<string[]>
+  /** Selects a theme; persists and returns the resolved theme (or default). */
+  setTheme(name: string): Promise<{ name: string; theme: Theme; error?: string }>
+  /** Opens the themes folder in the OS file manager (community sharing). */
+  openThemesFolder(): void
+  /** Theme pushed from main after a set — the live-apply channel. */
+  onThemeChanged(cb: (payload: { name: string; theme: Theme; error?: string }) => void): () => void
 }

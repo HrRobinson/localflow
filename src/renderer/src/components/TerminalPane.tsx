@@ -3,6 +3,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import type { SessionInfo } from '../../../shared/types'
+import type { XtermTheme } from '../../../shared/theme'
 import ApproveButton from './ApproveButton'
 
 interface Props {
@@ -14,6 +15,8 @@ interface Props {
   /** Relaunch the agent; `fresh` starts a new conversation instead of resuming. */
   onRestart: (fresh: boolean) => void
   onClose: () => void
+  /** Live terminal theme (xterm ITheme + font); applied on change. */
+  terminalTheme: { theme: XtermTheme; fontFamily: string; fontSize: number }
 }
 
 export default function TerminalPane({
@@ -23,17 +26,24 @@ export default function TerminalPane({
   onToggleEnlarge,
   onActivate,
   onRestart,
-  onClose
+  onClose,
+  terminalTheme
 }: Props): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
+  const fitRef = useRef<FitAddon | null>(null)
   const alive = session.status !== 'exited'
 
   useEffect(() => {
     if (!alive || !hostRef.current) return
-    const term = new Terminal({ fontSize: 12, theme: { background: '#1a1b1e' } })
+    const term = new Terminal({
+      fontSize: terminalTheme.fontSize,
+      fontFamily: terminalTheme.fontFamily,
+      theme: terminalTheme.theme
+    })
     termRef.current = term
     const fit = new FitAddon()
+    fitRef.current = fit
     term.loadAddon(fit)
     term.open(hostRef.current)
     fit.fit()
@@ -53,8 +63,20 @@ export default function TerminalPane({
       ro.disconnect()
       term.dispose()
       termRef.current = null
+      fitRef.current = null
     }
   }, [session.id, alive])
+
+  // Live-apply theme/font changes without rebuilding the terminal.
+  useEffect(() => {
+    const term = termRef.current
+    if (!term) return
+    term.options.theme = terminalTheme.theme
+    term.options.fontFamily = terminalTheme.fontFamily
+    term.options.fontSize = terminalTheme.fontSize
+    fitRef.current?.fit()
+    window.localflow.resize(session.id, term.cols, term.rows)
+  }, [terminalTheme, session.id])
 
   // Keep DOM focus on the active pane's terminal — after activation changes,
   // and after the environment view (re)mounts panes.

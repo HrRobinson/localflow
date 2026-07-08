@@ -8,6 +8,7 @@ import { startHookServer } from './hook-server'
 import { SessionManager, type SpawnSpec } from './session-manager'
 import { loadSavedSessions, saveSessions } from './persistence'
 import { AgentRegistry } from './agent-registry'
+import { ensureThemesSeeded, listThemeNames, resolveTheme } from './theme-store'
 import { loadOrCreateKeybindings, writeKeybindings } from './keybindings-file'
 import { loadEnvironmentNames } from './environment-names'
 import { installWebviewPolicy } from './webview-policy'
@@ -111,6 +112,9 @@ app.whenReady().then(async () => {
     undefined,
     process.env['LOCALFLOW_CLAUDE_BIN']
   )
+
+  const themesDir = join(userData, 'themes')
+  ensureThemesSeeded(themesDir)
 
   const endpoint = await startHookServer((e) => manager.applyHookEvent(e))
   if (process.env['LOCALFLOW_E2E'] === '1') {
@@ -300,6 +304,18 @@ app.whenReady().then(async () => {
       return { ok: true, agents: await registry.list() }
     }
   )
+
+  ipcMain.handle('theme:get', () => resolveTheme(themesDir, registry.getTheme()))
+  ipcMain.handle('theme:list', () => listThemeNames(themesDir))
+  ipcMain.handle('theme:set', (_e, name: string) => {
+    if (typeof name !== 'string' || name.length === 0)
+      return resolveTheme(themesDir, registry.getTheme())
+    registry.setTheme(name)
+    const resolved = resolveTheme(themesDir, name)
+    sendToWindow('theme:changed', resolved)
+    return resolved
+  })
+  ipcMain.on('theme:openFolder', () => void shell.openPath(themesDir))
 
   createWindow()
 })

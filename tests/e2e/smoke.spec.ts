@@ -488,3 +488,141 @@ test('rename via the pencil icon persists across a relaunch', async () => {
 
   await app2.close()
 })
+
+test('approve: peek-gated Enter from overview row and pane header', async () => {
+  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const app = await launchApp(userData)
+  const win = await app.firstWindow()
+  await expect(win.locator('.new-session')).toBeVisible()
+
+  const info = await win.evaluate(
+    (cwd) =>
+      (
+        window as unknown as {
+          localflow: { createSession(a: string, c: string): Promise<{ id: string }> }
+        }
+      ).localflow.createSession('claude', cwd),
+    userData
+  )
+  const row = win.locator(`[data-session-id="${info!.id}"]`)
+  await expect(row).toBeVisible()
+
+  const { port, token } = JSON.parse(readFileSync(join(userData, 'endpoint.json'), 'utf8'))
+  const post = (event: string): Promise<Response> =>
+    fetch(`http://127.0.0.1:${port}/event`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Localflow-Token': token },
+      body: JSON.stringify({ paneId: info!.id, event })
+    })
+
+  // No approve control while idle.
+  await expect(row.locator('.approve-btn')).toHaveCount(0)
+
+  await post('Notification')
+  await expect(row.locator('.session-status')).toHaveText('needs you')
+
+  // Arm: the peek shows the fixture's actual output — never blind.
+  await expect(row.locator('.approve-btn')).toBeVisible()
+  await expect(row.locator('.approve-confirm')).toHaveCount(0)
+  await row.locator('.approve-btn').click()
+  await expect(row.locator('.approve-peek')).toContainText('fake-claude started')
+
+  // Cancel disarms without writing anything.
+  await row.locator('.approve-cancel').click()
+  await expect(row.locator('.approve-confirm')).toHaveCount(0)
+  expect(existsSync(join(userData, 'approve-marker'))).toBe(false)
+
+  // Arm again and confirm: the fixture appends to the marker file, proving
+  // the Enter reached its stdin — no terminal pane mounted at all.
+  await row.locator('.approve-btn').click()
+  await row.locator('.approve-confirm').click()
+  await expect
+    .poll(() => existsSync(join(userData, 'approve-marker')), { timeout: 5000 })
+    .toBe(true)
+
+  // Pane-header variant: open the pane, drive needs-you again, approve from
+  // the header — the mounted terminal shows the fixture's echo this time.
+  await row.locator('.row-open').click()
+  const pane = win.locator(`[data-pane-id="${info!.id}"]`)
+  await expect(pane).toBeVisible()
+  await post('Notification')
+  await expect(pane).toHaveAttribute('data-status', 'needs-you')
+  await pane.locator('.approve-btn').click()
+  await expect(pane.locator('.approve-peek')).toBeVisible()
+  await pane.locator('.approve-confirm').click()
+  await expect(pane.locator('.term-host')).toContainText('fake-claude got input')
+
+  // The header control disappears once the session is no longer waiting.
+  await post('Stop')
+  await expect(pane).toHaveAttribute('data-status', 'idle')
+  await expect(pane.locator('.approve-btn')).toHaveCount(0)
+
+  await app.close()
+})
+
+test('cmd+u enters terminals on a waiting pane and cycles', async () => {
+  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const app = await launchApp(userData)
+  const win = await app.firstWindow()
+  await win.setViewportSize({ width: 1400, height: 900 })
+  await expect(win.locator('.new-session')).toBeVisible()
+
+  const createSession = (cwd: string): Promise<{ id: string } | null> =>
+    win.evaluate(
+      (dir) =>
+        (
+          window as unknown as {
+            localflow: { createSession(a: string, c: string): Promise<{ id: string } | null> }
+          }
+        ).localflow.createSession('claude', dir),
+      cwd
+    )
+
+  const a = await createSession(userData)
+  const b = await createSession(userData)
+  const c = await createSession(userData)
+  await expect(win.locator(`[data-session-id="${c!.id}"]`)).toBeVisible()
+
+  const { port, token } = JSON.parse(readFileSync(join(userData, 'endpoint.json'), 'utf8'))
+  const post = (paneId: string, event: string): Promise<Response> =>
+    fetch(`http://127.0.0.1:${port}/event`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Localflow-Token': token },
+      body: JSON.stringify({ paneId, event })
+    })
+
+  await post(b!.id, 'Notification')
+  await post(c!.id, 'Notification')
+  const rowB = win.locator(`[data-session-id="${b!.id}"]`)
+  await expect(rowB.locator('.session-status')).toHaveText('needs you')
+
+  // From the home overview, cmd+u enters the terminals view directly on the
+  // first waiting pane, enlarged (3 sessions exist).
+  await win.keyboard.press('Meta+u')
+  const paneB = win.locator(`[data-pane-id="${b!.id}"]`)
+  const paneC = win.locator(`[data-pane-id="${c!.id}"]`)
+  await expect(paneB).toBeVisible()
+  await expect(paneB).toHaveClass(/active/)
+  await expect(paneB).toHaveClass(/enlarged/)
+
+  // Again: cycles to the next waiting pane.
+  await win.keyboard.press('Meta+u')
+  await expect(paneC).toHaveClass(/active/)
+  await expect(paneC).toHaveClass(/enlarged/)
+  await expect(paneB).not.toHaveClass(/enlarged/)
+
+  // Again: wraps back.
+  await win.keyboard.press('Meta+u')
+  await expect(paneB).toHaveClass(/active/)
+
+  // Nothing waiting -> no-op: focus stays put.
+  await post(b!.id, 'Stop')
+  await post(c!.id, 'Stop')
+  await expect(paneB).toHaveAttribute('data-status', 'idle')
+  await expect(paneC).toHaveAttribute('data-status', 'idle')
+  await win.keyboard.press('Meta+u')
+  await expect(paneB).toHaveClass(/active/)
+  await expect(win.locator(`[data-pane-id="${a!.id}"]`)).not.toHaveClass(/active/)
+
+  await app.close()
+})

@@ -751,13 +751,26 @@ test('environments: switch, move, rollup dot, persistence', async () => {
 })
 
 test('browser pane: UI creation, chrome, close/reopen, persistence', async () => {
-  // Local page — no external network, no flake. Serves for the whole test.
-  const server = createServer((_req, res) => {
+  // Local pages — no external network, no flake. Serves for the whole test.
+  // Two pages (/ links to /second) plus a per-path request tally: the
+  // regression net for fix 1 (src echo forcing a reload on every nav)
+  // needs to prove /second was fetched exactly once.
+  const requestCounts: Record<string, number> = {}
+  const server = createServer((req, res) => {
+    const path = req.url ?? '/'
+    requestCounts[path] = (requestCounts[path] ?? 0) + 1
     res.setHeader('Content-Type', 'text/html')
-    res.end('<!doctype html><title>fixture-page</title><h1>hello from fixture</h1>')
+    if (path === '/second') {
+      res.end('<!doctype html><title>fixture-page-2</title><h1>hello from second fixture page</h1>')
+    } else {
+      res.end(
+        '<!doctype html><title>fixture-page</title><a href="/second" id="go">go</a><h1>hello from fixture</h1>'
+      )
+    }
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const pageUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`
+  const secondPageUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/second`
 
   const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
   const app = await launchApp(userData)
@@ -785,6 +798,45 @@ test('browser pane: UI creation, chrome, close/reopen, persistence', async () =>
   await expect(pane.locator('.nav-forward')).toBeDisabled()
   await expect(pane.locator('.nav-reload')).toBeEnabled()
   await expect(pane.locator('.open-external')).toBeEnabled()
+
+  // Regression net for fix 1 (src echo forced a reload on every nav):
+  // Playwright cannot reach into the cross-process guest DOM to click the
+  // in-page link, so navigate the same way a user would via the URL bar.
+  // A controlled `src` would reload on the next 1s poll tick after the
+  // navigation lands; an uncontrolled one should fetch /second exactly once.
+  await pane.locator('.url-bar').fill(secondPageUrl)
+  await pane.locator('.url-bar').press('Enter')
+  await expect(pane.locator('.url-bar')).toHaveValue(secondPageUrl)
+  // sessions.json is only written on change — poll the file for the update.
+  await expect
+    .poll(() => {
+      const saved = JSON.parse(readFileSync(join(userData, 'sessions.json'), 'utf8')) as Array<{
+        url?: string
+      }>
+      return saved[0]?.url
+    })
+    .toBe(secondPageUrl)
+  await win.waitForTimeout(1500)
+  expect(requestCounts['/second']).toBe(1)
+
+  // Restore to the first fixture page so the close/reopen/persistence
+  // assertions below (unchanged) see the URL they expect.
+  await pane.locator('.url-bar').fill(pageUrl)
+  await pane.locator('.url-bar').press('Enter')
+  await expect(pane.locator('.url-bar')).toHaveValue(pageUrl)
+
+  // Fix 6 + the URL gate (shared/urls.ts): rejected input never navigates
+  // and is never clobbered — the bar keeps exactly what the user typed, and
+  // the guest's src is untouched. (Manual checklist item 3.)
+  await pane.locator('.url-bar').fill('file:///etc/passwd')
+  await pane.locator('.url-bar').press('Enter')
+  await expect(pane.locator('.url-bar')).toHaveValue('file:///etc/passwd')
+  await expect(pane.locator('.browser-view')).toHaveAttribute('src', pageUrl)
+
+  // Restore again before the existing close/reopen flow.
+  await pane.locator('.url-bar').fill(pageUrl)
+  await pane.locator('.url-bar').press('Enter')
+  await expect(pane.locator('.url-bar')).toHaveValue(pageUrl)
 
   // Close → gray exited with the Reopen overlay (never deletes).
   await pane.getByRole('button', { name: 'close', exact: true }).click()

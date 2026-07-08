@@ -10,6 +10,7 @@ declare namespace React {
         React.HTMLAttributes<HTMLElement> & {
           src?: string
           partition?: string
+          allowpopups?: boolean
         },
         HTMLElement
       >

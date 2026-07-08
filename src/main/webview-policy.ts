@@ -42,8 +42,20 @@ export function installWebviewPolicy(opts: {
     contents.on('will-navigate', (event, url) => {
       if (!isHttpUrl(url)) event.preventDefault()
     })
+    // Defense-in-depth: Chromium already blocks unsafe navigation targets
+    // (file:, javascript:, etc.) natively for these two events, but the
+    // guard is cheap and keeps every navigation-shaped event on one policy.
+    contents.on('will-frame-navigate', (event) => {
+      if (!isHttpUrl(event.url)) event.preventDefault()
+    })
+    contents.on('will-redirect', (event) => {
+      if (!isHttpUrl(event.url)) event.preventDefault()
+    })
     contents.on('before-input-event', (event, input) => {
-      if (input.type !== 'keyDown') return
+      // rawKeyDown fires for some keys instead of keyDown (observed for at
+      // least some bound combos) — matching only keyDown silently dropped
+      // them, while still leaving plain typing (text-input events) alone.
+      if (input.type !== 'keyDown' && input.type !== 'rawKeyDown') return
       const like: KeyEventLike = {
         key: input.key,
         metaKey: input.meta,

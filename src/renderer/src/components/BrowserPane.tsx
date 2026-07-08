@@ -39,6 +39,15 @@ export default function BrowserPane({
   const [canGoBack, setCanGoBack] = useState(false)
   const [canGoForward, setCanGoForward] = useState(false)
   const alive = session.status !== 'exited'
+  // The src attribute only matters at (re)mount: after that the guest owns
+  // its own navigation, and echoing session.url (updated by the 1s poll)
+  // back into the attribute would force a spurious reload on every click.
+  const srcRef = useRef(session.url)
+  // Deliberate "uncontrolled after mount" pattern: only refreshed while
+  // exited (no live webview to disturb), so the guest never sees a src
+  // rewrite while it owns navigation.
+  // eslint-disable-next-line react-hooks/refs -- see comment above
+  if (!alive) srcRef.current = session.url
 
   useEffect(() => {
     if (!alive) return
@@ -67,10 +76,11 @@ export default function BrowserPane({
 
   const navigate = (): void => {
     const normalized = normalizeHttpUrl(barValue)
-    if (!normalized) return // invalid input: leave the bar as-is, no nav
+    if (!normalized) return // invalid input: leave the bar as-is, no nav, no refocus
     setEditing(false)
     setBarValue(normalized)
     void viewRef.current?.loadURL(normalized)
+    viewRef.current?.focus()
   }
 
   const headerBtn =
@@ -112,7 +122,6 @@ export default function BrowserPane({
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               navigate()
-              viewRef.current?.focus()
             } else if (e.key === 'Escape' && !e.metaKey && !e.ctrlKey && !e.altKey) {
               // Restore the real URL and hand focus back to the page.
               setEditing(false)
@@ -195,7 +204,21 @@ export default function BrowserPane({
           // the partition carries the deny-all permission handler.
           partition="persist:browser-panes"
           className="browser-view min-h-0 flex-1"
-          src={session.url}
+          // Read the same mount-time snapshot written above; this is the
+          // one place a ref-during-render is the point, not an accident.
+          // eslint-disable-next-line react-hooks/refs -- see comment above
+          src={srcRef.current}
+          // Without allowpopups, guest window.open is blocked before
+          // setWindowOpenHandler ever runs. With it, popups reach the
+          // handler in main (src/main/webview-policy.ts), which opens
+          // http(s) targets in the system browser and always denies
+          // creation of a new Electron window.
+          allowpopups
+          // The guest is a separate process/renderer: clicking inside it
+          // never bubbles a mousedown to the pane root, so activation would
+          // never fire from a click on the page itself. The webview element
+          // does receive an embedder focus event when the guest is clicked.
+          onFocus={onActivate}
           ref={(el) => {
             viewRef.current = el as WebviewTag | null
           }}

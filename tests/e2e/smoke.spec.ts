@@ -627,3 +627,87 @@ test('cmd+u enters terminals on a waiting pane and cycles', async () => {
 
   await app.close()
 })
+
+test('workspaces: switch, move, rollup dot, persistence', async () => {
+  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const app = await launchApp(userData)
+  const win = await app.firstWindow()
+  await win.setViewportSize({ width: 1400, height: 900 })
+  await expect(win.locator('.new-session')).toBeVisible()
+
+  const createSession = (cwd: string): Promise<{ id: string } | null> =>
+    win.evaluate(
+      (dir) =>
+        (
+          window as unknown as {
+            localflow: { createSession(a: string, c: string): Promise<{ id: string } | null> }
+          }
+        ).localflow.createSession('claude', dir),
+      cwd
+    )
+
+  // Two sessions created while workspace 1 is current — both land on 1.
+  const a = await createSession(userData)
+  const b = await createSession(userData)
+  await expect(win.locator(`[data-session-id="${b!.id}"]`)).toBeVisible()
+  await win.locator(`[data-session-id="${a!.id}"]`).locator('.row-open').click()
+  const paneA = win.locator(`[data-pane-id="${a!.id}"]`)
+  const paneB = win.locator(`[data-pane-id="${b!.id}"]`)
+  await expect(paneA).toBeVisible()
+  await expect(paneB).toBeVisible()
+
+  // cmd+2: switch to (empty) workspace 2 — grid empties back to the landing.
+  await win.keyboard.press('Meta+Digit2')
+  await expect(win.locator('.pane')).toHaveCount(0)
+  await expect(win.locator('.new-session')).toBeVisible()
+
+  // cmd+1: back — both panes return.
+  await win.keyboard.press('Meta+Digit1')
+  await expect(win.locator('.pane')).toHaveCount(2)
+  await expect(paneA).toHaveClass(/active/)
+
+  // ctrl+3 moves the ACTIVE pane (a) to workspace 3: it leaves this
+  // grid, focus lands on the remaining pane.
+  await win.keyboard.press('Control+Digit3')
+  await expect(win.locator('.pane')).toHaveCount(1)
+  await expect(paneB).toHaveClass(/active/)
+
+  // Sidebar shows workspace 3 with a rollup dot; a needs-you event on the
+  // moved session must turn exactly that dot yellow.
+  const ws3 = win.locator('[data-nav-workspace="3"]')
+  await expect(ws3).toBeVisible()
+  const { port, token } = JSON.parse(readFileSync(join(userData, 'endpoint.json'), 'utf8'))
+  await fetch(`http://127.0.0.1:${port}/event`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Localflow-Token': token },
+    body: JSON.stringify({ paneId: a!.id, event: 'Notification' })
+  })
+  await expect(ws3.locator('.dot')).toHaveAttribute('data-status', 'needs-you')
+
+  // Clicking the workspace row switches the grid to it.
+  await ws3.click()
+  await expect(win.locator('.pane')).toHaveCount(1)
+  await expect(paneA).toBeVisible()
+
+  // cmd+u from workspace 3's quiet sibling: pane a is already here and
+  // waiting — it gets focused+enlarged (2 sessions exist overall).
+  await win.keyboard.press('Meta+Digit1')
+  await win.keyboard.press('Meta+u')
+  await expect(paneA).toBeVisible()
+  await expect(paneA).toHaveClass(/active/)
+
+  await app.close()
+
+  // Relaunch: workspace assignments persisted via sessions.json.
+  const saved = JSON.parse(readFileSync(join(userData, 'sessions.json'), 'utf8')) as Array<{
+    id: string
+    workspace?: number
+  }>
+  expect(saved.find((s) => s.id === a!.id)?.workspace).toBe(3)
+  expect(saved.find((s) => s.id === b!.id)?.workspace).toBe(1)
+
+  const app2 = await launchApp(userData)
+  const win2 = await app2.firstWindow()
+  await expect(win2.locator('[data-nav-workspace="3"]')).toBeVisible()
+  await app2.close()
+})

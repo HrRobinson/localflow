@@ -530,6 +530,7 @@ test('approve: peek-gated Enter from overview row and pane header', async () => 
   // Cancel disarms without writing anything.
   await row.locator('.approve-cancel').click()
   await expect(row.locator('.approve-confirm')).toHaveCount(0)
+  await win.waitForTimeout(250) // settle: a buggy cancel-write would land within this window
   expect(existsSync(join(userData, 'approve-marker'))).toBe(false)
 
   // Arm again and confirm: the fixture appends to the marker file, proving

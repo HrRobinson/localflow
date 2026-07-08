@@ -175,10 +175,11 @@ app.whenReady().then(async () => {
   ipcMain.handle('session:delete', (_e, id: string) => manager.deleteSession(id))
   ipcMain.handle('session:rename', (_e, id: string, name: string) => manager.rename(id, name))
   ipcMain.handle('session:list', () => manager.list())
-  ipcMain.handle('session:peek', (_e, id: string, maxLines?: number) =>
+  ipcMain.handle('session:peek', (_e, id: string, maxLines?: number) => {
     // Clamp at the boundary: the renderer is not trusted with the range.
-    manager.peek(id, Math.min(Math.max(Number(maxLines) || 5, 1), 20))
-  )
+    const n = Number(maxLines)
+    return manager.peek(id, Math.min(Math.max(Number.isFinite(n) ? Math.trunc(n) : 5, 1), 20))
+  })
   ipcMain.on('session:write', (_e, id: string, data: string) => manager.write(id, data))
   ipcMain.on('session:resize', (_e, id: string, cols: number, rows: number) =>
     manager.resize(id, cols, rows)

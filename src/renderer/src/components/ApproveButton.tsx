@@ -31,6 +31,9 @@ export default function ApproveButton({
       if (!wrapRef.current?.contains(e.target as Node)) setPeek(null)
     }
     const onDocKeyDown = (e: KeyboardEvent): void => {
+      // Deliberately not stopPropagation'd: bare Escape always reaches the
+      // agent (see README) — the terminal keeps focus while the popover is
+      // open, so this same keypress also disarms and falls through to the pty.
       if (e.key === 'Escape' && !e.metaKey && !e.ctrlKey && !e.altKey) setPeek(null)
     }
     window.addEventListener('mousedown', onDocMouseDown)
@@ -58,7 +61,12 @@ export default function ApproveButton({
     <span className="relative" ref={wrapRef}>
       <button
         className={`approve-btn ${buttonClassName}`}
-        onClick={() => void window.localflow.peekSession(sessionId).then(setPeek)}
+        onClick={() =>
+          void window.localflow
+            .peekSession(sessionId)
+            .then(setPeek)
+            .catch(() => setPeek([]))
+        }
         onDoubleClick={(e) => e.stopPropagation()}
         onMouseDown={onMouseDown}
       >

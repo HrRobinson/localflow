@@ -170,6 +170,11 @@ The file is a flat JSON object mapping action name to binding string:
 }
 ```
 
+The default `ctrl+1…9` move bindings intercept those combos before the
+terminal sees them (ctrl+3 would otherwise send ESC) — remap them in
+`keybindings.json` if an agent you use relies on ctrl+digit control
+characters.
+
 A binding is `[cmd+][ctrl+][alt+][shift+]<key>`, where `<key>` is a single
 character or one of `enter`, `escape`, `tab`, `space`, `arrow-left`,
 `arrow-right`, `arrow-up`, `arrow-down`. Unknown actions and malformed

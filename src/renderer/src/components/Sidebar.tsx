@@ -140,7 +140,7 @@ export default function Sidebar({
               {wsSessions.map((s) => (
                 <div
                   key={s.id}
-                  className={`side-session group ml-2 flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-[13px] text-gray-300 hover:bg-white/5 hover:text-white ${activeId === s.id && view === 'terminals' ? 'active bg-white/10 text-white' : ''}`}
+                  className={`side-session group flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 pl-2 text-[13px] text-gray-300 hover:bg-white/5 hover:text-white ${activeId === s.id && view === 'terminals' ? 'active bg-white/10 text-white' : ''}`}
                   data-nav-session={s.id}
                 >
                   <span

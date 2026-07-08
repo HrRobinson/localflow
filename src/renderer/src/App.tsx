@@ -162,9 +162,9 @@ export default function App(): React.JSX.Element {
   }
   const moveToWorkspace = async (id: string, n: number): Promise<void> => {
     await window.localflow.setWorkspace(id, n)
-    await refresh()
     // The pane leaves the visible grid (spec: focus stays behind): re-scope
-    // focus/enlarge exactly like a closed pane.
+    // focus/enlarge exactly like a closed pane. afterPaneGone ends with its
+    // own refresh(), so no separate refresh is needed here.
     await afterPaneGone(id)
   }
 

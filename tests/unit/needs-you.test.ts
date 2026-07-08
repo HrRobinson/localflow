@@ -121,6 +121,9 @@ describe('nextNeedsYou across workspaces', () => {
     expect(first).toBe('a')
     const second = nextNeedsYou(order, sessions, first, 1)
     expect(second).toBe('c')
-    expect(nextNeedsYou(order, sessions, second, 1)).toBe('b')
+    const third = nextNeedsYou(order, sessions, second, 1)
+    expect(third).toBe('b')
+    // Wraps back to the first current-workspace candidate, completing the ring.
+    expect(nextNeedsYou(order, sessions, third, 1)).toBe('a')
   })
 })

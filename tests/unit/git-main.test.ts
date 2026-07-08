@@ -47,6 +47,18 @@ describe('confinePath', () => {
     expect(confinePath(top, 'src/..')).toBeNull()
   })
 
+  it('rejects anything under the .git directory', () => {
+    expect(confinePath(top, '.git')).toBeNull()
+    expect(confinePath(top, '.git/config')).toBeNull()
+    expect(confinePath(top, join(top, '.git/config'))).toBeNull()
+    expect(confinePath(top, '.git/hooks/pre-commit')).toBeNull()
+  })
+
+  it('accepts files whose name only starts with .git (exact-segment match)', () => {
+    expect(confinePath(top, '.gitignore')).toBe(join(top, '.gitignore'))
+    expect(confinePath(top, '.github/workflows/x.yml')).toBe(join(top, '.github/workflows/x.yml'))
+  })
+
   it('rejects NUL bytes in either argument', () => {
     expect(confinePath(top, 'a\0b')).toBeNull()
     expect(confinePath(`${top}\0`, 'a')).toBeNull()
@@ -92,6 +104,12 @@ describe('gitDiff (real git)', () => {
     // And the classic PoC target.
     const hosts = await gitDiff(repo, '/etc/hosts', false)
     expect(hosts).toEqual({ text: '', truncated: false })
+  })
+
+  it('does NOT leak .git/config (in-repo but never a status path)', async () => {
+    const repo = makeRepo()
+    const res = await gitDiff(repo, join(repo, '.git/config'), false)
+    expect(res).toEqual({ text: '', truncated: false })
   })
 
   it('does NOT leak ../ traversal out of the repo', async () => {

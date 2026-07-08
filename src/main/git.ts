@@ -50,7 +50,10 @@ function runGit(cwd: string, args: string[]): Promise<GitRun> {
  * (no symlink resolution) — it runs BEFORE any git spawn so a renderer-supplied
  * path can never reach `git diff --no-index`, which has NO repository boundary
  * and would otherwise read any OS-readable file. Rejects NUL bytes, empty
- * inputs, the toplevel itself, and anything resolving to `..`/outside.
+ * inputs, the toplevel itself, and anything resolving to `..`/outside. Also
+ * rejects anything under the repo's `.git` directory: those paths are never
+ * emitted by status, so a request for one (e.g. `.git/config`, which can hold
+ * embedded remote credentials) is hostile by construction.
  * `toplevel` is absolute (from `git rev-parse --show-toplevel`).
  */
 export function confinePath(toplevel: string, candidate: string): string | null {
@@ -58,10 +61,14 @@ export function confinePath(toplevel: string, candidate: string): string | null 
   if (toplevel.includes('\0') || candidate.includes('\0')) return null
   const resolved = resolve(toplevel, candidate)
   const rel = relative(toplevel, resolved)
+  const sep = sepFor(rel)
   // Empty → the path IS the toplevel; '..'-prefixed or absolute → outside.
-  if (rel === '' || rel === '..' || rel.startsWith(`..${sepFor(rel)}`) || isAbsolute(rel)) {
+  if (rel === '' || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
     return null
   }
+  // The .git directory itself and anything inside it — exact first-segment
+  // match, so `.gitignore`/`.github/…` (different segments) still pass.
+  if (rel === '.git' || rel.startsWith(`.git${sep}`)) return null
   return resolved
 }
 
@@ -74,7 +81,8 @@ function sepFor(rel: string): string {
 /** The repo toplevel for `cwd`, or null when it is not a git repo / git is
  *  absent. Read-only. */
 async function repoToplevel(cwd: string): Promise<string | null> {
-  const res = await runGit(cwd, ['-C', cwd, 'rev-parse', '--show-toplevel'])
+  // runGit already runs with execFile's cwd set to `cwd`, so no `-C` needed.
+  const res = await runGit(cwd, ['rev-parse', '--show-toplevel'])
   if (res.code !== 0) return null
   const top = res.stdout.trim()
   return top.length > 0 ? top : null

@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
 import { join } from 'node:path'
 import { existsSync, writeFileSync } from 'node:fs'
-import type { AgentId } from '../shared/types'
+import type { AgentId, AgentOverride } from '../shared/types'
 import { clampEnvironment } from '../shared/environment'
 import { normalizeHttpUrl, isHttpUrl } from '../shared/urls'
 import { startHookServer } from './hook-server'
@@ -132,7 +132,9 @@ app.whenReady().then(async () => {
     agentId,
     command: registry.commandFor(agentId, customCommand),
     resumeArgs: registry.argsFor(agentId, true),
-    hookAdapter: registry.hookAdapter(agentId)
+    hookAdapter: registry.hookAdapter(agentId),
+    extraArgs: registry.extraArgsFor(agentId),
+    env: registry.envFor(agentId)
   })
 
   // A destroyed BrowserWindow still non-null: guard every send, because pty
@@ -280,6 +282,18 @@ app.whenReady().then(async () => {
     })
     if (result.canceled || result.filePaths.length === 0) return null
     registry.setPath(agentId, result.filePaths[0])
+    return registry.list()
+  })
+  ipcMain.handle('agents:setDefaultAgent', (_e, agentId: AgentId) => {
+    if (!VALID_AGENTS.includes(agentId)) return null
+    registry.setDefaultAgent(agentId)
+    return registry.list()
+  })
+  ipcMain.handle('agents:setOverride', (_e, agentId: AgentId, override: AgentOverride) => {
+    if (!VALID_AGENTS.includes(agentId) || typeof override !== 'object' || override === null) {
+      return null
+    }
+    registry.setAgentOverride(agentId, override)
     return registry.list()
   })
 

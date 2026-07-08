@@ -236,3 +236,92 @@ describe('AgentRegistry', () => {
     expect(JSON.parse(readFileSync(file, 'utf8')).myCustomKey).toEqual({ a: 1 })
   })
 })
+
+describe('M4 config: defaultAgent, per-agent overrides, theme', () => {
+  it('round-trips defaultAgent, agents overrides, and theme', () => {
+    const file = tmpConfig()
+    saveAgentConfig(file, {
+      agentPaths: {},
+      defaultAgent: 'gemini',
+      agents: { claude: { extraArgs: '--model opus', env: { ANTHROPIC_BASE_URL: 'http://x' } } },
+      theme: 'nord'
+    })
+    expect(loadAgentConfig(file)).toEqual({
+      agentPaths: {},
+      defaultAgent: 'gemini',
+      agents: { claude: { extraArgs: '--model opus', env: { ANTHROPIC_BASE_URL: 'http://x' } } },
+      theme: 'nord'
+    })
+  })
+
+  it('keeps a hand-added environments map on extra alongside the new keys', () => {
+    const file = tmpConfig()
+    writeFileSync(
+      file,
+      JSON.stringify({ environments: { '3': 'backend' }, defaultAgent: 'claude', agentPaths: {} })
+    )
+    const config = loadAgentConfig(file)
+    expect(config.defaultAgent).toBe('claude')
+    expect(config.extra).toEqual({ environments: { '3': 'backend' } })
+    saveAgentConfig(file, config)
+    const onDisk = JSON.parse(readFileSync(file, 'utf8'))
+    expect(onDisk.environments).toEqual({ '3': 'backend' })
+    expect(onDisk.defaultAgent).toBe('claude')
+  })
+
+  it('drops a malformed defaultAgent and malformed agents entries', () => {
+    const file = tmpConfig()
+    writeFileSync(
+      file,
+      JSON.stringify({
+        agentPaths: {},
+        defaultAgent: 'gpt5',
+        agents: { claude: { extraArgs: 42 }, bogus: { extraArgs: '--x' } }
+      })
+    )
+    const config = loadAgentConfig(file)
+    expect(config.defaultAgent).toBeUndefined()
+    expect(config.agents).toBeUndefined()
+  })
+
+  it('composes extraArgs (split) and env, and flags the default in list()', async () => {
+    const file = tmpConfig()
+    saveAgentConfig(file, {
+      agentPaths: {},
+      defaultAgent: 'claude',
+      agents: { gemini: { extraArgs: '--foo "a b"', env: { OLLAMA_HOST: 'http://127.0.0.1' } } }
+    })
+    const reg = new AgentRegistry(file, async () => null)
+    expect(reg.getDefaultAgent()).toBe('claude')
+    expect(reg.extraArgsFor('gemini')).toEqual(['--foo', 'a b'])
+    expect(reg.envFor('gemini')).toEqual({ OLLAMA_HOST: 'http://127.0.0.1' })
+    expect(reg.extraArgsFor('claude')).toEqual([])
+    expect(reg.envFor('claude')).toEqual({})
+    const agents = await reg.list()
+    expect(agents.find((a) => a.id === 'claude')?.isDefault).toBe(true)
+    expect(agents.find((a) => a.id === 'gemini')?.isDefault).toBe(false)
+    expect(agents.find((a) => a.id === 'gemini')?.extraArgs).toBe('--foo "a b"')
+    expect(agents.find((a) => a.id === 'gemini')?.env).toEqual({ OLLAMA_HOST: 'http://127.0.0.1' })
+  })
+
+  it('setDefaultAgent and setAgentOverride persist and preserve unknown keys', () => {
+    const file = tmpConfig()
+    writeFileSync(file, JSON.stringify({ environments: { '1': 'web' }, agentPaths: {} }))
+    const reg = new AgentRegistry(file, async () => null)
+    reg.setDefaultAgent('codex')
+    reg.setAgentOverride('codex', { extraArgs: '--sandbox', env: { KEY: 'v' } })
+    const onDisk = JSON.parse(readFileSync(file, 'utf8'))
+    expect(onDisk.defaultAgent).toBe('codex')
+    expect(onDisk.agents.codex).toEqual({ extraArgs: '--sandbox', env: { KEY: 'v' } })
+    expect(onDisk.environments).toEqual({ '1': 'web' })
+  })
+
+  it('setTheme / getTheme round-trip', () => {
+    const file = tmpConfig()
+    const reg = new AgentRegistry(file, async () => null)
+    expect(reg.getTheme()).toBeNull()
+    reg.setTheme('light')
+    expect(reg.getTheme()).toBe('light')
+    expect(JSON.parse(readFileSync(file, 'utf8')).theme).toBe('light')
+  })
+})

@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import type { LocalflowApi } from '../shared/api'
-import type { AgentId, SessionStatus } from '../shared/types'
+import type { AgentId, AgentOverride, SessionStatus } from '../shared/types'
 import type { KeyAction } from '../shared/keybindings'
 
 const api: LocalflowApi = {
@@ -20,6 +20,9 @@ const api: LocalflowApi = {
   peekSession: (id: string, maxLines?: number) => ipcRenderer.invoke('session:peek', id, maxLines),
   listAgents: () => ipcRenderer.invoke('agents:list'),
   setAgentPath: (agentId: AgentId) => ipcRenderer.invoke('agents:setPath', agentId),
+  setDefaultAgent: (agentId: AgentId) => ipcRenderer.invoke('agents:setDefaultAgent', agentId),
+  setAgentOverride: (agentId: AgentId, override: AgentOverride) =>
+    ipcRenderer.invoke('agents:setOverride', agentId, override),
   getLastAgent: () => ipcRenderer.invoke('agents:getLastAgent'),
   write: (id: string, data: string) => ipcRenderer.send('session:write', id, data),
   resize: (id: string, cols: number, rows: number) =>

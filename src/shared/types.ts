@@ -17,6 +17,14 @@ export interface LastAgent {
   customCommand?: string
 }
 
+/** Per-agent spawn overrides (config.json `agents` key; M4). */
+export interface AgentOverride {
+  /** Extra CLI args appended after resume args, shell-split at spawn. */
+  extraArgs?: string
+  /** Env var overrides applied at spawn (base-URL etc. for local LLMs). */
+  env?: Record<string, string>
+}
+
 export interface SessionInfo {
   id: string
   cwd: string
@@ -55,4 +63,10 @@ export interface AgentInfo {
    * - 'none': no hook adapter is wired up at all.
    */
   statusFidelity: 'full' | 'done-only' | 'none'
+  /** True when this agent is the configured default for the launcher. */
+  isDefault: boolean
+  /** Raw per-agent extra-args string (config.json `agents`). */
+  extraArgs: string
+  /** Per-agent env overrides applied at spawn. */
+  env: Record<string, string>
 }

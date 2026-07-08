@@ -7,6 +7,22 @@ const card =
 const rowBtn =
   'cursor-pointer rounded-md border border-white/10 bg-white/[0.07] px-2.5 py-1 text-xs text-gray-300 hover:bg-white/[0.13] hover:text-white'
 
+const parseEnvLines = (text: string): Record<string, string> => {
+  const env: Record<string, string> = {}
+  for (const line of text.split('\n')) {
+    const eq = line.indexOf('=')
+    if (eq <= 0) continue
+    const key = line.slice(0, eq).trim()
+    const value = line.slice(eq + 1).trim()
+    if (key) env[key] = value
+  }
+  return env
+}
+const envToLines = (env: Record<string, string>): string =>
+  Object.entries(env)
+    .map(([k, v]) => `${k}=${v}`)
+    .join('\n')
+
 export default function Settings(): React.JSX.Element {
   const [agents, setAgents] = useState<AgentInfo[] | null>(null)
   const [lastAgentId, setLastAgentId] = useState<AgentId | null>(null)
@@ -29,6 +45,19 @@ export default function Settings(): React.JSX.Element {
     if (updated) setAgents(updated)
   }
 
+  const saveOverride = async (
+    agentId: AgentId,
+    extraArgs: string,
+    env: Record<string, string>
+  ): Promise<void> => {
+    const updated = await window.localflow.setAgentOverride(agentId, { extraArgs, env })
+    if (updated) setAgents(updated)
+  }
+  const makeDefault = async (agentId: AgentId): Promise<void> => {
+    const updated = await window.localflow.setDefaultAgent(agentId)
+    if (updated) setAgents(updated)
+  }
+
   return (
     <div className="mx-auto flex w-full max-w-[720px] flex-1 flex-col items-stretch gap-7 overflow-auto px-6 py-8 text-left">
       <section className="flex flex-col gap-3">
@@ -42,47 +71,80 @@ export default function Settings(): React.JSX.Element {
             <p className="m-0 text-[13px] text-gray-400">Detecting installed agents…</p>
           )}
           {agents?.map((agent) => (
-            <div key={agent.id} className={`${card} flex-row items-center justify-between gap-3`}>
-              <div className="flex min-w-0 flex-1 items-center gap-2.5">
-                <span
-                  className={`h-2 w-2 flex-none rounded-full ${agent.resolvedPath ? 'bg-idle' : 'bg-exited'}`}
-                />
-                <span className="text-sm font-semibold">{agent.label}</span>
-                {lastAgentId === agent.id && (
-                  <span className="border-idle/50 text-idle rounded-full border px-2 py-px text-[10px] whitespace-nowrap">
-                    last used
-                  </span>
-                )}
-                {agent.statusFidelity === 'full' && (
+            <div key={agent.id} className={`agent-card ${card}`} data-agent={agent.id}>
+              <div className="flex flex-row items-center justify-between gap-3">
+                <div className="flex min-w-0 flex-1 items-center gap-2.5">
                   <span
-                    className="border-idle/50 text-idle rounded-full border px-2 py-px text-[10px] whitespace-nowrap"
-                    title="Reports working / needs-you / done"
-                  >
-                    live status
-                  </span>
-                )}
-                {agent.statusFidelity === 'done-only' && (
+                    className={`h-2 w-2 flex-none rounded-full ${agent.resolvedPath ? 'bg-idle' : 'bg-exited'}`}
+                  />
+                  <span className="text-sm font-semibold">{agent.label}</span>
+                  {lastAgentId === agent.id && (
+                    <span className="border-idle/50 text-idle rounded-full border px-2 py-px text-[10px] whitespace-nowrap">
+                      last used
+                    </span>
+                  )}
+                  {agent.statusFidelity === 'full' && (
+                    <span
+                      className="border-idle/50 text-idle rounded-full border px-2 py-px text-[10px] whitespace-nowrap"
+                      title="Reports working / needs-you / done"
+                    >
+                      live status
+                    </span>
+                  )}
+                  {agent.statusFidelity === 'done-only' && (
+                    <span
+                      className="border-idle/50 text-idle rounded-full border px-2 py-px text-[10px] whitespace-nowrap"
+                      title="Reports done only — idle is accurate as of the last turn-complete, working/needs-you are not distinguished"
+                    >
+                      done signal
+                    </span>
+                  )}
                   <span
-                    className="border-idle/50 text-idle rounded-full border px-2 py-px text-[10px] whitespace-nowrap"
-                    title="Reports done only — idle is accurate as of the last turn-complete, working/needs-you are not distinguished"
+                    className="min-w-0 flex-1 overflow-hidden font-mono text-[11px] text-ellipsis whitespace-nowrap text-gray-400"
+                    title={agent.resolvedPath ?? undefined}
                   >
-                    done signal
+                    {agent.resolvedPath ?? `not found (${agent.command})`}
                   </span>
-                )}
-                <span
-                  className="min-w-0 flex-1 overflow-hidden font-mono text-[11px] text-ellipsis whitespace-nowrap text-gray-400"
-                  title={agent.resolvedPath ?? undefined}
+                </div>
+                <button
+                  className={rowBtn}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => void setPath(agent.id)}
                 >
-                  {agent.resolvedPath ?? `not found (${agent.command})`}
-                </span>
+                  {agent.resolvedPath ? 'Change path…' : 'Set path…'}
+                </button>
               </div>
-              <button
-                className={rowBtn}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => void setPath(agent.id)}
-              >
-                {agent.resolvedPath ? 'Change path…' : 'Set path…'}
-              </button>
+              <label className="flex items-center gap-2 text-[12px] text-gray-400">
+                <input
+                  type="radio"
+                  className="agent-default"
+                  data-agent={agent.id}
+                  name="default-agent"
+                  checked={agent.isDefault}
+                  onChange={() => void makeDefault(agent.id)}
+                />
+                Default for new sessions
+              </label>
+              <label className="flex flex-col gap-1 text-[12px] text-gray-400">
+                Extra args
+                <input
+                  className="agent-args bg-surface rounded-md border border-white/[0.14] px-2.5 py-1.5 font-mono text-[11px] text-gray-200 outline-none focus:border-white/40"
+                  placeholder="e.g. --model llama3"
+                  defaultValue={agent.extraArgs}
+                  onBlur={(e) => void saveOverride(agent.id, e.target.value, agent.env)}
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-[12px] text-gray-400">
+                Env overrides (KEY=VALUE per line)
+                <textarea
+                  className="agent-env bg-surface min-h-[52px] rounded-md border border-white/[0.14] px-2.5 py-1.5 font-mono text-[11px] text-gray-200 outline-none focus:border-white/40"
+                  placeholder="OLLAMA_HOST=http://127.0.0.1:11434"
+                  defaultValue={envToLines(agent.env)}
+                  onBlur={(e) =>
+                    void saveOverride(agent.id, agent.extraArgs, parseEnvLines(e.target.value))
+                  }
+                />
+              </label>
             </div>
           ))}
         </div>

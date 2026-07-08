@@ -535,4 +535,32 @@ describe('SessionManager', () => {
       expect(mgr.list().find((s) => s.id === info.id)?.status).toBe('running')
     })
   })
+
+  describe('per-agent spawn overrides', () => {
+    it('appends extraArgs after resume args and merges env last', () => {
+      const calls: { args: string[]; env: NodeJS.ProcessEnv }[] = []
+      const spawnFn: SpawnFn = (_bin, args, opts) => {
+        calls.push({ args, env: opts.env })
+        return new FakePty()
+      }
+      const m = new SessionManager({
+        settingsDir: mkdtempSync(join(tmpdir(), 'localflow-ov-')),
+        port: 1,
+        token: 't',
+        spawnFn
+      })
+      const spec: SpawnSpec = {
+        agentId: 'gemini',
+        command: 'fake-gemini',
+        resumeArgs: ['--resume', 'latest'],
+        hookAdapter: 'none',
+        extraArgs: ['--foo', 'a b'],
+        env: { OLLAMA_HOST: 'http://127.0.0.1' }
+      }
+      m.restore('ov-1', '/tmp', spec, 'g', 1)
+      m.restart('ov-1') // resume path: resumeArgs then extraArgs
+      expect(calls[0].args.slice(-4)).toEqual(['--resume', 'latest', '--foo', 'a b'])
+      expect(calls[0].env.OLLAMA_HOST).toBe('http://127.0.0.1')
+    })
+  })
 })

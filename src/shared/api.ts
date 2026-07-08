@@ -1,4 +1,11 @@
-import type { AgentId, AgentInfo, LastAgent, SessionInfo, SessionStatus } from './types'
+import type {
+  AgentId,
+  AgentInfo,
+  AgentOverride,
+  LastAgent,
+  SessionInfo,
+  SessionStatus
+} from './types'
 import type { BindingChangeResult, KeyAction } from './keybindings'
 
 export interface LocalflowApi {
@@ -36,6 +43,10 @@ export interface LocalflowApi {
   listAgents(): Promise<AgentInfo[]>
   /** Opens a file picker to locate the agent binary; returns the updated list. */
   setAgentPath(agentId: AgentId): Promise<AgentInfo[] | null>
+  /** Sets the launcher's default agent; returns the refreshed list. */
+  setDefaultAgent(agentId: AgentId): Promise<AgentInfo[] | null>
+  /** Sets per-agent extra args + env overrides; returns the refreshed list. */
+  setAgentOverride(agentId: AgentId, override: AgentOverride): Promise<AgentInfo[] | null>
   getLastAgent(): Promise<LastAgent | null>
   write(id: string, data: string): void
   resize(id: string, cols: number, rows: number): void

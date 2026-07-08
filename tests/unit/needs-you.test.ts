@@ -2,14 +2,14 @@ import { describe, it, expect } from 'vitest'
 import { nextNeedsYou } from '../../src/renderer/src/lib/needs-you'
 import type { SessionInfo } from '../../src/shared/types'
 
-const session = (id: string, status: SessionInfo['status'], workspace = 1): SessionInfo => ({
+const session = (id: string, status: SessionInfo['status'], environment = 1): SessionInfo => ({
   id,
   cwd: '/tmp',
   name: id,
   status,
   agentId: 'claude',
   command: 'claude',
-  workspace
+  environment
 })
 
 const order = ['a', 'b', 'c', 'd']
@@ -64,7 +64,7 @@ describe('nextNeedsYou', () => {
     expect(nextNeedsYou(order, sessions, 'b', 1)).toBe('b')
   })
 
-  it('starts from the top for a null activeId (e.g. outside terminals view)', () => {
+  it('starts from the top for a null activeId (e.g. outside the environment view)', () => {
     const sessions = [
       session('a', 'working'),
       session('b', 'needs-you'),
@@ -89,8 +89,8 @@ describe('nextNeedsYou', () => {
   })
 })
 
-describe('nextNeedsYou across workspaces', () => {
-  it('prefers waiting panes on the current workspace', () => {
+describe('nextNeedsYou across environments', () => {
+  it('prefers waiting panes on the current environment', () => {
     const sessions = [
       session('a', 'working', 1),
       session('b', 'needs-you', 2),
@@ -100,7 +100,7 @@ describe('nextNeedsYou across workspaces', () => {
     expect(nextNeedsYou(order, sessions, 'a', 1)).toBe('c')
   })
 
-  it('falls through to other workspaces when the current one is quiet', () => {
+  it('falls through to other environments when the current one is quiet', () => {
     const sessions = [
       session('a', 'working', 1),
       session('b', 'needs-you', 2),
@@ -110,7 +110,7 @@ describe('nextNeedsYou across workspaces', () => {
     expect(nextNeedsYou(order, sessions, 'a', 1)).toBe('b')
   })
 
-  it('cycles current-workspace panes before foreign ones', () => {
+  it('cycles current-environment panes before foreign ones', () => {
     const sessions = [
       session('a', 'needs-you', 1),
       session('b', 'needs-you', 2),
@@ -123,7 +123,7 @@ describe('nextNeedsYou across workspaces', () => {
     expect(second).toBe('c')
     const third = nextNeedsYou(order, sessions, second, 1)
     expect(third).toBe('b')
-    // Wraps back to the first current-workspace candidate, completing the ring.
+    // Wraps back to the first current-environment candidate, completing the ring.
     expect(nextNeedsYou(order, sessions, third, 1)).toBe('a')
   })
 })

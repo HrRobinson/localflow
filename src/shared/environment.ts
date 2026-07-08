@@ -1,26 +1,29 @@
 import type { SessionStatus } from './types'
 
-export const WORKSPACE_MIN = 1
-export const WORKSPACE_MAX = 9
+export const ENVIRONMENT_MIN = 1
+export const ENVIRONMENT_MAX = 9
 
 /**
- * Workspaces 1–9 always exist (virtual, AeroSpace-style). Anything that is
+ * Environments 1–9 always exist (virtual, AeroSpace-style). Anything that is
  * not an integer in range — absent field in a pre-M3 sessions.json, a
- * hand-edited string, out-of-range number — lands on workspace 1 rather
+ * hand-edited string, out-of-range number — lands on environment 1 rather
  * than throwing: sessions.json is user-editable, validate at the boundary.
  */
-export function clampWorkspace(raw: unknown): number {
+export function clampEnvironment(raw: unknown): number {
   return typeof raw === 'number' &&
     Number.isInteger(raw) &&
-    raw >= WORKSPACE_MIN &&
-    raw <= WORKSPACE_MAX
+    raw >= ENVIRONMENT_MIN &&
+    raw <= ENVIRONMENT_MAX
     ? raw
-    : WORKSPACE_MIN
+    : ENVIRONMENT_MIN
 }
 
-/** Non-empty workspaces plus the current one, ascending — the sidebar list. */
-export function visibleWorkspaces(sessions: { workspace: number }[], current: number): number[] {
-  const set = new Set(sessions.map((s) => s.workspace))
+/** Non-empty environments plus the current one, ascending — the sidebar list. */
+export function visibleEnvironments(
+  sessions: { environment: number }[],
+  current: number
+): number[] {
+  const set = new Set(sessions.map((s) => s.environment))
   set.add(current)
   return [...set].sort((a, b) => a - b)
 }

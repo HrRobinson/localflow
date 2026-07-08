@@ -57,7 +57,7 @@ export default function TerminalPane({
   }, [session.id, alive])
 
   // Keep DOM focus on the active pane's terminal — after activation changes,
-  // and after the terminals view (re)mounts panes.
+  // and after the environment view (re)mounts panes.
   useEffect(() => {
     if (active && alive) termRef.current?.focus()
   }, [active, alive])

@@ -267,11 +267,11 @@ describe('DEFAULT_BINDINGS', () => {
   })
 })
 
-describe('workspace bindings', () => {
-  it('defaults workspace-N to cmd+N and move-to-workspace-N to ctrl+N', () => {
+describe('environment bindings', () => {
+  it('defaults environment-N to cmd+N and move-to-environment-N to ctrl+N', () => {
     for (let n = 1; n <= 9; n++) {
-      expect(DEFAULT_BINDINGS[`workspace-${n}` as KeyAction]).toBe(`cmd+${n}`)
-      expect(DEFAULT_BINDINGS[`move-to-workspace-${n}` as KeyAction]).toBe(`ctrl+${n}`)
+      expect(DEFAULT_BINDINGS[`environment-${n}` as KeyAction]).toBe(`cmd+${n}`)
+      expect(DEFAULT_BINDINGS[`move-to-environment-${n}` as KeyAction]).toBe(`ctrl+${n}`)
     }
   })
 

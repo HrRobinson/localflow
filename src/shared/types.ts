@@ -22,8 +22,8 @@ export interface SessionInfo {
   status: SessionStatus
   agentId: AgentId
   command: string
-  /** Workspace 1-9 this session lives on (AeroSpace-style, M3). */
-  workspace: number
+  /** Environment 1-9 this session lives on (one per customer/project, M3.5 rename). */
+  environment: number
   message?: string
 }
 

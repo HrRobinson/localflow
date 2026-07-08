@@ -2,13 +2,13 @@ import { app, BrowserWindow, dialog, ipcMain, Menu } from 'electron'
 import { join } from 'node:path'
 import { existsSync, writeFileSync } from 'node:fs'
 import type { AgentId } from '../shared/types'
-import { clampWorkspace } from '../shared/workspace'
+import { clampEnvironment } from '../shared/environment'
 import { startHookServer } from './hook-server'
 import { SessionManager, type SpawnSpec } from './session-manager'
 import { loadSavedSessions, saveSessions } from './persistence'
 import { AgentRegistry } from './agent-registry'
 import { loadOrCreateKeybindings } from './keybindings-file'
-import { loadWorkspaceNames } from './workspace-names'
+import { loadEnvironmentNames } from './environment-names'
 
 if (process.env['LOCALFLOW_USER_DATA']) {
   app.setPath('userData', process.env['LOCALFLOW_USER_DATA'])
@@ -134,13 +134,13 @@ app.whenReady().then(async () => {
   manager.onSessionsChanged(() =>
     saveSessions(
       sessionsFile,
-      manager.list().map(({ id, cwd, agentId, command, name, workspace }) => ({
+      manager.list().map(({ id, cwd, agentId, command, name, environment }) => ({
         id,
         cwd,
         agentId,
         command,
         name,
-        workspace
+        environment
       }))
     )
   )
@@ -151,12 +151,12 @@ app.whenReady().then(async () => {
       : 'claude'
     // A saved custom session keeps its stored command verbatim.
     const spec = agentId === 'custom' ? specFor(agentId, saved.command ?? '') : specFor(agentId)
-    manager.restore(saved.id, saved.cwd, spec, saved.name, saved.workspace)
+    manager.restore(saved.id, saved.cwd, spec, saved.name, saved.environment)
   }
 
   ipcMain.handle(
     'session:create',
-    async (_e, agentId: AgentId, cwd?: string, customCommand?: string, workspace?: number) => {
+    async (_e, agentId: AgentId, cwd?: string, customCommand?: string, environment?: number) => {
       if (!VALID_AGENTS.includes(agentId)) return null
       if (agentId === 'custom' && !customCommand?.trim()) return null
       let dir = process.env['LOCALFLOW_E2E'] === '1' ? cwd : undefined
@@ -171,7 +171,7 @@ app.whenReady().then(async () => {
       const created = manager.create(
         dir,
         specFor(agentId, customCommand?.trim()),
-        clampWorkspace(workspace)
+        clampEnvironment(environment)
       )
       if (created.status !== 'exited') {
         registry.recordLastAgent(agentId, customCommand?.trim())
@@ -185,8 +185,8 @@ app.whenReady().then(async () => {
   ipcMain.handle('session:closeTerminal', (_e, id: string) => manager.closeTerminal(id))
   ipcMain.handle('session:delete', (_e, id: string) => manager.deleteSession(id))
   ipcMain.handle('session:rename', (_e, id: string, name: string) => manager.rename(id, name))
-  ipcMain.handle('session:setWorkspace', (_e, id: string, workspace: number) =>
-    manager.setWorkspace(id, workspace)
+  ipcMain.handle('session:setEnvironment', (_e, id: string, environment: number) =>
+    manager.setEnvironment(id, environment)
   )
   ipcMain.handle('session:list', () => manager.list())
   ipcMain.handle('session:peek', (_e, id: string, maxLines?: number) => {
@@ -200,7 +200,7 @@ app.whenReady().then(async () => {
   )
 
   ipcMain.handle('keybindings:get', () => keybindings)
-  ipcMain.handle('workspaces:getNames', () => loadWorkspaceNames(join(userData, 'config.json')))
+  ipcMain.handle('environments:getNames', () => loadEnvironmentNames(join(userData, 'config.json')))
 
   ipcMain.handle('agents:list', () => registry.list())
   ipcMain.handle('agents:getLastAgent', () => registry.getLastAgent())

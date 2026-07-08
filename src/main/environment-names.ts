@@ -1,17 +1,17 @@
 import { readFileSync } from 'node:fs'
 
 /**
- * Optional workspace names, hand-written in config.json as
- * `"workspaces": { "3": "backend" }` (config-as-code; the Settings GUI for
+ * Optional environment names, hand-written in config.json as
+ * `"environments": { "3": "backend" }` (config-as-code; the Settings GUI for
  * this arrives in M4). config.json is user-edited: validate every entry at
  * the boundary and drop anything malformed rather than throwing.
  *
- * Only canonical single-digit keys "1"-"9" (the WORKSPACE_MIN..WORKSPACE_MAX
+ * Only canonical single-digit keys "1"-"9" (the ENVIRONMENT_MIN..ENVIRONMENT_MAX
  * range) are accepted — numeric aliases like "01", "1.0", " 1", "1e0" are
  * dropped, not coerced, so they can never silently collide with the
  * canonical key.
  */
-export function parseWorkspaceNames(raw: unknown): Record<string, string> {
+export function parseEnvironmentNames(raw: unknown): Record<string, string> {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {}
   const out: Record<string, string> = {}
   for (const [key, value] of Object.entries(raw)) {
@@ -25,10 +25,10 @@ export function parseWorkspaceNames(raw: unknown): Record<string, string> {
 }
 
 /** Reads names fresh from config.json — hand edits show up without a restart. */
-export function loadWorkspaceNames(configFile: string): Record<string, string> {
+export function loadEnvironmentNames(configFile: string): Record<string, string> {
   try {
     const data: unknown = JSON.parse(readFileSync(configFile, 'utf8'))
-    return parseWorkspaceNames((data as { workspaces?: unknown } | null)?.workspaces)
+    return parseEnvironmentNames((data as { environments?: unknown } | null)?.environments)
   } catch {
     return {}
   }

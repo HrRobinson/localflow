@@ -75,12 +75,13 @@ lines first — approving sends a single Enter to the session, accepting
 whatever prompt the agent is showing. `cmd+u` jumps straight to the next
 waiting pane (press again to cycle).
 
-Sessions live on **workspaces 1–9** (AeroSpace-style: always there, no
-setup). `cmd+1…9` switches, `ctrl+1…9` moves the active pane, and the
-sidebar lists non-empty workspaces with a worst-status dot — "workspace 3
-needs you" at a glance. Workspace assignments persist in `sessions.json`;
-optional names live in `config.json` as `"workspaces": { "3": "backend" }`.
-The Overview always shows every session across all workspaces.
+Sessions live on **environments 1–9** — one per customer or project
+(always there, no setup). `cmd+1…9` switches, `ctrl+1…9` moves the active
+pane, and the sidebar lists non-empty environments with a worst-status dot
+— "environment 3 needs you" at a glance. Environment assignments persist in
+`sessions.json`; optional names live in `config.json` as
+`"environments": { "3": "backend" }`. The Overview always shows every
+session across all environments.
 
 The Overview page is intentionally minimal: your latest sessions plus a
 single "New session" control. Agent detection, configured paths, and (later)
@@ -102,7 +103,7 @@ or Escape to cancel.
 
 ## Keyboard
 
-The Terminals view is fully keyboard-drivable: exactly one pane is always
+The Environment view is fully keyboard-drivable: exactly one pane is always
 **active** (shown with a cyan focus ring), and the bindings below move focus,
 swap panes, and enlarge/shrink — all geometric (nearest pane center in the
 given direction), so they work regardless of grid layout.
@@ -117,8 +118,8 @@ given direction), so they work regardless of grid layout.
 | Toggle sidebar           | `cmd+b`                                                       | hides/shows the sidebar (fullscreen-style focus mode)                                                                                                           |
 | Go up                    | `cmd+escape`                                                  | shrinks an enlarged pane, else goes to Overview                                                                                                                 |
 | Jump to attention        | `cmd+u`                                                       | focuses + enlarges the next pane that needs you; press again to cycle through all waiting panes                                                                 |
-| Switch workspace         | `cmd+1` … `cmd+9`                                             | shows that workspace's grid (AeroSpace-style; workspaces 1–9 always exist)                                                                                      |
-| Move pane to workspace   | `ctrl+1` … `ctrl+9`                                           | sends the active pane to that workspace; focus stays behind                                                                                                     |
+| Switch environment       | `cmd+1` … `cmd+9`                                             | shows that environment's grid (environments 1–9 always exist)                                                                                                   |
+| Move pane to environment | `ctrl+1` … `ctrl+9`                                           | sends the active pane to that environment; focus stays behind                                                                                                   |
 
 Bare `Escape`, `Enter`, arrow keys, and every unmodified keystroke always
 reach the active terminal untouched — localflow only intercepts the exact
@@ -149,24 +150,24 @@ The file is a flat JSON object mapping action name to binding string:
   "go-up": "cmd+escape",
   "toggle-sidebar": "cmd+b",
   "focus-needs-you": "cmd+u",
-  "workspace-1": "cmd+1",
-  "workspace-2": "cmd+2",
-  "workspace-3": "cmd+3",
-  "workspace-4": "cmd+4",
-  "workspace-5": "cmd+5",
-  "workspace-6": "cmd+6",
-  "workspace-7": "cmd+7",
-  "workspace-8": "cmd+8",
-  "workspace-9": "cmd+9",
-  "move-to-workspace-1": "ctrl+1",
-  "move-to-workspace-2": "ctrl+2",
-  "move-to-workspace-3": "ctrl+3",
-  "move-to-workspace-4": "ctrl+4",
-  "move-to-workspace-5": "ctrl+5",
-  "move-to-workspace-6": "ctrl+6",
-  "move-to-workspace-7": "ctrl+7",
-  "move-to-workspace-8": "ctrl+8",
-  "move-to-workspace-9": "ctrl+9"
+  "environment-1": "cmd+1",
+  "environment-2": "cmd+2",
+  "environment-3": "cmd+3",
+  "environment-4": "cmd+4",
+  "environment-5": "cmd+5",
+  "environment-6": "cmd+6",
+  "environment-7": "cmd+7",
+  "environment-8": "cmd+8",
+  "environment-9": "cmd+9",
+  "move-to-environment-1": "ctrl+1",
+  "move-to-environment-2": "ctrl+2",
+  "move-to-environment-3": "ctrl+3",
+  "move-to-environment-4": "ctrl+4",
+  "move-to-environment-5": "ctrl+5",
+  "move-to-environment-6": "ctrl+6",
+  "move-to-environment-7": "ctrl+7",
+  "move-to-environment-8": "ctrl+8",
+  "move-to-environment-9": "ctrl+9"
 }
 ```
 

@@ -6,13 +6,13 @@ export interface LocalflowApi {
    * Start a session for an agent. The `cwd` parameter is honored only under
    * LOCALFLOW_E2E=1 (test harness); production always opens the folder
    * picker. `customCommand` is required when agentId is 'custom'.
-   * `workspace` defaults to 1.
+   * `environment` defaults to 1.
    */
   createSession(
     agentId: AgentId,
     cwd?: string,
     customCommand?: string,
-    workspace?: number
+    environment?: number
   ): Promise<SessionInfo | null>
   /** Relaunch a dead session; `fresh` starts a new conversation instead of resuming. */
   restartSession(id: string, fresh?: boolean): Promise<SessionInfo>
@@ -22,8 +22,8 @@ export interface LocalflowApi {
   deleteSession(id: string): Promise<void>
   /** Renames a session; empty/whitespace name is a no-op. Returns the updated info, or null if the id is unknown. */
   renameSession(id: string, name: string): Promise<SessionInfo | null>
-  /** Moves a session to workspace 1-9 (clamped). Null if the id is unknown. */
-  setWorkspace(id: string, workspace: number): Promise<SessionInfo | null>
+  /** Moves a session to environment 1-9 (clamped). Null if the id is unknown. */
+  setEnvironment(id: string, environment: number): Promise<SessionInfo | null>
   listSessions(): Promise<SessionInfo[]>
   /** Last few cleaned output lines of a session — the approve control's peek. */
   peekSession(id: string, maxLines?: number): Promise<string[]>
@@ -36,6 +36,6 @@ export interface LocalflowApi {
   onData(cb: (id: string, data: string) => void): () => void
   onStatus(cb: (id: string, status: SessionStatus) => void): () => void
   getKeybindings(): Promise<Record<KeyAction, string>>
-  /** Optional hand-configured workspace names from config.json ("3" -> "backend"). */
-  getWorkspaceNames(): Promise<Record<string, string>>
+  /** Optional hand-configured environment names from config.json ("3" -> "backend"). */
+  getEnvironmentNames(): Promise<Record<string, string>>
 }

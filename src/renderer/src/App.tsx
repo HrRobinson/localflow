@@ -4,6 +4,7 @@ import BrowserPane from './components/BrowserPane'
 import Landing from './components/Landing'
 import Settings from './components/Settings'
 import Sidebar from './components/Sidebar'
+import Changes from './components/Changes'
 import { reconcileOrder } from './lib/order'
 import { pickNeighbor, swapInOrder, type PaneRect, type Direction } from './lib/pane-nav'
 import { nextNeedsYou } from './lib/needs-you'
@@ -40,11 +41,13 @@ export default function App(): React.JSX.Element {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [order, setOrder] = useState<string[]>([])
   // The app opens on the home overview; the environment view is entered explicitly.
-  const [view, setView] = useState<'home' | 'environment' | 'settings'>('home')
+  const [view, setView] = useState<'home' | 'environment' | 'settings' | 'changes'>('home')
   // Which environment's grid is visible. Sessions on other environments stay
   // mounted-invisible? No — they simply don't render; their ptys live in
   // main regardless, so nothing is lost when a pane isn't shown.
   const [environment, setEnvironment] = useState(1)
+  // Which session the Changes view is reviewing (scoped, one at a time).
+  const [changesSessionId, setChangesSessionId] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
     const list = await window.localflow.listSessions()
@@ -155,6 +158,41 @@ export default function App(): React.JSX.Element {
       return cur !== null && visible.includes(cur) ? cur : (visible[0] ?? null)
     })
   }
+  // Enter the read-only Changes view scoped to one session (overview row action).
+  const openChanges = (id: string): void => {
+    setChangesSessionId(id)
+    setEnlarged(null)
+    setView('changes')
+  }
+  // Nav-item entry (no session named): keep the current target if it still
+  // exists, else fall back to the active pane or the first terminal session.
+  const enterChanges = (): void => {
+    setChangesSessionId((cur) => {
+      if (cur !== null && sessions.some((s) => s.id === cur && s.kind !== 'browser')) return cur
+      const activeIsTerminal =
+        activeId !== null && sessions.find((s) => s.id === activeId)?.kind !== 'browser'
+      return (
+        (activeIsTerminal ? activeId : null) ??
+        sessions.find((s) => s.kind !== 'browser')?.id ??
+        null
+      )
+    })
+    setEnlarged(null)
+    setView('changes')
+  }
+  // "Open lazygit here": main spawns a custom lazygit session in the reviewed
+  // session's own cwd + environment; jump to it in the environment grid.
+  const openLazygit = async (sessionId: string): Promise<void> => {
+    const created = await window.localflow.openLazygit(sessionId)
+    if (created) {
+      setEnvironment(created.environment)
+      setView('environment')
+      setEnlarged(null)
+      setActiveId(created.id)
+      await refresh()
+    }
+  }
+
   // Switching environments re-scopes focus: the active/enlarged pane must be
   // one of the target environment's panes, or null.
   const switchEnvironment = (n: number): void => {
@@ -331,13 +369,22 @@ export default function App(): React.JSX.Element {
       {sidebarVisible && (
         <Sidebar
           sessions={sessions}
-          view={showEnvironment ? 'environment' : view === 'settings' ? 'settings' : 'home'}
+          view={
+            showEnvironment
+              ? 'environment'
+              : view === 'settings'
+                ? 'settings'
+                : view === 'changes'
+                  ? 'changes'
+                  : 'home'
+          }
           activeId={activeId}
           environment={environment}
           onSwitchEnvironment={switchEnvironment}
           onHome={() => setView('home')}
           onEnvironment={enterEnvironment}
           onSettings={() => setView('settings')}
+          onChanges={enterChanges}
           onOpenSession={openSession}
           onDeleteSession={(id) => void deleteSession(id)}
           onRenameSession={(id, name) => void renameSession(id, name)}
@@ -377,6 +424,13 @@ export default function App(): React.JSX.Element {
                 )
               )}
           </div>
+        ) : view === 'changes' ? (
+          <Changes
+            sessions={sessions}
+            sessionId={changesSessionId}
+            onSelectSession={setChangesSessionId}
+            onOpenLazygit={(id) => void openLazygit(id)}
+          />
         ) : view === 'settings' ? (
           <Settings />
         ) : (
@@ -389,6 +443,7 @@ export default function App(): React.JSX.Element {
             onDelete={(id) => void deleteSession(id)}
             onRename={(id, name) => void renameSession(id, name)}
             onOpenSettings={() => setView('settings')}
+            onChanges={openChanges}
           />
         )}
       </main>

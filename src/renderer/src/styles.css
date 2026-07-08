@@ -109,6 +109,39 @@ body {
   background: var(--running);
 }
 
+/* Changes / diff review (M6). Diff-level coloring only — reuses status tokens
+   for badges and additions; deletions use the conventional diff red (the token
+   palette has none). No syntax highlighting. */
+.changes-file.active {
+  background: rgba(255, 255, 255, 0.08);
+}
+.badge-staged {
+  color: var(--idle);
+}
+.badge-unstaged {
+  color: var(--needs-you);
+}
+.badge-untracked {
+  color: var(--running);
+}
+.diff-line {
+  white-space: pre;
+}
+.diff-add {
+  color: var(--idle);
+  background: rgba(34, 197, 94, 0.1);
+}
+.diff-del {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.1);
+}
+.diff-hunk {
+  color: var(--working);
+}
+.diff-meta {
+  color: var(--exited);
+}
+
 .session-status[data-status='needs-you'] {
   color: var(--needs-you);
 }

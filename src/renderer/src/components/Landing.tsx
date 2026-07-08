@@ -12,6 +12,7 @@ interface Props {
   onResume: (id: string, fresh: boolean) => void
   onDelete: (id: string) => void
   onRename: (id: string, name: string) => void
+  onChanges: (id: string) => void
   // Used by Task 4's "Configure in Settings" hint.
   onOpenSettings: () => void
 }
@@ -39,6 +40,7 @@ export default function Landing({
   onResume,
   onDelete,
   onRename,
+  onChanges,
   onOpenSettings,
   onCreateBrowser
 }: Props): React.JSX.Element {
@@ -227,7 +229,16 @@ export default function Landing({
                   >
                     {STATUS_LABEL[s.status]}
                   </span>
-                  <span className="flex w-[190px] justify-end gap-1.5">
+                  <span className="flex w-[280px] justify-end gap-1.5">
+                    {s.kind !== 'browser' && (
+                      <button
+                        className={rowBtn}
+                        onClick={() => onChanges(s.id)}
+                        onMouseDown={(e) => e.preventDefault()}
+                      >
+                        changes
+                      </button>
+                    )}
                     {s.status === 'needs-you' && (
                       <ApproveButton
                         sessionId={s.id}

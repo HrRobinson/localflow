@@ -3,6 +3,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import type { SessionInfo } from '../../../shared/types'
+import ApproveButton from './ApproveButton'
 
 interface Props {
   session: SessionInfo
@@ -104,6 +105,13 @@ export default function TerminalPane({
         <span className="rounded bg-white/[0.06] px-1.5 py-px font-mono text-[10px] text-gray-400">
           {agentLabel}
         </span>
+        {session.status === 'needs-you' && (
+          <ApproveButton
+            sessionId={session.id}
+            buttonClassName={`${paneHeaderBtn} !text-yellow-300 hover:!text-yellow-200`}
+            stopMouseDown
+          />
+        )}
         <button
           className={paneHeaderBtn}
           onClick={() => {

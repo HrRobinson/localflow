@@ -1,15 +1,16 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
 import { join } from 'node:path'
 import { existsSync, writeFileSync } from 'node:fs'
 import type { AgentId } from '../shared/types'
 import { clampEnvironment } from '../shared/environment'
-import { normalizeHttpUrl } from '../shared/urls'
+import { normalizeHttpUrl, isHttpUrl } from '../shared/urls'
 import { startHookServer } from './hook-server'
 import { SessionManager, type SpawnSpec } from './session-manager'
 import { loadSavedSessions, saveSessions } from './persistence'
 import { AgentRegistry } from './agent-registry'
 import { loadOrCreateKeybindings } from './keybindings-file'
 import { loadEnvironmentNames } from './environment-names'
+import { installWebviewPolicy } from './webview-policy'
 
 if (process.env['LOCALFLOW_USER_DATA']) {
   app.setPath('userData', process.env['LOCALFLOW_USER_DATA'])
@@ -29,7 +30,11 @@ function createWindow(): void {
       preload: join(__dirname, '../preload/index.mjs'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      sandbox: false,
+      // Browser panes use the <webview> tag: it participates in DOM layout
+      // (grid/enlarge/focus need no special-casing, unlike WebContentsView).
+      // Guest pages are locked down in installWebviewPolicy.
+      webviewTag: true
     }
   })
   win.webContents.on('will-navigate', (e) => e.preventDefault())
@@ -130,6 +135,11 @@ app.whenReady().then(async () => {
   const sendToWindow = (channel: string, ...args: unknown[]): void => {
     if (win && !win.isDestroyed()) win.webContents.send(channel, ...args)
   }
+  installWebviewPolicy({
+    bindings: keybindings,
+    onAction: (action) => sendToWindow('keybinding:action', action)
+  })
+
   manager.onData((id, data) => sendToWindow('session:data', id, data))
   manager.onStatus((id, status) => sendToWindow('session:status', id, status))
   manager.onSessionsChanged(() =>
@@ -216,6 +226,9 @@ app.whenReady().then(async () => {
   ipcMain.on('session:resize', (_e, id: string, cols: number, rows: number) =>
     manager.resize(id, cols, rows)
   )
+  ipcMain.on('shell:openExternal', (_e, url: string) => {
+    if (typeof url === 'string' && isHttpUrl(url)) void shell.openExternal(url)
+  })
 
   ipcMain.handle('keybindings:get', () => keybindings)
   ipcMain.handle('environments:getNames', () => loadEnvironmentNames(join(userData, 'config.json')))

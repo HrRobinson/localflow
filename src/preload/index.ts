@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import type { LocalflowApi } from '../shared/api'
 import type { AgentId, SessionStatus } from '../shared/types'
+import type { KeyAction } from '../shared/keybindings'
 
 const api: LocalflowApi = {
   createSession: (agentId: AgentId, cwd?: string, customCommand?: string, environment?: number) =>
@@ -35,6 +36,11 @@ const api: LocalflowApi = {
     return () => ipcRenderer.removeListener('session:status', listener)
   },
   getKeybindings: () => ipcRenderer.invoke('keybindings:get'),
+  onKeyAction: (cb) => {
+    const listener = (_e: IpcRendererEvent, action: KeyAction): void => cb(action)
+    ipcRenderer.on('keybinding:action', listener)
+    return () => ipcRenderer.removeListener('keybinding:action', listener)
+  },
   getEnvironmentNames: () => ipcRenderer.invoke('environments:getNames')
 }
 

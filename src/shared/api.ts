@@ -42,6 +42,8 @@ export interface LocalflowApi {
   onData(cb: (id: string, data: string) => void): () => void
   onStatus(cb: (id: string, status: SessionStatus) => void): () => void
   getKeybindings(): Promise<Record<KeyAction, string>>
+  /** Bound combos pressed while a webview has focus, forwarded from main. */
+  onKeyAction(cb: (action: KeyAction) => void): () => void
   /** Optional hand-configured environment names from config.json ("3" -> "backend"). */
   getEnvironmentNames(): Promise<Record<string, string>>
 }

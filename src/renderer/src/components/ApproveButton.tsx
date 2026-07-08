@@ -67,6 +67,7 @@ export default function ApproveButton({
       {peek !== null && (
         <div
           className="approve-pop bg-surface-raised absolute top-full right-0 z-20 mt-1 w-72 rounded-md border border-yellow-500/40 p-2 shadow-lg"
+          onDoubleClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => {
             // The popover floats over other mousedown-sensitive chrome
             // (terminal, pane root) — interacting with it must not

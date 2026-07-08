@@ -22,12 +22,22 @@ export type ActivityEventKind =
 
 /** One entry in a session's in-memory activity ring (last 200 kept, M7). */
 export interface ActivityEntry {
-  /** Epoch ms; SessionManager's clock (overridable in tests). */
+  /**
+   * Epoch ms; SessionManager's clock (overridable in tests). Refreshed to the
+   * latest occurrence when a repeated hook event collapses into this entry.
+   */
   timestamp: number
   /** An applied hook event or a lifecycle moment. */
   kind: ActivityEventKind
   /** The session's status immediately after this event. */
   status: SessionStatus
+  /**
+   * How many consecutive identical hook events collapsed into this entry
+   * (absent = 1). A chatty agent re-emitting Notification while already
+   * needs-you is one logical "still waiting" signal — the count keeps history
+   * honest ("asked N times") without letting duplicates eat the 200-cap ring.
+   */
+  count?: number
 }
 
 export interface LastAgent {

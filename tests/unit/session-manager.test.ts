@@ -576,8 +576,13 @@ describe('SessionManager', () => {
 
     it('caps the ring at the last 200 entries', () => {
       const info = mgr.create('/p', claudeSpec, 1)
+      // Alternate kinds so every event appends a distinct entry (identical
+      // consecutive hook events collapse instead of appending).
       for (let i = 0; i < 250; i++) {
-        mgr.applyHookEvent({ paneId: info.id, event: 'UserPromptSubmit' })
+        mgr.applyHookEvent({
+          paneId: info.id,
+          event: i % 2 === 0 ? 'UserPromptSubmit' : 'Notification'
+        })
       }
       const ring = mgr.getActivity(info.id)
       expect(ring).toHaveLength(200)
@@ -660,6 +665,77 @@ describe('SessionManager', () => {
       ptysT[0].exitCb?.()
       expect(mgrT.list()[0].status).toBe('exited')
       expect(mgrT.list()[0].needsYouSince).toBeUndefined()
+    })
+
+    it('collapses consecutive identical hook events into one counted entry', () => {
+      let t = 1000
+      const ptysT: FakePty[] = []
+      const mgrT = new SessionManager({
+        settingsDir: mkdtempSync(join(tmpdir(), 'localflow-sm-')),
+        port: 9999,
+        token: 'tok',
+        now: () => t,
+        spawnFn: () => {
+          const pty = new FakePty()
+          ptysT.push(pty)
+          return pty
+        }
+      })
+      const info = mgrT.create('/p', claudeSpec, 1)
+      t = 2000
+      mgrT.applyHookEvent({ paneId: info.id, event: 'Notification' })
+      t = 3000
+      mgrT.applyHookEvent({ paneId: info.id, event: 'Notification' })
+      t = 4000
+      mgrT.applyHookEvent({ paneId: info.id, event: 'Notification' })
+      const ring = mgrT.getActivity(info.id)
+      expect(ring.map((e) => e.kind)).toEqual(['created', 'Notification'])
+      expect(ring[1].count).toBe(3)
+      expect(ring[1].status).toBe('needs-you')
+      // The collapsed entry's timestamp tracks the latest occurrence.
+      expect(ring[1].timestamp).toBe(4000)
+    })
+
+    it('does not collapse alternating hook event kinds', () => {
+      const info = mgr.create('/p', claudeSpec, 1)
+      mgr.applyHookEvent({ paneId: info.id, event: 'Notification' })
+      mgr.applyHookEvent({ paneId: info.id, event: 'UserPromptSubmit' })
+      mgr.applyHookEvent({ paneId: info.id, event: 'Notification' })
+      const ring = mgr.getActivity(info.id)
+      expect(ring.map((e) => e.kind)).toEqual([
+        'created',
+        'Notification',
+        'UserPromptSubmit',
+        'Notification'
+      ])
+      expect(ring.every((e) => e.count === undefined)).toBe(true)
+    })
+
+    it('a lifecycle event between duplicates breaks the collapse run', () => {
+      const info = mgr.create('/p', claudeSpec, 1)
+      mgr.applyHookEvent({ paneId: info.id, event: 'Notification' })
+      mgr.applyHookEvent({ paneId: info.id, event: 'Notification' })
+      // 'moved' does not change the status (still needs-you), but it must
+      // always append — and the next Notification lands after it, unmerged.
+      mgr.setEnvironment(info.id, 4)
+      mgr.applyHookEvent({ paneId: info.id, event: 'Notification' })
+      const ring = mgr.getActivity(info.id)
+      expect(ring.map((e) => [e.kind, e.count])).toEqual([
+        ['created', undefined],
+        ['Notification', 2],
+        ['moved', undefined],
+        ['Notification', undefined]
+      ])
+    })
+
+    it("getActivity's defensive copy includes count and does not share it", () => {
+      const info = mgr.create('/p', claudeSpec, 1)
+      mgr.applyHookEvent({ paneId: info.id, event: 'Notification' })
+      mgr.applyHookEvent({ paneId: info.id, event: 'Notification' })
+      const ring = mgr.getActivity(info.id)
+      expect(ring[1].count).toBe(2)
+      ring[1].count = 99
+      expect(mgr.getActivity(info.id)[1].count).toBe(2)
     })
   })
 })

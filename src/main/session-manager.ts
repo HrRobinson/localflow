@@ -80,6 +80,15 @@ interface Record_ {
 const INSTANT_EXIT_MS = 5000
 const ACTIVITY_LIMIT = 200
 
+/** Lifecycle activity kinds always append to the ring; hook events collapse. */
+const LIFECYCLE_KINDS: ReadonlySet<ActivityEventKind> = new Set([
+  'created',
+  'reopened',
+  'closed',
+  'exited',
+  'moved'
+])
+
 // Browser panes have no process; their Record_ still carries a SpawnSpec
 // because the type requires one. This filler is inert — every code path
 // branches on info.kind before touching spec/pty. No 'browser' member is
@@ -463,6 +472,25 @@ export class SessionManager {
   private recordActivity(id: string, kind: ActivityEventKind): void {
     const rec = this.sessions.get(id)
     if (!rec) return
+    // A repeated hook event that lands on the same status (e.g. a chatty
+    // agent re-emitting Notification while already needs-you) is one logical
+    // "still waiting" signal — collapse it into the previous entry so a run
+    // of duplicates cannot evict distinct history from the capped ring. The
+    // count preserves the truth ("asked N times"); the timestamp tracks the
+    // latest occurrence. Lifecycle kinds always append.
+    const last = rec.activity[rec.activity.length - 1]
+    if (
+      last &&
+      !LIFECYCLE_KINDS.has(kind) &&
+      last.kind === kind &&
+      last.status === rec.info.status
+    ) {
+      last.count = (last.count ?? 1) + 1
+      last.timestamp = this.now()
+      // Push a copy: listeners (IPC) must not hold a live ring reference.
+      this.activityCbs.forEach((cb) => cb(id, { ...last }))
+      return
+    }
     const entry: ActivityEntry = { timestamp: this.now(), kind, status: rec.info.status }
     rec.activity.push(entry)
     if (rec.activity.length > ACTIVITY_LIMIT) rec.activity.shift()

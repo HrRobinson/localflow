@@ -66,9 +66,13 @@ export function confinePath(toplevel: string, candidate: string): string | null 
   if (rel === '' || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
     return null
   }
-  // The .git directory itself and anything inside it — exact first-segment
-  // match, so `.gitignore`/`.github/…` (different segments) still pass.
-  if (rel === '.git' || rel.startsWith(`.git${sep}`)) return null
+  // Reject if ANY path segment is `.git` (case-folded). Case-insensitive
+  // filesystems (macOS APFS, Windows) make `.GIT` the same directory, and a
+  // nested/submodule `.git` (e.g. `a/.git/config`) is git metadata too. Status
+  // never emits such paths, so any request for one is hostile by construction.
+  // Exact per-segment match — `.gitignore`/`.github/…`/`.git-credentials`
+  // (different segments) still pass.
+  if (rel.split(sep).some((s) => s.toLowerCase() === '.git')) return null
   return resolved
 }
 

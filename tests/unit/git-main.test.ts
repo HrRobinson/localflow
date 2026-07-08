@@ -47,16 +47,23 @@ describe('confinePath', () => {
     expect(confinePath(top, 'src/..')).toBeNull()
   })
 
-  it('rejects anything under the .git directory', () => {
+  it('rejects anything under the .git directory (any segment, case-folded)', () => {
     expect(confinePath(top, '.git')).toBeNull()
     expect(confinePath(top, '.git/config')).toBeNull()
     expect(confinePath(top, join(top, '.git/config'))).toBeNull()
     expect(confinePath(top, '.git/hooks/pre-commit')).toBeNull()
+    // Case-insensitive filesystems (macOS/Windows): .GIT is the same dir.
+    expect(confinePath(top, '.GIT/config')).toBeNull()
+    expect(confinePath(top, '.Git/config')).toBeNull()
+    // Nested / submodule git metadata dirs are git metadata too.
+    expect(confinePath(top, 'a/.git/config')).toBeNull()
+    expect(confinePath(top, 'sub/mod/.GIT/config')).toBeNull()
   })
 
-  it('accepts files whose name only starts with .git (exact-segment match)', () => {
+  it('accepts files whose name only starts with .git (no prefix widening)', () => {
     expect(confinePath(top, '.gitignore')).toBe(join(top, '.gitignore'))
     expect(confinePath(top, '.github/workflows/x.yml')).toBe(join(top, '.github/workflows/x.yml'))
+    expect(confinePath(top, '.git-credentials')).toBe(join(top, '.git-credentials'))
   })
 
   it('rejects NUL bytes in either argument', () => {

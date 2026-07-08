@@ -8,7 +8,8 @@ const session = (id: string, status: SessionInfo['status']): SessionInfo => ({
   name: id,
   status,
   agentId: 'claude',
-  command: 'claude'
+  command: 'claude',
+  workspace: 1
 })
 
 const order = ['a', 'b', 'c', 'd']

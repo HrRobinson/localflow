@@ -73,7 +73,7 @@ describe('SessionManager', () => {
   })
 
   it('instant exit surfaces the last output in message (ANSI stripped)', () => {
-    const info = mgr.create('/p', claudeSpec)
+    const info = mgr.create('/p', claudeSpec, 1)
     ptys[0].dataCb?.(
       '\u001b[>0q\u001b]0;claude\u0007\u001b[4m\u001b[31mNo conversation found in this directory\u001b[0m\r\n'
     )
@@ -86,7 +86,7 @@ describe('SessionManager', () => {
   })
 
   it('instant exit strips 8-bit C1 CSI sequences too', () => {
-    const info = mgr.create('/p', claudeSpec)
+    const info = mgr.create('/p', claudeSpec, 1)
     ptys[0].dataCb?.('31mRed0m')
     ptys[0].exitCb?.()
     const msg = mgr.list().find((s) => s.id === info.id)?.message
@@ -96,7 +96,7 @@ describe('SessionManager', () => {
   })
 
   it('strips charset designations and survives mid-sequence truncation', () => {
-    const info = mgr.create('/p', claudeSpec)
+    const info = mgr.create('/p', claudeSpec, 1)
     // ESC(B charset designation (leaked as "(B" before) plus a long padding
     // that pushes an escape sequence across the tail-truncation boundary —
     // stripping must happen before truncation so no orphan fragments remain.
@@ -113,7 +113,7 @@ describe('SessionManager', () => {
   })
 
   it('instant exit with no output still gets an explanatory message', () => {
-    const info = mgr.create('/p', claudeSpec)
+    const info = mgr.create('/p', claudeSpec, 1)
     ptys[0].exitCb?.()
     expect(mgr.list().find((s) => s.id === info.id)?.message).toContain('Exited right away')
   })
@@ -132,14 +132,14 @@ describe('SessionManager', () => {
         return pty
       }
     })
-    const info = mgrT.create('/p', claudeSpec)
+    const info = mgrT.create('/p', claudeSpec, 1)
     t = 60_000
     ptysT[0].exitCb?.()
     expect(mgrT.list().find((s) => s.id === info.id)?.message).toBeUndefined()
   })
 
   it('create spawns a hook agent with --settings in the cwd, idle status', () => {
-    const info = mgr.create('/some/project', claudeSpec)
+    const info = mgr.create('/some/project', claudeSpec, 1)
     expect(info.status).toBe('idle')
     expect(info.agentId).toBe('claude')
     expect(spawnCalls[0].bin).toBe('fake-claude')
@@ -149,12 +149,12 @@ describe('SessionManager', () => {
   })
 
   it('create defaults name to the cwd basename', () => {
-    const info = mgr.create('/some/project', claudeSpec)
+    const info = mgr.create('/some/project', claudeSpec, 1)
     expect(info.name).toBe('project')
   })
 
   it('create spawns a non-adapter agent without settings, running status', () => {
-    const info = mgr.create('/p', noAdapterSpec)
+    const info = mgr.create('/p', noAdapterSpec, 1)
     expect(info.status).toBe('running')
     expect(info.agentId).toBe('custom')
     expect(spawnCalls[0].bin).toBe('fake-custom')
@@ -162,12 +162,12 @@ describe('SessionManager', () => {
   })
 
   it('create spawns a codex (degraded-adapter) agent as idle', () => {
-    const info = mgr.create('/p', codexSpec)
+    const info = mgr.create('/p', codexSpec, 1)
     expect(info.status).toBe('idle')
   })
 
   it('hook events drive status and notify listeners', () => {
-    const info = mgr.create('/p', claudeSpec)
+    const info = mgr.create('/p', claudeSpec, 1)
     const statuses: string[] = []
     mgr.onStatus((id, s) => id === info.id && statuses.push(s))
     mgr.applyHookEvent({ paneId: info.id, event: 'UserPromptSubmit' })
@@ -178,7 +178,7 @@ describe('SessionManager', () => {
   })
 
   it('pty exit marks session exited; restart respawns with agent resume args', () => {
-    const info = mgr.create('/p', claudeSpec)
+    const info = mgr.create('/p', claudeSpec, 1)
     ptys[0].exitCb?.()
     expect(mgr.list()[0].status).toBe('exited')
     const restarted = mgr.restart(info.id)
@@ -188,7 +188,7 @@ describe('SessionManager', () => {
   })
 
   it('fresh restart skips resume args (new conversation)', () => {
-    const info = mgr.create('/p', claudeSpec)
+    const info = mgr.create('/p', claudeSpec, 1)
     ptys[0].exitCb?.()
     mgr.restart(info.id, true)
     expect(spawnCalls[1].args).not.toContain('--continue')
@@ -196,7 +196,7 @@ describe('SessionManager', () => {
   })
 
   it('restart of a no-adapter agent uses its own resume args and no settings', () => {
-    const info = mgr.create('/p', noAdapterSpec)
+    const info = mgr.create('/p', noAdapterSpec, 1)
     ptys[0].exitCb?.()
     const restarted = mgr.restart(info.id)
     expect(restarted.status).toBe('running')
@@ -211,7 +211,8 @@ describe('SessionManager', () => {
       name: 'project',
       status: 'exited',
       agentId: 'claude',
-      command: 'fake-claude'
+      command: 'fake-claude',
+      workspace: 1
     })
     expect(spawnCalls).toHaveLength(0)
   })
@@ -242,15 +243,15 @@ describe('SessionManager', () => {
     })
     const messages: string[] = []
     failing.onData((_id, d) => messages.push(d))
-    const info = failing.create('/p', { ...claudeSpec, command: 'missing' })
+    const info = failing.create('/p', { ...claudeSpec, command: 'missing' }, 1)
     expect(info.status).toBe('exited')
     expect(messages.join('')).toContain('Could not start')
     expect(info.message).toContain('Could not start')
   })
 
   it('disposeAll kills every pty, keeps sessions, silences late data', () => {
-    const a = mgr.create('/p1', claudeSpec)
-    mgr.create('/p2', codexSpec)
+    const a = mgr.create('/p1', claudeSpec, 1)
+    mgr.create('/p2', codexSpec, 1)
     const messages: string[] = []
     mgr.onData((_id, d) => messages.push(d))
     mgr.disposeAll()
@@ -266,14 +267,14 @@ describe('SessionManager', () => {
   })
 
   it('deleteSession removes the session and kills the pty', () => {
-    const info = mgr.create('/p', claudeSpec)
+    const info = mgr.create('/p', claudeSpec, 1)
     mgr.deleteSession(info.id)
     expect(ptys[0].killed).toBe(true)
     expect(mgr.list()).toHaveLength(0)
   })
 
   it('does not forward late data from a deleted session', () => {
-    const info = mgr.create('/p', claudeSpec)
+    const info = mgr.create('/p', claudeSpec, 1)
     const messages: string[] = []
     mgr.onData((_id, d) => messages.push(d))
     mgr.deleteSession(info.id)
@@ -282,7 +283,7 @@ describe('SessionManager', () => {
   })
 
   it('closeTerminal kills the pty and keeps the session as exited, no message', () => {
-    const info = mgr.create('/p', claudeSpec)
+    const info = mgr.create('/p', claudeSpec, 1)
     mgr.closeTerminal(info.id)
     expect(ptys[0].killed).toBe(true)
     const list = mgr.list()
@@ -293,7 +294,7 @@ describe('SessionManager', () => {
   })
 
   it('closeTerminal then a late real onExit does not re-run the instant-exit message', () => {
-    const info = mgr.create('/p', claudeSpec)
+    const info = mgr.create('/p', claudeSpec, 1)
     mgr.closeTerminal(info.id)
     ptys[0].exitCb?.()
     const list = mgr.list()
@@ -302,7 +303,7 @@ describe('SessionManager', () => {
   })
 
   it('closeTerminal on a session with no live pty is a no-op', () => {
-    const info = mgr.create('/p', claudeSpec)
+    const info = mgr.create('/p', claudeSpec, 1)
     mgr.closeTerminal(info.id)
     const before = mgr.list()
     expect(() => mgr.closeTerminal(info.id)).not.toThrow()
@@ -321,14 +322,14 @@ describe('SessionManager', () => {
   })
 
   it('rename trims and updates the name', () => {
-    const info = mgr.create('/p', claudeSpec)
+    const info = mgr.create('/p', claudeSpec, 1)
     const renamed = mgr.rename(info.id, '  New Name  ')
     expect(renamed).toEqual({ ...info, name: 'New Name' })
     expect(mgr.list()[0].name).toBe('New Name')
   })
 
   it('rename no-ops on empty/whitespace-only names', () => {
-    const info = mgr.create('/p', claudeSpec)
+    const info = mgr.create('/p', claudeSpec, 1)
     const renamedEmpty = mgr.rename(info.id, '')
     expect(renamedEmpty?.name).toBe(info.name)
     const renamedBlank = mgr.rename(info.id, '   ')
@@ -341,7 +342,7 @@ describe('SessionManager', () => {
   })
 
   it('rename fires onSessionsChanged (persisted immediately)', () => {
-    const info = mgr.create('/p', claudeSpec)
+    const info = mgr.create('/p', claudeSpec, 1)
     let fired = false
     mgr.onSessionsChanged(() => {
       fired = true
@@ -351,7 +352,7 @@ describe('SessionManager', () => {
   })
 
   it('restart preserves a renamed session name, not recomputed from cwd', () => {
-    const info = mgr.create('/p', claudeSpec)
+    const info = mgr.create('/p', claudeSpec, 1)
     mgr.rename(info.id, 'Renamed')
     ptys[0].exitCb?.()
     const restarted = mgr.restart(info.id)
@@ -359,7 +360,7 @@ describe('SessionManager', () => {
   })
 
   it('resize and write after pty exit never reach the dead pty', () => {
-    const info = mgr.create('/p', claudeSpec)
+    const info = mgr.create('/p', claudeSpec, 1)
     ptys[0].exitCb?.()
     expect(() => {
       mgr.resize(info.id, 120, 40)
@@ -369,7 +370,7 @@ describe('SessionManager', () => {
   })
 
   it('resize survives a pty whose fd died mid-call', () => {
-    const info = mgr.create('/p', claudeSpec)
+    const info = mgr.create('/p', claudeSpec, 1)
     ptys[0].resize = () => {
       throw new Error('ioctl(2) failed, EBADF')
     }
@@ -377,7 +378,7 @@ describe('SessionManager', () => {
   })
 
   it('stale exit from a pty killed by closeTerminal+restart does not clobber the new record', () => {
-    const info = mgr.create('/p', claudeSpec)
+    const info = mgr.create('/p', claudeSpec, 1)
     const oldPty = ptys[0]
     mgr.closeTerminal(info.id)
     mgr.restart(info.id)
@@ -395,7 +396,7 @@ describe('SessionManager', () => {
   })
 
   it('stale data from a pty killed by closeTerminal+restart is not forwarded or tailed', () => {
-    const info = mgr.create('/p', claudeSpec)
+    const info = mgr.create('/p', claudeSpec, 1)
     const oldPty = ptys[0]
     mgr.closeTerminal(info.id)
     mgr.restart(info.id)
@@ -436,19 +437,51 @@ describe('SessionManager', () => {
 
   describe('peek', () => {
     it('returns the last cleaned lines of a live session output', () => {
-      const info = mgr.create('/p', claudeSpec)
+      const info = mgr.create('/p', claudeSpec, 1)
       ptys[0].dataCb?.('[1mDo you want to run npm test?[0m\n(y/n)\n')
       expect(mgr.peek(info.id)).toEqual(['Do you want to run npm test?', '(y/n)'])
     })
 
     it('respects maxLines', () => {
-      const info = mgr.create('/p', claudeSpec)
+      const info = mgr.create('/p', claudeSpec, 1)
       ptys[0].dataCb?.('a\nb\nc\n')
       expect(mgr.peek(info.id, 2)).toEqual(['b', 'c'])
     })
 
     it('returns [] for an unknown session id', () => {
       expect(mgr.peek('nope')).toEqual([])
+    })
+  })
+
+  describe('workspaces', () => {
+    it('create assigns the given workspace', () => {
+      const info = mgr.create('/tmp', claudeSpec, 3)
+      expect(info.workspace).toBe(3)
+    })
+
+    it('restore clamps a bad saved workspace to 1', () => {
+      const info = mgr.restore('id-1', '/tmp', claudeSpec, undefined, 42 as number)
+      expect(info.workspace).toBe(1)
+    })
+
+    it('setWorkspace moves a session and returns updated info', () => {
+      const info = mgr.create('/tmp', claudeSpec, 1)
+      const updated = mgr.setWorkspace(info.id, 7)
+      expect(updated?.workspace).toBe(7)
+      expect(mgr.list().find((s) => s.id === info.id)?.workspace).toBe(7)
+    })
+
+    it('setWorkspace returns null for an unknown id and clamps range', () => {
+      expect(mgr.setWorkspace('nope', 3)).toBeNull()
+      const info = mgr.create('/tmp', claudeSpec, 2)
+      expect(mgr.setWorkspace(info.id, 99)?.workspace).toBe(1)
+    })
+
+    it('restart keeps the workspace', () => {
+      const info = mgr.create('/tmp', claudeSpec, 4)
+      mgr.closeTerminal(info.id)
+      const restarted = mgr.restart(info.id)
+      expect(restarted.workspace).toBe(4)
     })
   })
 })

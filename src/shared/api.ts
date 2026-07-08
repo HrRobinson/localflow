@@ -6,8 +6,14 @@ export interface LocalflowApi {
    * Start a session for an agent. The `cwd` parameter is honored only under
    * LOCALFLOW_E2E=1 (test harness); production always opens the folder
    * picker. `customCommand` is required when agentId is 'custom'.
+   * `workspace` defaults to 1.
    */
-  createSession(agentId: AgentId, cwd?: string, customCommand?: string): Promise<SessionInfo | null>
+  createSession(
+    agentId: AgentId,
+    cwd?: string,
+    customCommand?: string,
+    workspace?: number
+  ): Promise<SessionInfo | null>
   /** Relaunch a dead session; `fresh` starts a new conversation instead of resuming. */
   restartSession(id: string, fresh?: boolean): Promise<SessionInfo>
   /** Ends the pty; the session stays listed as exited, reopenable via resume/fresh. */
@@ -16,6 +22,8 @@ export interface LocalflowApi {
   deleteSession(id: string): Promise<void>
   /** Renames a session; empty/whitespace name is a no-op. Returns the updated info, or null if the id is unknown. */
   renameSession(id: string, name: string): Promise<SessionInfo | null>
+  /** Moves a session to workspace 1-9 (clamped). Null if the id is unknown. */
+  setWorkspace(id: string, workspace: number): Promise<SessionInfo | null>
   listSessions(): Promise<SessionInfo[]>
   /** Last few cleaned output lines of a session — the approve control's peek. */
   peekSession(id: string, maxLines?: number): Promise<string[]>

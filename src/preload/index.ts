@@ -3,12 +3,14 @@ import type { LocalflowApi } from '../shared/api'
 import type { AgentId, SessionStatus } from '../shared/types'
 
 const api: LocalflowApi = {
-  createSession: (agentId: AgentId, cwd?: string, customCommand?: string) =>
-    ipcRenderer.invoke('session:create', agentId, cwd, customCommand),
+  createSession: (agentId: AgentId, cwd?: string, customCommand?: string, workspace?: number) =>
+    ipcRenderer.invoke('session:create', agentId, cwd, customCommand, workspace),
   restartSession: (id: string, fresh?: boolean) => ipcRenderer.invoke('session:restart', id, fresh),
   closeTerminal: (id: string) => ipcRenderer.invoke('session:closeTerminal', id),
   deleteSession: (id: string) => ipcRenderer.invoke('session:delete', id),
   renameSession: (id: string, name: string) => ipcRenderer.invoke('session:rename', id, name),
+  setWorkspace: (id: string, workspace: number) =>
+    ipcRenderer.invoke('session:setWorkspace', id, workspace),
   listSessions: () => ipcRenderer.invoke('session:list'),
   peekSession: (id: string, maxLines?: number) => ipcRenderer.invoke('session:peek', id, maxLines),
   listAgents: () => ipcRenderer.invoke('agents:list'),

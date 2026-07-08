@@ -362,8 +362,11 @@ export default function App(): React.JSX.Element {
         />
       )}
       {/* No content header: the sidebar IS the navigation (user decision
-          2026-07-07); cmd+esc / nav items cover the old header buttons. */}
-      <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+          2026-07-07); cmd+esc / nav items cover the old header buttons.
+          relative: positioning context for .pane.enlarged (absolute, inset
+          12px) so an enlarged pane fills only the content area and never
+          covers the sidebar. */}
+      <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
         {showEnvironment ? (
           <div className="grid flex-1 auto-rows-[minmax(300px,1fr)] grid-cols-[repeat(auto-fit,minmax(460px,1fr))] gap-2.5 overflow-auto px-3 pt-3 pb-3">
             {order

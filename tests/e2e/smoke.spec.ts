@@ -876,3 +876,78 @@ test('browser pane: UI creation, chrome, close/reopen, persistence', async () =>
   await app2.close()
   server.close()
 })
+
+test('activity feed + overview stats: lines in order, waiting jump', async () => {
+  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const app = await launchApp(userData)
+  const win = await app.firstWindow()
+  await win.setViewportSize({ width: 1400, height: 900 })
+  await expect(win.locator('.new-session')).toBeVisible()
+
+  const createSession = (cwd: string): Promise<{ id: string } | null> =>
+    win.evaluate(
+      (dir) =>
+        (
+          window as unknown as {
+            localflow: { createSession(a: string, c: string): Promise<{ id: string } | null> }
+          }
+        ).localflow.createSession('claude', dir),
+      cwd
+    )
+
+  const a = await createSession(userData)
+  const b = await createSession(userData)
+  await expect(win.locator(`[data-session-id="${b!.id}"]`)).toBeVisible()
+
+  const { port, token } = JSON.parse(readFileSync(join(userData, 'endpoint.json'), 'utf8'))
+  const post = (paneId: string, event: string): Promise<Response> =>
+    fetch(`http://127.0.0.1:${port}/event`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Localflow-Token': token },
+      body: JSON.stringify({ paneId, event })
+    })
+
+  // Drive a turn on session a and leave it waiting: prompt -> working ->
+  // needs-you. Session b stays idle.
+  const rowA = win.locator(`[data-session-id="${a!.id}"]`)
+  await post(a!.id, 'UserPromptSubmit')
+  await expect(rowA.locator('.session-status')).toHaveText('working')
+  await post(a!.id, 'Notification')
+  await expect(rowA.locator('.session-status')).toHaveText('needs you')
+
+  // Overview stats strip: counts by status + the clickable waiting fragment.
+  const stats = win.locator('.overview-stats')
+  await expect(stats).toBeVisible()
+  await expect(stats.locator('[data-stat="needs-you"]')).toContainText('1 needs you')
+  await expect(stats.locator('[data-stat="idle"]')).toContainText('1 done')
+  const waiting = win.locator('.stats-waiting')
+  await expect(waiting).toBeVisible()
+
+  // Clicking "waiting Nm" behaves like cmd+u: enters the environment view with
+  // the waiting pane active (and enlarged — more than one session exists).
+  await waiting.click()
+  const paneA = win.locator(`[data-pane-id="${a!.id}"]`)
+  await expect(paneA).toBeVisible()
+  await expect(paneA).toHaveClass(/active/)
+
+  // Open the Activity view and select session a.
+  await win.getByRole('button', { name: 'Activity', exact: true }).click()
+  await win.locator('.activity-switcher').selectOption(a!.id)
+
+  // The feed lists the plain-language lines newest-first, in order.
+  const lines = win.locator('.activity-line')
+  await expect(lines.nth(0)).toContainText('waiting for your approval')
+  await expect(lines.nth(1)).toContainText('you sent a prompt')
+  await expect(lines.nth(2)).toContainText('session created')
+
+  // The persistent header reflects the current pending state.
+  await expect(win.locator('.activity-current')).toContainText('waiting for your approval')
+
+  // A further hook event streams in live (activity:event push) and updates
+  // both the header and the newest feed line.
+  await post(a!.id, 'Stop')
+  await expect(win.locator('.activity-current')).toContainText('idle')
+  await expect(lines.nth(0)).toContainText('turn finished')
+
+  await app.close()
+})

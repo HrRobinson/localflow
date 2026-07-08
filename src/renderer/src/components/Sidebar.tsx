@@ -5,12 +5,13 @@ import type { SessionInfo } from '../../../shared/types'
 
 interface Props {
   sessions: SessionInfo[]
-  view: 'home' | 'environment' | 'settings'
+  view: 'home' | 'environment' | 'settings' | 'activity'
   activeId: string | null
   environment: number
   onSwitchEnvironment: (n: number) => void
   onHome: () => void
   onEnvironment: () => void
+  onActivity: () => void
   onSettings: () => void
   onOpenSession: (id: string) => void
   onDeleteSession: (id: string) => void
@@ -29,6 +30,7 @@ export default function Sidebar({
   onSwitchEnvironment,
   onHome,
   onEnvironment,
+  onActivity,
   onSettings,
   onOpenSession,
   onDeleteSession,
@@ -100,6 +102,14 @@ export default function Sidebar({
           onMouseDown={(e) => e.preventDefault()}
         >
           Environment
+        </button>
+        <button
+          className={`${navItemBase}${view === 'activity' ? ` ${navItemActive}` : ''}`}
+          onClick={onActivity}
+          disabled={sessions.length === 0}
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          Activity
         </button>
         <button
           className={`${navItemBase}${view === 'settings' ? ` ${navItemActive}` : ''}`}

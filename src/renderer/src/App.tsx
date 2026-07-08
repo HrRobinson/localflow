@@ -3,6 +3,7 @@ import TerminalPane from './components/TerminalPane'
 import BrowserPane from './components/BrowserPane'
 import Landing from './components/Landing'
 import Settings from './components/Settings'
+import Activity from './components/Activity'
 import Sidebar from './components/Sidebar'
 import { reconcileOrder } from './lib/order'
 import { pickNeighbor, swapInOrder, type PaneRect, type Direction } from './lib/pane-nav'
@@ -40,7 +41,7 @@ export default function App(): React.JSX.Element {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [order, setOrder] = useState<string[]>([])
   // The app opens on the home overview; the environment view is entered explicitly.
-  const [view, setView] = useState<'home' | 'environment' | 'settings'>('home')
+  const [view, setView] = useState<'home' | 'environment' | 'settings' | 'activity'>('home')
   // Which environment's grid is visible. Sessions on other environments stay
   // mounted-invisible? No — they simply don't render; their ptys live in
   // main regardless, so nothing is lost when a pane isn't shown.
@@ -155,6 +156,7 @@ export default function App(): React.JSX.Element {
       return cur !== null && visible.includes(cur) ? cur : (visible[0] ?? null)
     })
   }
+  const enterActivity = (): void => setView('activity')
   // Switching environments re-scopes focus: the active/enlarged pane must be
   // one of the target environment's panes, or null.
   const switchEnvironment = (n: number): void => {
@@ -338,12 +340,21 @@ export default function App(): React.JSX.Element {
       {sidebarVisible && (
         <Sidebar
           sessions={sessions}
-          view={showEnvironment ? 'environment' : view === 'settings' ? 'settings' : 'home'}
+          view={
+            showEnvironment
+              ? 'environment'
+              : view === 'settings'
+                ? 'settings'
+                : view === 'activity'
+                  ? 'activity'
+                  : 'home'
+          }
           activeId={activeId}
           environment={environment}
           onSwitchEnvironment={switchEnvironment}
           onHome={() => setView('home')}
           onEnvironment={enterEnvironment}
+          onActivity={enterActivity}
           onSettings={() => setView('settings')}
           onOpenSession={openSession}
           onDeleteSession={(id) => void deleteSession(id)}
@@ -386,6 +397,8 @@ export default function App(): React.JSX.Element {
           </div>
         ) : view === 'settings' ? (
           <Settings />
+        ) : view === 'activity' ? (
+          <Activity sessions={sessions} activeId={activeId} onOpenSession={openSession} />
         ) : (
           <Landing
             sessions={sessions}

@@ -3,6 +3,19 @@ import type { WebviewTag } from 'electron'
 import type { SessionInfo } from '../../../shared/types'
 import { normalizeHttpUrl } from '../../../shared/urls'
 
+// @types/react's own <webview> intrinsic types allowpopups as boolean, but
+// React 19 drops boolean values for non-boolean attributes on non-standard
+// elements ("Received `true` for a non-boolean attribute" warning; the
+// attribute never reaches the DOM), and that intrinsic can't be overridden
+// by augmentation. This alias re-types the same host tag with the string
+// form Electron needs; at runtime React still renders a plain <webview>.
+type WebviewAttributes = React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & {
+  src?: string
+  partition?: string
+  allowpopups?: string
+}
+const WebView = 'webview' as unknown as (props: WebviewAttributes) => React.JSX.Element
+
 interface Props {
   session: SessionInfo
   enlarged: boolean
@@ -199,7 +212,7 @@ export default function BrowserPane({
         </button>
       </div>
       {alive ? (
-        <webview
+        <WebView
           // Must equal BROWSER_PARTITION in src/main/webview-policy.ts —
           // the partition carries the deny-all permission handler.
           partition="persist:browser-panes"
@@ -212,8 +225,11 @@ export default function BrowserPane({
           // setWindowOpenHandler ever runs. With it, popups reach the
           // handler in main (src/main/webview-policy.ts), which opens
           // http(s) targets in the system browser and always denies
-          // creation of a new Electron window.
-          allowpopups
+          // creation of a new Electron window. STRING form on purpose:
+          // React 19 drops a boolean `true` for non-boolean attributes on
+          // non-standard elements (warns, attribute never reaches the
+          // DOM); Electron only checks attribute presence.
+          allowpopups="true"
           // The guest is a separate process/renderer: clicking inside it
           // never bubbles a mousedown to the pane root, so activation would
           // never fire from a click on the page itself. The webview element

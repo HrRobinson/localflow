@@ -1,19 +1,10 @@
 /// <reference types="vite/client" />
 
-// The <webview> tag is enabled via webviewTag: true (main). React has no
-// intrinsic for it; typed here once. Methods (goBack, loadURL, …) come from
-// Electron.WebviewTag via the ref cast in BrowserPane.
-declare namespace React {
-  namespace JSX {
-    interface IntrinsicElements {
-      webview: React.DetailedHTMLProps<
-        React.HTMLAttributes<HTMLElement> & {
-          src?: string
-          partition?: string
-          allowpopups?: boolean
-        },
-        HTMLElement
-      >
-    }
-  }
-}
+// No local <webview> JSX declaration on purpose: @types/react ships its own
+// webview intrinsic (WebViewHTMLAttributes), and with jsx: react-jsx that
+// module declaration is what JSX checking resolves — a global
+// `declare namespace React` augmentation here never takes effect (verified:
+// deleting the old one changed no diagnostics). Its allowpopups is typed
+// boolean, but React 19 drops boolean values for non-boolean attributes on
+// non-standard elements, so BrowserPane renders the tag through a locally
+// string-typed host-element alias instead.

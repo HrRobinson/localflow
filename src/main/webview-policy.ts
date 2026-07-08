@@ -52,9 +52,9 @@ export function installWebviewPolicy(opts: {
       if (!isHttpUrl(event.url)) event.preventDefault()
     })
     contents.on('before-input-event', (event, input) => {
-      // rawKeyDown fires for some keys instead of keyDown (observed for at
-      // least some bound combos) — matching only keyDown silently dropped
-      // them, while still leaving plain typing (text-input events) alone.
+      // rawKeyDown is reported instead of keyDown for some key paths;
+      // accepted defensively so a bound combo is never silently dropped.
+      // Matched-combos-only forwarding keeps plain typing untouched.
       if (input.type !== 'keyDown' && input.type !== 'rawKeyDown') return
       const like: KeyEventLike = {
         key: input.key,

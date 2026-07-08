@@ -1,6 +1,6 @@
 {
   "name": "localflow",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Mission control for Claude Code sessions - one window, many agents, glanceable status.",
   "main": "./out/main/index.js",
   "type": "module",

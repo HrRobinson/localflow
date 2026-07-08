@@ -36,4 +36,6 @@ export interface LocalflowApi {
   onData(cb: (id: string, data: string) => void): () => void
   onStatus(cb: (id: string, status: SessionStatus) => void): () => void
   getKeybindings(): Promise<Record<KeyAction, string>>
+  /** Optional hand-configured workspace names from config.json ("3" -> "backend"). */
+  getWorkspaceNames(): Promise<Record<string, string>>
 }

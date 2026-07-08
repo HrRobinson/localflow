@@ -315,6 +315,8 @@ export default function App(): React.JSX.Element {
           sessions={sessions}
           view={showTerminals ? 'terminals' : view === 'settings' ? 'settings' : 'home'}
           activeId={activeId}
+          workspace={workspace}
+          onSwitchWorkspace={switchWorkspace}
           onHome={() => setView('home')}
           onTerminals={enterTerminals}
           onSettings={() => setView('settings')}

@@ -8,6 +8,7 @@ import { SessionManager, type SpawnSpec } from './session-manager'
 import { loadSavedSessions, saveSessions } from './persistence'
 import { AgentRegistry } from './agent-registry'
 import { loadOrCreateKeybindings } from './keybindings-file'
+import { loadWorkspaceNames } from './workspace-names'
 
 if (process.env['LOCALFLOW_USER_DATA']) {
   app.setPath('userData', process.env['LOCALFLOW_USER_DATA'])
@@ -199,6 +200,7 @@ app.whenReady().then(async () => {
   )
 
   ipcMain.handle('keybindings:get', () => keybindings)
+  ipcMain.handle('workspaces:getNames', () => loadWorkspaceNames(join(userData, 'config.json')))
 
   ipcMain.handle('agents:list', () => registry.list())
   ipcMain.handle('agents:getLastAgent', () => registry.getLastAgent())

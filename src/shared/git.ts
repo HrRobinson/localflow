@@ -54,7 +54,9 @@ export const DIFF_MAX_CHARS = 200_000
  * Parse `git status --porcelain=v1` output. Each line is `XY<space>PATH`
  * (`XY ORIG -> PATH` for a rename/copy). Untracked is `?? PATH`. The parser is
  * lenient: blank/short lines are skipped, and a rename's current path (the side
- * git diff wants) is taken as the right of ` -> `.
+ * git diff wants) is taken as the right of ` -> `. The arrow is only a path
+ * separator for rename/copy entries (X or Y is R/C) — for any other status,
+ * ` -> ` in the text is a literal part of the filename.
  */
 export function parsePorcelain(stdout: string): GitFileEntry[] {
   const entries: GitFileEntry[] = []
@@ -66,7 +68,8 @@ export function parsePorcelain(stdout: string): GitFileEntry[] {
     const untracked = index === '?' && worktree === '?'
     let path = rest
     let origPath: string | undefined
-    const arrow = rest.indexOf(' -> ')
+    const renamedOrCopied = index === 'R' || index === 'C' || worktree === 'R' || worktree === 'C'
+    const arrow = renamedOrCopied ? rest.indexOf(' -> ') : -1
     if (arrow !== -1) {
       origPath = rest.slice(0, arrow)
       path = rest.slice(arrow + 4)

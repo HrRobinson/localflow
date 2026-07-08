@@ -23,6 +23,20 @@ describe('parsePorcelain', () => {
     expect(f.origPath).toBe('old-name.txt')
     expect(f.staged).toBe(true)
   })
+
+  it('parses a copy like a rename: splits on the arrow', () => {
+    const [f] = parsePorcelain('C  old.txt -> copy.txt')
+    expect(f.path).toBe('copy.txt')
+    expect(f.origPath).toBe('old.txt')
+    expect(f.staged).toBe(true)
+  })
+
+  it('does not split on " -> " inside a plain modified path', () => {
+    const [f] = parsePorcelain(' M a -> b.txt')
+    expect(f.path).toBe('a -> b.txt')
+    expect(f.origPath).toBeUndefined()
+    expect(f.unstaged).toBe(true)
+  })
 })
 
 describe('capDiff', () => {

@@ -179,6 +179,13 @@ export default function App(): React.JSX.Element {
     // own refresh(), so no separate refresh is needed here.
     await afterPaneGone(id)
   }
+  // The Overview "waiting Nm" fragment jumps to attention exactly like cmd+u:
+  // start from the top of the needs-you ring (activeId null) on the current
+  // environment, and open+enlarge whatever it lands on.
+  const jumpToAttention = (): void => {
+    const target = nextNeedsYou(order, sessions, null, environment)
+    if (target) openSession(target)
+  }
 
   // The dispatcher's keydown handler is a stable closure attached once on
   // mount, so it reads current state through a ref kept in sync every
@@ -389,6 +396,7 @@ export default function App(): React.JSX.Element {
             onDelete={(id) => void deleteSession(id)}
             onRename={(id, name) => void renameSession(id, name)}
             onOpenSettings={() => setView('settings')}
+            onJumpToAttention={jumpToAttention}
           />
         )}
       </main>

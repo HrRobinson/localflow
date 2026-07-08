@@ -39,9 +39,11 @@ export default function Changes({
   onOpenLazygit
 }: Props): React.JSX.Element {
   const [status, setStatus] = useState<GitStatus | null>(null)
+  const [statusError, setStatusError] = useState(false)
   const [caps, setCaps] = useState<Capabilities | null>(null)
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
   const [diff, setDiff] = useState<DiffResult | null>(null)
+  const [diffError, setDiffError] = useState(false)
 
   const files: GitFileEntry[] = status?.repo ? status.files : []
   const activeSession = sessions.find((s) => s.id === sessionId) ?? null
@@ -57,10 +59,24 @@ export default function Changes({
     const req = ++statusReq.current
     if (!id) {
       setStatus({ repo: false })
+      setStatusError(false)
       return
     }
-    const s = await window.localflow.gitStatus(id)
-    if (statusReq.current === req) setStatus(s)
+    try {
+      const s = await window.localflow.gitStatus(id)
+      if (statusReq.current === req) {
+        setStatus(s)
+        setStatusError(false)
+      }
+    } catch {
+      // A failed fetch must never be mistaken for a clean tree: keep status
+      // null but flip a distinct error flag so the empty-state copy can tell
+      // "we don't know" apart from "we checked and there's nothing".
+      if (statusReq.current === req) {
+        setStatus(null)
+        setStatusError(true)
+      }
+    }
   }, [])
 
   const loadDiff = useCallback(
@@ -68,23 +84,34 @@ export default function Changes({
       const req = ++diffReq.current
       if (!entry) {
         setDiff(null)
+        setDiffError(false)
         return
       }
-      const parts: string[] = []
-      let truncated = false
-      // Staged layer first (git's own ordering), then the worktree layer —
-      // which also produces the untracked full-addition via main's fallback.
-      if (entry.staged) {
-        const d = await window.localflow.gitDiff(id, entry.path, true)
-        if (d.text) parts.push(d.text)
-        truncated = truncated || d.truncated
+      try {
+        const parts: string[] = []
+        let truncated = false
+        // Staged layer first (git's own ordering), then the worktree layer —
+        // which also produces the untracked full-addition via main's fallback.
+        if (entry.staged) {
+          const d = await window.localflow.gitDiff(id, entry.path, true)
+          if (d.text) parts.push(d.text)
+          truncated = truncated || d.truncated
+        }
+        if (entry.unstaged || entry.untracked) {
+          const d = await window.localflow.gitDiff(id, entry.path, false)
+          if (d.text) parts.push(d.text)
+          truncated = truncated || d.truncated
+        }
+        if (diffReq.current === req) {
+          setDiff({ text: parts.join('\n'), truncated })
+          setDiffError(false)
+        }
+      } catch {
+        if (diffReq.current === req) {
+          setDiff(null)
+          setDiffError(true)
+        }
       }
-      if (entry.unstaged || entry.untracked) {
-        const d = await window.localflow.gitDiff(id, entry.path, false)
-        if (d.text) parts.push(d.text)
-        truncated = truncated || d.truncated
-      }
-      if (diffReq.current === req) setDiff({ text: parts.join('\n'), truncated })
     },
     []
   )
@@ -95,6 +122,13 @@ export default function Changes({
     // eslint-disable-next-line react-hooks/set-state-in-effect -- resetting selection is the point of this effect: the session identity changed
     setSelectedPath(null)
     setDiff(null)
+    setDiffError(false)
+    // Invalidate any in-flight diff request from the previous session/file.
+    // Without this, a slow response for the old selection can still land
+    // after selectedPath/diff are cleared and a new file gets picked in the
+    // new session — its guard (diffReq.current === req) would pass and
+    // repopulate `diff` with the stale file's content under the new label.
+    diffReq.current++
     void loadStatus(sessionId)
     void window.localflow.getCapabilities().then(setCaps)
   }, [sessionId, loadStatus])
@@ -174,9 +208,11 @@ export default function Changes({
       ? 'No repository session selected.'
       : isBrowser
         ? 'Browser panes have no working tree.'
-        : status?.repo === false
-          ? "This session's folder isn't a git repository."
-          : 'No changes — the working tree is clean.'
+        : statusError
+          ? "Couldn't load changes for this session."
+          : status?.repo === false
+            ? "This session's folder isn't a git repository."
+            : 'No changes — the working tree is clean.'
 
   const btn =
     'cursor-pointer rounded-md border border-white/10 bg-white/[0.07] px-2.5 py-1 text-gray-300 hover:bg-white/[0.13] hover:text-white disabled:cursor-default disabled:opacity-40 disabled:hover:bg-white/[0.07] disabled:hover:text-gray-300'
@@ -257,6 +293,8 @@ export default function Changes({
           <div className="changes-diff min-h-0 flex-1 overflow-auto p-3 font-mono text-[12px] leading-[1.5]">
             {selectedPath === null ? (
               <div className="text-gray-500">Select a file to view its diff.</div>
+            ) : diffError ? (
+              <div className="text-gray-500">Couldn't load the diff for this file.</div>
             ) : diff === null ? (
               <div className="text-gray-500">Loading diff…</div>
             ) : diff.text.length === 0 ? (

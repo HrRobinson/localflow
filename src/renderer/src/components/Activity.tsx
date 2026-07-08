@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { ActivityEntry, SessionInfo } from '../../../shared/types'
 import { activityLine, relativeTime, currentStateLine } from '../lib/activity-format'
+import { upsertActivity } from '../lib/activity-feed'
 
 interface Props {
   sessions: SessionInfo[]
@@ -36,10 +37,10 @@ export default function Activity({ sessions, activeId, onOpenSession }: Props): 
   }, [])
 
   // Load the ring for the selected session and stream new entries for it.
-  // Pushed entries UPSERT rather than append: main collapses consecutive
-  // identical hook events into one ring row (bumping its `count`) and
-  // re-pushes that same row, so a push whose kind+status match the feed's
-  // current last row replaces it instead of appearing as a duplicate.
+  // Pushed hook events UPSERT rather than append (see upsertActivity): main
+  // collapses consecutive identical hook events into one ring row and
+  // re-pushes that same row, which must replace the feed's last row rather
+  // than appear as a duplicate — while lifecycle kinds always append.
   useEffect(() => {
     // No session to load: leave `entries` as-is (unrendered — the "No
     // sessions yet" branch below takes over when `session` is null; setting
@@ -50,14 +51,7 @@ export default function Activity({ sessions, activeId, onOpenSession }: Props): 
       if (!cancelled) setEntries(list)
     })
     const off = window.localflow.onActivity((id, entry) => {
-      if (id !== currentId) return
-      setEntries((prev) => {
-        const last = prev[prev.length - 1]
-        if (last && last.kind === entry.kind && last.status === entry.status) {
-          return [...prev.slice(0, -1), entry]
-        }
-        return [...prev, entry]
-      })
+      if (id === currentId) setEntries((prev) => upsertActivity(prev, entry))
     })
     return () => {
       cancelled = true

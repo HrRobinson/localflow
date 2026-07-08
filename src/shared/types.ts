@@ -20,6 +20,22 @@ export type SessionKind = 'terminal' | 'browser'
 export type ActivityEventKind =
   HookEventName | 'created' | 'reopened' | 'closed' | 'exited' | 'moved'
 
+/**
+ * Lifecycle activity kinds always append to the ring — two consecutive
+ * `moved` events with unchanged status are two real history rows — while
+ * repeated hook events collapse into the previous entry (count bumped).
+ * Shared so main's ring writer (recordActivity) and the renderer's push
+ * handler (upsertActivity) agree on which pushes are in-place updates
+ * versus fresh rows.
+ */
+export const LIFECYCLE_KINDS: ReadonlySet<ActivityEventKind> = new Set([
+  'created',
+  'reopened',
+  'closed',
+  'exited',
+  'moved'
+])
+
 /** One entry in a session's in-memory activity ring (last 200 kept, M7). */
 export interface ActivityEntry {
   /**

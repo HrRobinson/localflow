@@ -1,13 +1,14 @@
 import { randomUUID } from 'node:crypto'
 import { basename } from 'node:path'
 import { spawn as ptySpawn } from 'node-pty'
-import type {
-  ActivityEntry,
-  ActivityEventKind,
-  AgentId,
-  HookEvent,
-  SessionInfo,
-  SessionStatus
+import {
+  LIFECYCLE_KINDS,
+  type ActivityEntry,
+  type ActivityEventKind,
+  type AgentId,
+  type HookEvent,
+  type SessionInfo,
+  type SessionStatus
 } from '../shared/types'
 import { clampEnvironment } from '../shared/environment'
 import { normalizeHttpUrl } from '../shared/urls'
@@ -79,15 +80,6 @@ interface Record_ {
 
 const INSTANT_EXIT_MS = 5000
 const ACTIVITY_LIMIT = 200
-
-/** Lifecycle activity kinds always append to the ring; hook events collapse. */
-const LIFECYCLE_KINDS: ReadonlySet<ActivityEventKind> = new Set([
-  'created',
-  'reopened',
-  'closed',
-  'exited',
-  'moved'
-])
 
 // Browser panes have no process; their Record_ still carries a SpawnSpec
 // because the type requires one. This filler is inert — every code path

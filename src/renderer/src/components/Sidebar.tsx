@@ -1,16 +1,16 @@
 import { useEffect, useState } from 'react'
 import Brand from './Brand'
-import { visibleWorkspaces, worstStatus } from '../../../shared/workspace'
+import { visibleEnvironments, worstStatus } from '../../../shared/environment'
 import type { SessionInfo } from '../../../shared/types'
 
 interface Props {
   sessions: SessionInfo[]
-  view: 'home' | 'terminals' | 'settings'
+  view: 'home' | 'environment' | 'settings'
   activeId: string | null
-  workspace: number
-  onSwitchWorkspace: (n: number) => void
+  environment: number
+  onSwitchEnvironment: (n: number) => void
   onHome: () => void
-  onTerminals: () => void
+  onEnvironment: () => void
   onSettings: () => void
   onOpenSession: (id: string) => void
   onDeleteSession: (id: string) => void
@@ -25,10 +25,10 @@ export default function Sidebar({
   sessions,
   view,
   activeId,
-  workspace,
-  onSwitchWorkspace,
+  environment,
+  onSwitchEnvironment,
   onHome,
-  onTerminals,
+  onEnvironment,
   onSettings,
   onOpenSession,
   onDeleteSession,
@@ -37,11 +37,11 @@ export default function Sidebar({
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
-  const [wsNames, setWsNames] = useState<Record<string, string>>({})
+  const [envNames, setEnvNames] = useState<Record<string, string>>({})
   useEffect(() => {
     let cancelled = false
-    void window.localflow.getWorkspaceNames().then((names) => {
-      if (!cancelled) setWsNames(names)
+    void window.localflow.getEnvironmentNames().then((names) => {
+      if (!cancelled) setEnvNames(names)
     })
     return () => {
       cancelled = true
@@ -94,12 +94,12 @@ export default function Sidebar({
           Overview
         </button>
         <button
-          className={`${navItemBase}${view === 'terminals' ? ` ${navItemActive}` : ''}`}
-          onClick={onTerminals}
+          className={`${navItemBase}${view === 'environment' ? ` ${navItemActive}` : ''}`}
+          onClick={onEnvironment}
           disabled={sessions.length === 0}
           onMouseDown={(e) => e.preventDefault()}
         >
-          Terminals
+          Environment
         </button>
         <button
           className={`${navItemBase}${view === 'settings' ? ` ${navItemActive}` : ''}`}
@@ -111,36 +111,36 @@ export default function Sidebar({
       </nav>
       <div className="min-h-0 flex-1 overflow-auto p-2">
         <div className="px-2.5 pt-2 pb-1 text-[11px] tracking-[0.06em] text-gray-500 uppercase">
-          Workspaces
+          Environments
         </div>
-        {visibleWorkspaces(sessions, workspace).map((n) => {
-          const wsSessions = sessions.filter((s) => s.workspace === n)
+        {visibleEnvironments(sessions, environment).map((n) => {
+          const envSessions = sessions.filter((s) => s.environment === n)
           return (
             <div key={n}>
               <button
                 className={`flex w-full cursor-pointer items-center gap-2 rounded-md border-0 bg-transparent px-2.5 py-1.5 text-left text-[12px] ${
-                  n === workspace
+                  n === environment
                     ? 'font-semibold text-white'
                     : 'text-gray-400 hover:bg-white/5 hover:text-white'
                 }`}
-                data-nav-workspace={n}
-                onClick={() => onSwitchWorkspace(n)}
+                data-nav-environment={n}
+                onClick={() => onSwitchEnvironment(n)}
                 onMouseDown={(e) => e.preventDefault()}
               >
                 <span
                   className="dot bg-exited h-2 w-2 flex-none rounded-full"
-                  data-status={worstStatus(wsSessions.map((s) => s.status))}
+                  data-status={worstStatus(envSessions.map((s) => s.status))}
                 />
                 <span className="flex-1">
                   {n}
-                  {wsNames[String(n)] ? ` · ${wsNames[String(n)]}` : ''}
+                  {envNames[String(n)] ? ` · ${envNames[String(n)]}` : ''}
                 </span>
-                <span className="text-[11px] text-gray-600">{wsSessions.length || ''}</span>
+                <span className="text-[11px] text-gray-600">{envSessions.length || ''}</span>
               </button>
-              {wsSessions.map((s) => (
+              {envSessions.map((s) => (
                 <div
                   key={s.id}
-                  className={`side-session group flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 pl-2 text-[13px] text-gray-300 hover:bg-white/5 hover:text-white ${activeId === s.id && view === 'terminals' ? 'active bg-white/10 text-white' : ''}`}
+                  className={`side-session group flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 pl-2 text-[13px] text-gray-300 hover:bg-white/5 hover:text-white ${activeId === s.id && view === 'environment' ? 'active bg-white/10 text-white' : ''}`}
                   data-nav-session={s.id}
                 >
                   <span

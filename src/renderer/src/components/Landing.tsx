@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import type { AgentId, AgentInfo, SessionInfo } from '../../../shared/types'
 import { AGENT_PRESETS } from '../../../shared/agents'
+import { normalizeHttpUrl } from '../../../shared/urls'
 import ApproveButton from './ApproveButton'
 
 interface Props {
   sessions: SessionInfo[]
   onCreate: (agentId: AgentId, customCommand?: string) => void
+  onCreateBrowser: (url: string) => void
   onOpen: (id: string) => void
   onResume: (id: string, fresh: boolean) => void
   onDelete: (id: string) => void
@@ -37,10 +39,12 @@ export default function Landing({
   onResume,
   onDelete,
   onRename,
-  onOpenSettings
+  onOpenSettings,
+  onCreateBrowser
 }: Props): React.JSX.Element {
   const [agents, setAgents] = useState<AgentInfo[] | null>(null)
-  const [selectedAgentId, setSelectedAgentId] = useState<AgentId>(AGENT_PRESETS[0].id)
+  const [selectedAgentId, setSelectedAgentId] = useState<AgentId | 'browser'>(AGENT_PRESETS[0].id)
+  const [urlInput, setUrlInput] = useState('')
   const [customCommand, setCustomCommand] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
@@ -101,12 +105,21 @@ export default function Landing({
     }
   }, [])
 
-  const selectedAgent = agents?.find((a) => a.id === selectedAgentId) ?? null
+  const selectedAgent =
+    selectedAgentId === 'browser' ? null : (agents?.find((a) => a.id === selectedAgentId) ?? null)
   const launchable =
-    selectedAgentId === 'custom' ? customCommand.trim().length > 0 : !!selectedAgent?.resolvedPath
+    selectedAgentId === 'browser'
+      ? normalizeHttpUrl(urlInput) !== null
+      : selectedAgentId === 'custom'
+        ? customCommand.trim().length > 0
+        : !!selectedAgent?.resolvedPath
 
   const create = (): void => {
     if (!launchable) return
+    if (selectedAgentId === 'browser') {
+      onCreateBrowser(normalizeHttpUrl(urlInput)!)
+      return
+    }
     onCreate(selectedAgentId, selectedAgentId === 'custom' ? customCommand.trim() : undefined)
   }
 
@@ -196,13 +209,17 @@ export default function Landing({
                     )}
                     <span
                       className="overflow-hidden font-mono text-[11px] text-ellipsis whitespace-nowrap text-gray-500"
-                      title={s.cwd}
+                      title={s.kind === 'browser' ? (s.url ?? '') : s.cwd}
                     >
-                      {s.cwd}
+                      {s.kind === 'browser' ? (s.url ?? '') : s.cwd}
                     </span>
                   </span>
                   <span className={`${paneAgent} w-[60px] text-center`}>
-                    {s.agentId === 'custom' ? s.command.split('/').pop() : s.agentId}
+                    {s.kind === 'browser'
+                      ? 'browser'
+                      : s.agentId === 'custom'
+                        ? s.command.split('/').pop()
+                        : s.agentId}
                   </span>
                   <span
                     className="session-status w-[74px] text-right text-xs text-gray-400"
@@ -218,22 +235,32 @@ export default function Landing({
                       />
                     )}
                     {s.status === 'exited' ? (
-                      <>
+                      s.kind === 'browser' ? (
                         <button
                           className={rowBtn}
                           onClick={() => onResume(s.id, false)}
                           onMouseDown={(e) => e.preventDefault()}
                         >
-                          resume
+                          reopen
                         </button>
-                        <button
-                          className={rowBtn}
-                          onClick={() => onResume(s.id, true)}
-                          onMouseDown={(e) => e.preventDefault()}
-                        >
-                          fresh
-                        </button>
-                      </>
+                      ) : (
+                        <>
+                          <button
+                            className={rowBtn}
+                            onClick={() => onResume(s.id, false)}
+                            onMouseDown={(e) => e.preventDefault()}
+                          >
+                            resume
+                          </button>
+                          <button
+                            className={rowBtn}
+                            onClick={() => onResume(s.id, true)}
+                            onMouseDown={(e) => e.preventDefault()}
+                          >
+                            fresh
+                          </button>
+                        </>
+                      )
                     ) : (
                       <button
                         className={`row-open ${rowBtnBase} border border-blue-600 bg-blue-600 px-2.5 text-white hover:bg-blue-700`}
@@ -287,7 +314,7 @@ export default function Landing({
             <select
               className="bg-surface-raised focus:border-working rounded-md border border-white/[0.14] px-2.5 py-2 text-[13px] text-gray-200 outline-none"
               value={selectedAgentId}
-              onChange={(e) => setSelectedAgentId(e.target.value as AgentId)}
+              onChange={(e) => setSelectedAgentId(e.target.value as AgentId | 'browser')}
               aria-label="Agent"
             >
               {AGENT_PRESETS.map((preset) => (
@@ -296,6 +323,7 @@ export default function Landing({
                 </option>
               ))}
               <option value="custom">Custom command…</option>
+              <option value="browser">Browser…</option>
             </select>
             {selectedAgentId === 'custom' && (
               <input
@@ -305,6 +333,17 @@ export default function Landing({
                 onChange={(e) => setCustomCommand(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && customCommand.trim()) create()
+                }}
+              />
+            )}
+            {selectedAgentId === 'browser' && (
+              <input
+                className="url-input bg-surface focus:border-working flex-1 rounded-md border border-white/[0.14] px-2.5 py-2 font-mono text-xs text-gray-200 outline-none"
+                placeholder="e.g. localhost:5173 or docs.anthropic.com"
+                value={urlInput}
+                onChange={(e) => setUrlInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && normalizeHttpUrl(urlInput) !== null) create()
                 }}
               />
             )}
@@ -320,18 +359,21 @@ export default function Landing({
           {agents === null && (
             <p className="m-0 text-[13px] text-gray-500">Detecting installed agents…</p>
           )}
-          {selectedAgentId !== 'custom' && agents !== null && !selectedAgent?.resolvedPath && (
-            <p className="m-0 text-[13px] text-gray-500">
-              {selectedAgent?.label ?? selectedAgentId} not found ({selectedAgent?.command}).{' '}
-              <button
-                className="cursor-pointer border-0 bg-transparent p-0 text-[13px] text-gray-300 underline hover:text-white"
-                onClick={onOpenSettings}
-                onMouseDown={(e) => e.preventDefault()}
-              >
-                Configure in Settings
-              </button>
-            </p>
-          )}
+          {selectedAgentId !== 'custom' &&
+            selectedAgentId !== 'browser' &&
+            agents !== null &&
+            !selectedAgent?.resolvedPath && (
+              <p className="m-0 text-[13px] text-gray-500">
+                {selectedAgent?.label ?? selectedAgentId} not found ({selectedAgent?.command}).{' '}
+                <button
+                  className="cursor-pointer border-0 bg-transparent p-0 text-[13px] text-gray-300 underline hover:text-white"
+                  onClick={onOpenSettings}
+                  onMouseDown={(e) => e.preventDefault()}
+                >
+                  Configure in Settings
+                </button>
+              </p>
+            )}
         </div>
       </section>
     </div>

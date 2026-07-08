@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto'
 import { basename } from 'node:path'
 import { spawn as ptySpawn } from 'node-pty'
 import type { AgentId, HookEvent, SessionInfo, SessionStatus } from '../shared/types'
-import { clampWorkspace } from '../shared/workspace'
+import { clampEnvironment } from '../shared/environment'
+import { normalizeHttpUrl } from '../shared/urls'
 import { transition } from './state-machine'
 import { hasHookAdapter, type HookAdapterKind } from '../shared/agents'
 import { buildHookInjection } from './hook-adapter'
@@ -69,6 +70,17 @@ interface Record_ {
 
 const INSTANT_EXIT_MS = 5000
 
+// Browser panes have no process; their Record_ still carries a SpawnSpec
+// because the type requires one. This filler is inert — every code path
+// branches on info.kind before touching spec/pty. No 'browser' member is
+// added to AgentId (the registry/launcher must never see a fake agent).
+const BROWSER_SPEC: SpawnSpec = {
+  agentId: 'custom',
+  command: '',
+  resumeArgs: [],
+  hookAdapter: 'none'
+}
+
 export class SessionManager {
   private sessions = new Map<string, Record_>()
   /** Set at quit: silences all late pty events (data, exit) app-wide. */
@@ -89,8 +101,8 @@ export class SessionManager {
     this.changedCbs.push(cb)
   }
 
-  create(cwd: string, spec: SpawnSpec, workspace: number): SessionInfo {
-    return this.spawn(randomUUID(), cwd, spec, false, basename(cwd), clampWorkspace(workspace))
+  create(cwd: string, spec: SpawnSpec, environment: number): SessionInfo {
+    return this.spawn(randomUUID(), cwd, spec, false, basename(cwd), clampEnvironment(environment))
   }
 
   restore(
@@ -98,7 +110,7 @@ export class SessionManager {
     cwd: string,
     spec: SpawnSpec,
     name?: string,
-    workspace?: unknown
+    environment?: unknown
   ): SessionInfo {
     // Defense in depth: a hand-edited sessions.json can hand us a non-string
     // name (e.g. `"name": 123`) — treat that as absent rather than throwing
@@ -112,18 +124,84 @@ export class SessionManager {
       status: 'exited',
       agentId: spec.agentId,
       command: spec.command,
-      workspace: clampWorkspace(workspace)
+      environment: clampEnvironment(environment),
+      kind: 'terminal' as const
     }
     this.sessions.set(id, { info, spec, pty: null, spawnedAt: 0, tail: '' })
     this.changedCbs.forEach((cb) => cb())
     return info
   }
 
+  /** A browser pane: an ordinary durable session with a URL instead of a pty. */
+  createBrowser(url: string, environment: number): SessionInfo {
+    const normalized = normalizeHttpUrl(url)
+    if (!normalized) throw new Error(`invalid browser url: ${url}`)
+    const info: SessionInfo = {
+      id: randomUUID(),
+      cwd: '',
+      name: new URL(normalized).hostname,
+      status: 'running',
+      agentId: BROWSER_SPEC.agentId,
+      command: BROWSER_SPEC.command,
+      environment: clampEnvironment(environment),
+      kind: 'browser',
+      url: normalized
+    }
+    this.sessions.set(info.id, { info, spec: BROWSER_SPEC, pty: null, spawnedAt: 0, tail: '' })
+    this.changedCbs.forEach((cb) => cb())
+    return info
+  }
+
+  /** Restores a saved browser pane as exited. Null when the saved url is bad. */
+  restoreBrowser(
+    id: string,
+    url: string,
+    name?: string,
+    environment?: unknown
+  ): SessionInfo | null {
+    const normalized = normalizeHttpUrl(url)
+    if (!normalized) return null
+    const trimmed = typeof name === 'string' ? name.trim() : ''
+    const info: SessionInfo = {
+      id,
+      cwd: '',
+      name: trimmed.length > 0 ? trimmed : new URL(normalized).hostname,
+      status: 'exited',
+      agentId: BROWSER_SPEC.agentId,
+      command: BROWSER_SPEC.command,
+      environment: clampEnvironment(environment),
+      kind: 'browser',
+      url: normalized
+    }
+    this.sessions.set(id, { info, spec: BROWSER_SPEC, pty: null, spawnedAt: 0, tail: '' })
+    this.changedCbs.forEach((cb) => cb())
+    return info
+  }
+
+  /** Follows the user's browsing: persist the pane's current URL. */
+  setUrl(id: string, url: string): SessionInfo | null {
+    const rec = this.sessions.get(id)
+    if (!rec || rec.info.kind !== 'browser') return null
+    const normalized = normalizeHttpUrl(url)
+    if (!normalized) return null
+    if (rec.info.url !== normalized) {
+      rec.info.url = normalized
+      this.changedCbs.forEach((cb) => cb())
+    }
+    return { ...rec.info }
+  }
+
   /** Relaunch a dead session. `fresh` skips the agent's resume args. */
   restart(id: string, fresh = false): SessionInfo {
     const rec = this.sessions.get(id)
     if (!rec || rec.info.status !== 'exited') throw new Error(`cannot restart session ${id}`)
-    return this.spawn(id, rec.info.cwd, rec.spec, !fresh, rec.info.name, rec.info.workspace)
+    if (rec.info.kind === 'browser') {
+      // Reopen at the stored URL; `fresh` has no meaning without a
+      // conversation to resume and is deliberately identical.
+      this.setStatus(id, 'running')
+      return { ...rec.info }
+    }
+    return this.spawn(id, rec.info.cwd, rec.spec, !fresh, rec.info.name, rec.info.environment)
   }
 
   private spawn(
@@ -132,7 +210,7 @@ export class SessionManager {
     spec: SpawnSpec,
     resume: boolean,
     name: string,
-    workspace: number
+    environment: number
   ): SessionInfo {
     const info: SessionInfo = {
       id,
@@ -142,7 +220,8 @@ export class SessionManager {
       status: hasHookAdapter(spec.hookAdapter) ? 'idle' : 'running',
       agentId: spec.agentId,
       command: spec.command,
-      workspace
+      environment,
+      kind: 'terminal' as const
     }
     let pty: PtyLike
     try {
@@ -224,7 +303,7 @@ export class SessionManager {
 
   applyHookEvent(e: HookEvent): void {
     const rec = this.sessions.get(e.paneId)
-    if (!rec) return
+    if (!rec || rec.info.kind === 'browser') return
     this.setStatus(e.paneId, transition(rec.info.status, e.event))
   }
 
@@ -249,7 +328,14 @@ export class SessionManager {
   /** Ends the pty, keeps the session record (durable session, ephemeral terminal). */
   closeTerminal(id: string): void {
     const rec = this.sessions.get(id)
-    if (!rec || !rec.pty) return
+    if (!rec) return
+    if (rec.info.kind === 'browser') {
+      if (rec.info.status === 'exited') return
+      this.setStatus(id, 'exited')
+      this.changedCbs.forEach((cb) => cb())
+      return
+    }
+    if (!rec.pty) return
     rec.closedByUser = true
     try {
       rec.pty.kill()
@@ -285,11 +371,11 @@ export class SessionManager {
     return { ...rec.info }
   }
 
-  /** Moves a session to another workspace (1-9, clamped). Null for unknown id. */
-  setWorkspace(id: string, workspace: number): SessionInfo | null {
+  /** Moves a session to another environment (1-9, clamped). Null for unknown id. */
+  setEnvironment(id: string, environment: number): SessionInfo | null {
     const rec = this.sessions.get(id)
     if (!rec) return null
-    rec.info.workspace = clampWorkspace(workspace)
+    rec.info.environment = clampEnvironment(environment)
     this.changedCbs.forEach((cb) => cb())
     return { ...rec.info }
   }

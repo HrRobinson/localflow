@@ -212,7 +212,8 @@ describe('SessionManager', () => {
       status: 'exited',
       agentId: 'claude',
       command: 'fake-claude',
-      workspace: 1
+      environment: 1,
+      kind: 'terminal'
     })
     expect(spawnCalls).toHaveLength(0)
   })
@@ -453,35 +454,85 @@ describe('SessionManager', () => {
     })
   })
 
-  describe('workspaces', () => {
-    it('create assigns the given workspace', () => {
+  describe('environments', () => {
+    it('create assigns the given environment', () => {
       const info = mgr.create('/tmp', claudeSpec, 3)
-      expect(info.workspace).toBe(3)
+      expect(info.environment).toBe(3)
     })
 
-    it('restore clamps a bad saved workspace to 1', () => {
+    it('restore clamps a bad saved environment to 1', () => {
       const info = mgr.restore('id-1', '/tmp', claudeSpec, undefined, 42 as number)
-      expect(info.workspace).toBe(1)
+      expect(info.environment).toBe(1)
     })
 
-    it('setWorkspace moves a session and returns updated info', () => {
+    it('setEnvironment moves a session and returns updated info', () => {
       const info = mgr.create('/tmp', claudeSpec, 1)
-      const updated = mgr.setWorkspace(info.id, 7)
-      expect(updated?.workspace).toBe(7)
-      expect(mgr.list().find((s) => s.id === info.id)?.workspace).toBe(7)
+      const updated = mgr.setEnvironment(info.id, 7)
+      expect(updated?.environment).toBe(7)
+      expect(mgr.list().find((s) => s.id === info.id)?.environment).toBe(7)
     })
 
-    it('setWorkspace returns null for an unknown id and clamps range', () => {
-      expect(mgr.setWorkspace('nope', 3)).toBeNull()
+    it('setEnvironment returns null for an unknown id and clamps range', () => {
+      expect(mgr.setEnvironment('nope', 3)).toBeNull()
       const info = mgr.create('/tmp', claudeSpec, 2)
-      expect(mgr.setWorkspace(info.id, 99)?.workspace).toBe(1)
+      expect(mgr.setEnvironment(info.id, 99)?.environment).toBe(1)
     })
 
-    it('restart keeps the workspace', () => {
+    it('restart keeps the environment', () => {
       const info = mgr.create('/tmp', claudeSpec, 4)
       mgr.closeTerminal(info.id)
       const restarted = mgr.restart(info.id)
-      expect(restarted.workspace).toBe(4)
+      expect(restarted.environment).toBe(4)
+    })
+  })
+
+  describe('browser sessions', () => {
+    it('createBrowser makes a running, pty-less record named after the host', () => {
+      const info = mgr.createBrowser('https://docs.example.com/guide', 3)
+      expect(info.kind).toBe('browser')
+      expect(info.status).toBe('running')
+      expect(info.url).toBe('https://docs.example.com/guide')
+      expect(info.name).toBe('docs.example.com')
+      expect(info.environment).toBe(3)
+      expect(info.cwd).toBe('')
+    })
+
+    it('closeTerminal exits a browser pane; restart reopens it', () => {
+      const info = mgr.createBrowser('https://example.com/', 1)
+      mgr.closeTerminal(info.id)
+      expect(mgr.list().find((s) => s.id === info.id)?.status).toBe('exited')
+      const reopened = mgr.restart(info.id)
+      expect(reopened.status).toBe('running')
+      expect(reopened.url).toBe('https://example.com/')
+    })
+
+    it('write/resize/peek are safe no-ops on browser panes', () => {
+      const info = mgr.createBrowser('https://example.com/', 1)
+      expect(() => mgr.write(info.id, 'x')).not.toThrow()
+      expect(() => mgr.resize(info.id, 80, 24)).not.toThrow()
+      expect(mgr.peek(info.id)).toEqual([])
+    })
+
+    it('setUrl updates and persists-notifies; rejects unknown ids', () => {
+      const info = mgr.createBrowser('https://example.com/', 1)
+      const updated = mgr.setUrl(info.id, 'https://example.com/deep/page')
+      expect(updated?.url).toBe('https://example.com/deep/page')
+      expect(mgr.setUrl('nope', 'https://x.y/')).toBeNull()
+    })
+
+    it('restoreBrowser recreates an exited pane; invalid url yields null', () => {
+      const info = mgr.restoreBrowser('rb-1', 'https://example.com/', 'My docs', 2)
+      expect(info?.status).toBe('exited')
+      expect(info?.kind).toBe('browser')
+      expect(info?.environment).toBe(2)
+      expect(info?.name).toBe('My docs')
+      expect(mgr.restoreBrowser('rb-2', 'file:///etc/passwd')).toBeNull()
+    })
+
+    it('hook events never touch browser panes', () => {
+      const info = mgr.createBrowser('https://example.com/', 1)
+      mgr.applyHookEvent({ paneId: info.id, event: 'Notification' })
+      expect(mgr.list().find((s) => s.id === info.id)?.status).toBe('running')
     })
   })
 })

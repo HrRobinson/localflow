@@ -1,8 +1,10 @@
 import { test, expect, _electron as electron, type ElectronApplication } from '@playwright/test'
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join, dirname, basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import type { AddressInfo } from 'node:net'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
@@ -227,7 +229,7 @@ test('keyboard nav: focus moves, enlarge toggle, bare keys fall through', async 
 
   // Create and open the first session while it's the only one, so opening
   // it doesn't trigger the "open with 2+ sessions" auto-enlarge — we want
-  // to start from a plain, unenlarged terminals view for the nav assertions.
+  // to start from a plain, unenlarged environment view for the nav assertions.
   const first = await createSession(userData)
   const firstRow = win.locator(`[data-session-id="${first!.id}"]`)
   await expect(firstRow).toBeVisible()
@@ -237,7 +239,7 @@ test('keyboard nav: focus moves, enlarge toggle, bare keys fall through', async 
   await expect(firstPane).toBeVisible()
   await expect(firstPane).toHaveClass(/active/)
 
-  // Now bring in a second session while already in the terminals view.
+  // Now bring in a second session while already in the environment view.
   const second = await createSession(userData)
   const secondPane = win.locator(`[data-pane-id="${second!.id}"]`)
   await expect(secondPane).toBeVisible()
@@ -386,7 +388,7 @@ test('closing a terminal keeps the session listed; delete is confirm-gated', asy
   await expect(pane.locator('.restart-overlay p')).toHaveCount(0)
 
   // A second session keeps sessions.length > 0 after the delete below, so
-  // the terminals grid actually mounts for the final pane-absence check —
+  // the environment grid actually mounts for the final pane-absence check —
   // asserting toHaveCount(0) with the grid unmounted would be vacuous.
   const second = await win.evaluate(
     (cwd) =>
@@ -424,11 +426,11 @@ test('closing a terminal keeps the session listed; delete is confirm-gated', asy
   await row.getByRole('button', { name: 'Delete', exact: true }).click()
   await expect(row).toHaveCount(0)
 
-  // Back to Terminals via the sidebar: with the second session keeping the
+  // Back to Environment via the sidebar: with the second session keeping the
   // grid mounted, exactly the deleted pane is gone and the survivor renders
   // — proving the delete removed the right session, not that the grid was
   // simply unmounted.
-  await win.getByRole('button', { name: 'Terminals', exact: true }).click()
+  await win.getByRole('button', { name: 'Environment', exact: true }).click()
   await expect(secondPane).toBeVisible()
   await expect(win.locator(`[data-pane-id="${info!.id}"]`)).toHaveCount(0)
 
@@ -561,7 +563,7 @@ test('approve: peek-gated Enter from overview row and pane header', async () => 
   await app.close()
 })
 
-test('cmd+u enters terminals on a waiting pane and cycles', async () => {
+test('cmd+u enters the environment view on a waiting pane and cycles', async () => {
   const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
   const app = await launchApp(userData)
   const win = await app.firstWindow()
@@ -597,7 +599,7 @@ test('cmd+u enters terminals on a waiting pane and cycles', async () => {
   const rowB = win.locator(`[data-session-id="${b!.id}"]`)
   await expect(rowB.locator('.session-status')).toHaveText('needs you')
 
-  // From the home overview, cmd+u enters the terminals view directly on the
+  // From the home overview, cmd+u enters the environment view directly on the
   // first waiting pane, enlarged (3 sessions exist).
   await win.keyboard.press('Meta+u')
   const paneB = win.locator(`[data-pane-id="${b!.id}"]`)
@@ -628,7 +630,7 @@ test('cmd+u enters terminals on a waiting pane and cycles', async () => {
   await app.close()
 })
 
-test('workspaces: switch, move, rollup dot, persistence', async () => {
+test('environments: switch, move, rollup dot, persistence', async () => {
   const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
   const app = await launchApp(userData)
   const win = await app.firstWindow()
@@ -646,7 +648,7 @@ test('workspaces: switch, move, rollup dot, persistence', async () => {
       cwd
     )
 
-  // Two sessions created while workspace 1 is current — both land on 1.
+  // Two sessions created while environment 1 is current — both land on 1.
   const a = await createSession(userData)
   const b = await createSession(userData)
   await expect(win.locator(`[data-session-id="${b!.id}"]`)).toBeVisible()
@@ -656,23 +658,23 @@ test('workspaces: switch, move, rollup dot, persistence', async () => {
   await expect(paneA).toBeVisible()
   await expect(paneB).toBeVisible()
 
-  // cmd+2: switch to (empty) workspace 2 — grid empties back to the landing.
+  // cmd+2: switch to (empty) environment 2 — grid empties back to the landing.
   await win.keyboard.press('Meta+Digit2')
   await expect(win.locator('.pane')).toHaveCount(0)
   await expect(win.locator('.new-session')).toBeVisible()
 
-  // While workspace 2 is the visible one, create a session with an explicit
-  // workspace argument, exactly as App's createSession wrapper passes the
-  // currently-visible `workspace` state through to the IPC call. This
-  // proves the IPC/session-manager path honors an explicit workspace
-  // end-to-end: the new pane must render immediately in workspace 2's grid
-  // (no switch needed) and must not appear once we're back on workspace 1.
+  // While environment 2 is the visible one, create a session with an explicit
+  // environment argument, exactly as App's createSession wrapper passes the
+  // currently-visible `environment` state through to the IPC call. This
+  // proves the IPC/session-manager path honors an explicit environment
+  // end-to-end: the new pane must render immediately in environment 2's grid
+  // (no switch needed) and must not appear once we're back on environment 1.
   // NOTE on coverage: driving this through the Landing's actual ".new-session"
   // button isn't headless-safe — under LOCALFLOW_E2E the folder-picker bypass
   // only triggers when an explicit cwd is passed, and the UI button doesn't
   // pass one, so clicking it would pop a real OS dialog and hang. So this
   // test cannot exercise the App-wrapper's pass-through of the visible
-  // workspace into that call; that link is covered by typecheck (workspace
+  // environment into that call; that link is covered by typecheck (environment
   // is a required prop threaded from state) and code review, not e2e.
   const c = await win.evaluate(
     (args) =>
@@ -683,48 +685,48 @@ test('workspaces: switch, move, rollup dot, persistence', async () => {
               a: string,
               c: string,
               cmd: undefined,
-              ws: number
+              env: number
             ): Promise<{ id: string } | null>
           }
         }
-      ).localflow.createSession('claude', args.dir, undefined, args.ws),
-    { dir: userData, ws: 2 }
+      ).localflow.createSession('claude', args.dir, undefined, args.env),
+    { dir: userData, env: 2 }
   )
   const paneC = win.locator(`[data-pane-id="${c!.id}"]`)
   await expect(paneC).toBeVisible()
 
-  // cmd+1: back — both original panes return, and the workspace-2 session
+  // cmd+1: back — both original panes return, and the environment-2 session
   // created above is not among them.
   await win.keyboard.press('Meta+Digit1')
   await expect(win.locator('.pane')).toHaveCount(2)
   await expect(paneA).toHaveClass(/active/)
   await expect(paneC).toHaveCount(0)
 
-  // ctrl+3 moves the ACTIVE pane (a) to workspace 3: it leaves this
+  // ctrl+3 moves the ACTIVE pane (a) to environment 3: it leaves this
   // grid, focus lands on the remaining pane.
   await win.keyboard.press('Control+Digit3')
   await expect(win.locator('.pane')).toHaveCount(1)
   await expect(paneB).toHaveClass(/active/)
 
-  // Sidebar shows workspace 3 with a rollup dot; a needs-you event on the
+  // Sidebar shows environment 3 with a rollup dot; a needs-you event on the
   // moved session must turn exactly that dot yellow.
-  const ws3 = win.locator('[data-nav-workspace="3"]')
-  await expect(ws3).toBeVisible()
+  const env3 = win.locator('[data-nav-environment="3"]')
+  await expect(env3).toBeVisible()
   const { port, token } = JSON.parse(readFileSync(join(userData, 'endpoint.json'), 'utf8'))
   await fetch(`http://127.0.0.1:${port}/event`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Localflow-Token': token },
     body: JSON.stringify({ paneId: a!.id, event: 'Notification' })
   })
-  await expect(ws3.locator('.dot')).toHaveAttribute('data-status', 'needs-you')
+  await expect(env3.locator('.dot')).toHaveAttribute('data-status', 'needs-you')
 
-  // Clicking the workspace row switches the grid to it.
-  await ws3.click()
+  // Clicking the environment row switches the grid to it.
+  await env3.click()
   await expect(win.locator('.pane')).toHaveCount(1)
   await expect(paneA).toBeVisible()
 
-  // cmd+u from quiet workspace 1 must jump cross-workspace to pane a,
-  // still waiting on workspace 3 — focusing and enlarging it (more than one
+  // cmd+u from quiet environment 1 must jump cross-environment to pane a,
+  // still waiting on environment 3 — focusing and enlarging it (more than one
   // session exists overall).
   await win.keyboard.press('Meta+Digit1')
   await win.keyboard.press('Meta+u')
@@ -734,16 +736,143 @@ test('workspaces: switch, move, rollup dot, persistence', async () => {
 
   await app.close()
 
-  // Relaunch: workspace assignments persisted via sessions.json.
+  // Relaunch: environment assignments persisted via sessions.json.
   const saved = JSON.parse(readFileSync(join(userData, 'sessions.json'), 'utf8')) as Array<{
     id: string
-    workspace?: number
+    environment?: number
   }>
-  expect(saved.find((s) => s.id === a!.id)?.workspace).toBe(3)
-  expect(saved.find((s) => s.id === b!.id)?.workspace).toBe(1)
+  expect(saved.find((s) => s.id === a!.id)?.environment).toBe(3)
+  expect(saved.find((s) => s.id === b!.id)?.environment).toBe(1)
 
   const app2 = await launchApp(userData)
   const win2 = await app2.firstWindow()
-  await expect(win2.locator('[data-nav-workspace="3"]')).toBeVisible()
+  await expect(win2.locator('[data-nav-environment="3"]')).toBeVisible()
   await app2.close()
+})
+
+test('browser pane: UI creation, chrome, close/reopen, persistence', async () => {
+  // Local pages — no external network, no flake. Serves for the whole test.
+  // Two pages (/ links to /second) plus a per-path request tally: the
+  // regression net for fix 1 (src echo forcing a reload on every nav)
+  // needs to prove /second was fetched exactly once.
+  const requestCounts: Record<string, number> = {}
+  const server = createServer((req, res) => {
+    const path = req.url ?? '/'
+    requestCounts[path] = (requestCounts[path] ?? 0) + 1
+    res.setHeader('Content-Type', 'text/html')
+    if (path === '/second') {
+      res.end('<!doctype html><title>fixture-page-2</title><h1>hello from second fixture page</h1>')
+    } else {
+      res.end(
+        '<!doctype html><title>fixture-page</title><a href="/second" id="go">go</a><h1>hello from fixture</h1>'
+      )
+    }
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const pageUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`
+  const secondPageUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/second`
+
+  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const app = await launchApp(userData)
+  const win = await app.firstWindow()
+  await win.setViewportSize({ width: 1400, height: 900 })
+  await expect(win.locator('.new-session')).toBeVisible()
+
+  // Fully UI-driven creation — browser panes need no folder picker, so this
+  // is the first pane type whose whole creation path runs headless.
+  await win.locator('.landing select').selectOption('browser')
+  await expect(win.locator('.new-session')).toBeDisabled()
+  await win.locator('.url-input').fill(pageUrl)
+  await expect(win.locator('.new-session')).toBeEnabled()
+  await win.locator('.new-session').click()
+
+  // The pane mounts in the environment grid, violet (running), webview live.
+  const pane = win.locator('.pane')
+  await expect(pane).toHaveCount(1)
+  await expect(pane).toHaveAttribute('data-status', 'running')
+  await expect(pane.locator('.browser-view')).toHaveAttribute('src', pageUrl)
+  await expect(pane.locator('.url-bar')).toHaveValue(pageUrl)
+
+  // Chrome present; back/forward disabled on a fresh page, reload enabled.
+  await expect(pane.locator('.nav-back')).toBeDisabled()
+  await expect(pane.locator('.nav-forward')).toBeDisabled()
+  await expect(pane.locator('.nav-reload')).toBeEnabled()
+  await expect(pane.locator('.open-external')).toBeEnabled()
+
+  // Regression net for fix 1 (src echo forced a reload on every nav):
+  // Playwright cannot reach into the cross-process guest DOM to click the
+  // in-page link, so navigate the same way a user would via the URL bar.
+  // A controlled `src` would reload on the next 1s poll tick after the
+  // navigation lands; an uncontrolled one should fetch /second exactly once.
+  await pane.locator('.url-bar').fill(secondPageUrl)
+  await pane.locator('.url-bar').press('Enter')
+  await expect(pane.locator('.url-bar')).toHaveValue(secondPageUrl)
+  // sessions.json is only written on change — poll the file for the update.
+  await expect
+    .poll(() => {
+      const saved = JSON.parse(readFileSync(join(userData, 'sessions.json'), 'utf8')) as Array<{
+        url?: string
+      }>
+      return saved[0]?.url
+    })
+    .toBe(secondPageUrl)
+  await win.waitForTimeout(1500)
+  expect(requestCounts['/second']).toBe(1)
+
+  // Restore to the first fixture page so the close/reopen/persistence
+  // assertions below (unchanged) see the URL they expect.
+  await pane.locator('.url-bar').fill(pageUrl)
+  await pane.locator('.url-bar').press('Enter')
+  await expect(pane.locator('.url-bar')).toHaveValue(pageUrl)
+
+  // Fix 6 + the URL gate (shared/urls.ts): rejected input never navigates
+  // and is never clobbered — the bar keeps exactly what the user typed, and
+  // the guest's src is untouched. (Manual checklist item 3.)
+  await pane.locator('.url-bar').fill('file:///etc/passwd')
+  await pane.locator('.url-bar').press('Enter')
+  await expect(pane.locator('.url-bar')).toHaveValue('file:///etc/passwd')
+  await expect(pane.locator('.browser-view')).toHaveAttribute('src', pageUrl)
+
+  // Restore again before the existing close/reopen flow.
+  await pane.locator('.url-bar').fill(pageUrl)
+  await pane.locator('.url-bar').press('Enter')
+  await expect(pane.locator('.url-bar')).toHaveValue(pageUrl)
+
+  // Close → gray exited with the Reopen overlay (never deletes).
+  await pane.getByRole('button', { name: 'close', exact: true }).click()
+  await expect(pane).toHaveAttribute('data-status', 'exited')
+  await expect(pane.getByRole('button', { name: 'Reopen' })).toBeVisible()
+  await expect(pane.locator('.browser-view')).toHaveCount(0)
+
+  // Reopen → running again at the stored URL.
+  await pane.getByRole('button', { name: 'Reopen' }).click()
+  await expect(pane).toHaveAttribute('data-status', 'running')
+  await expect(pane.locator('.browser-view')).toHaveAttribute('src', pageUrl)
+
+  // Overview row: url subtitle, browser chip.
+  await win.getByRole('button', { name: 'Overview', exact: true }).click()
+  const row = win.locator('.session-row')
+  await expect(row).toContainText('browser')
+  await expect(row).toContainText(pageUrl)
+
+  await app.close()
+
+  // Relaunch: kind/url/environment persisted; pane restores as exited.
+  const saved = JSON.parse(readFileSync(join(userData, 'sessions.json'), 'utf8')) as Array<{
+    kind?: string
+    url?: string
+    environment?: number
+  }>
+  expect(saved[0]?.kind).toBe('browser')
+  expect(saved[0]?.url).toBe(pageUrl)
+  expect(saved[0]?.environment).toBe(1)
+
+  const app2 = await launchApp(userData)
+  const win2 = await app2.firstWindow()
+  const row2 = win2.locator('.session-row')
+  await expect(row2).toBeVisible()
+  await expect(row2.getByRole('button', { name: 'reopen', exact: true })).toBeVisible()
+
+  await app2.close()
+  server.close()
 })

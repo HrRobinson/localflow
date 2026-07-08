@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import TerminalPane from './components/TerminalPane'
+import BrowserPane from './components/BrowserPane'
 import Landing from './components/Landing'
 import Settings from './components/Settings'
 import Sidebar from './components/Sidebar'
@@ -13,7 +14,7 @@ import {
   type KeyAction,
   type ParsedBinding
 } from '../../shared/keybindings'
-import { clampWorkspace } from '../../shared/workspace'
+import { clampEnvironment } from '../../shared/environment'
 import type { AgentId, SessionInfo } from '../../shared/types'
 
 // Which pane-nav direction each focus-*/swap-* action moves in.
@@ -38,12 +39,12 @@ export default function App(): React.JSX.Element {
   // appended, ids no longer present are dropped, everything else is stable.
   const [activeId, setActiveId] = useState<string | null>(null)
   const [order, setOrder] = useState<string[]>([])
-  // The app opens on the home overview; terminals are entered explicitly.
-  const [view, setView] = useState<'home' | 'terminals' | 'settings'>('home')
-  // Which workspace's grid is visible. Sessions on other workspaces stay
+  // The app opens on the home overview; the environment view is entered explicitly.
+  const [view, setView] = useState<'home' | 'environment' | 'settings'>('home')
+  // Which environment's grid is visible. Sessions on other environments stay
   // mounted-invisible? No — they simply don't render; their ptys live in
   // main regardless, so nothing is lost when a pane isn't shown.
-  const [workspace, setWorkspace] = useState(1)
+  const [environment, setEnvironment] = useState(1)
 
   const refresh = useCallback(async () => {
     const list = await window.localflow.listSessions()
@@ -79,12 +80,21 @@ export default function App(): React.JSX.Element {
       agentId,
       undefined,
       customCommand,
-      workspace
+      environment
     )
     if (created) {
-      setView('terminals')
-      // A pane enlarged before we left the terminals view would otherwise
+      setView('environment')
+      // A pane enlarged before we left the environment view would otherwise
       // stay fixed-position on top of the newly created (active) pane.
+      setEnlarged(null)
+      setActiveId(created.id)
+      await refresh()
+    }
+  }
+  const createBrowser = async (url: string): Promise<void> => {
+    const created = await window.localflow.createBrowserSession(url, environment)
+    if (created) {
+      setView('environment')
       setEnlarged(null)
       setActiveId(created.id)
       await refresh()
@@ -114,7 +124,7 @@ export default function App(): React.JSX.Element {
     setActiveId((cur) => {
       if (cur !== id) return cur
       const visible = order.filter(
-        (oid) => oid !== id && sessions.find((s) => s.id === oid)?.workspace === workspace
+        (oid) => oid !== id && sessions.find((s) => s.id === oid)?.environment === environment
       )
       const idx = order.indexOf(id)
       const after = order.slice(idx + 1).find((oid) => visible.includes(oid))
@@ -125,43 +135,45 @@ export default function App(): React.JSX.Element {
   }
   const openSession = (id: string): void => {
     // Opening a session anywhere (sidebar, overview, cmd+u) must also make
-    // its workspace the visible one — a focused pane in a hidden workspace
+    // its environment the visible one — a focused pane in a hidden environment
     // would be unreachable.
     const target = sessions.find((s) => s.id === id)
-    if (target) setWorkspace(target.workspace)
-    setView('terminals')
+    if (target) setEnvironment(target.environment)
+    setView('environment')
     setEnlarged(sessions.length > 1 ? id : null)
     setActiveId(id)
   }
-  // Entering the terminals view without naming a session (sidebar nav item,
-  // header "open terminals") must still yield exactly one active pane —
+  // Entering the environment view without naming a session (sidebar nav item,
+  // header "open environment") must still yield exactly one active pane —
   // e.g. with restored sessions activeId starts out null.
-  const enterTerminals = (): void => {
-    setView('terminals')
+  const enterEnvironment = (): void => {
+    setView('environment')
     setActiveId((cur) => {
       const visible = order.filter(
-        (id) => sessions.find((s) => s.id === id)?.workspace === workspace
+        (id) => sessions.find((s) => s.id === id)?.environment === environment
       )
       return cur !== null && visible.includes(cur) ? cur : (visible[0] ?? null)
     })
   }
-  // Switching workspaces re-scopes focus: the active/enlarged pane must be
-  // one of the target workspace's panes, or null.
-  const switchWorkspace = (n: number): void => {
-    const target = clampWorkspace(n)
-    setWorkspace(target)
-    setView('terminals')
+  // Switching environments re-scopes focus: the active/enlarged pane must be
+  // one of the target environment's panes, or null.
+  const switchEnvironment = (n: number): void => {
+    const target = clampEnvironment(n)
+    setEnvironment(target)
+    setView('environment')
     const firstVisible =
-      order.find((id) => sessions.find((s) => s.id === id)?.workspace === target) ?? null
+      order.find((id) => sessions.find((s) => s.id === id)?.environment === target) ?? null
     setActiveId((cur) =>
-      cur !== null && sessions.find((s) => s.id === cur)?.workspace === target ? cur : firstVisible
+      cur !== null && sessions.find((s) => s.id === cur)?.environment === target
+        ? cur
+        : firstVisible
     )
     setEnlarged((cur) =>
-      cur !== null && sessions.find((s) => s.id === cur)?.workspace === target ? cur : null
+      cur !== null && sessions.find((s) => s.id === cur)?.environment === target ? cur : null
     )
   }
-  const moveToWorkspace = async (id: string, n: number): Promise<void> => {
-    await window.localflow.setWorkspace(id, n)
+  const moveToEnvironment = async (id: string, n: number): Promise<void> => {
+    await window.localflow.setEnvironment(id, n)
     // The pane leaves the visible grid (spec: focus stays behind): re-scope
     // focus/enlarge exactly like a closed pane. afterPaneGone ends with its
     // own refresh(), so no separate refresh is needed here.
@@ -177,11 +189,11 @@ export default function App(): React.JSX.Element {
     order,
     enlarged,
     sessions,
-    workspace,
+    environment,
     closeTerminal,
     openSession,
-    switchWorkspace,
-    moveToWorkspace
+    switchEnvironment,
+    moveToEnvironment
   })
   useEffect(() => {
     liveRef.current = {
@@ -190,11 +202,11 @@ export default function App(): React.JSX.Element {
       order,
       enlarged,
       sessions,
-      workspace,
+      environment,
       closeTerminal,
       openSession,
-      switchWorkspace,
-      moveToWorkspace
+      switchEnvironment,
+      moveToEnvironment
     }
   })
 
@@ -213,15 +225,9 @@ export default function App(): React.JSX.Element {
     // that would otherwise be swallowed or misinterpreted by the terminal.
     // Unmatched events are left completely untouched, falling through to
     // whichever terminal has focus.
-    const onKey = (e: KeyboardEvent): void => {
-      const match = bindings.find(([, binding]) => eventMatches(binding, e))
-      if (!match) return
-      const [action] = match
-      e.preventDefault()
-      e.stopPropagation()
-
+    const runAction = (action: KeyAction): void => {
       // go-up is available everywhere: shrink an enlarged pane, else leave
-      // the terminals view entirely. Same shrink-else-home semantics as
+      // the environment view entirely. Same shrink-else-home semantics as
       // before this became a bound action.
       if (action === 'go-up') {
         setEnlarged((cur) => {
@@ -240,8 +246,8 @@ export default function App(): React.JSX.Element {
         return
       }
       // Jump-to-attention works from any view: from home/settings it enters
-      // the terminals view on the first waiting pane; inside terminals it
-      // cycles relative to the active pane. openSession supplies the
+      // the environment view on the first waiting pane; inside the environment
+      // view it cycles relative to the active pane. openSession supplies the
       // focus+enlarge semantics (enlarge only when there is more than one
       // session, same as clicking a row).
       if (action === 'focus-needs-you') {
@@ -249,25 +255,25 @@ export default function App(): React.JSX.Element {
         const target = nextNeedsYou(
           live.order,
           live.sessions,
-          live.view === 'terminals' ? live.activeId : null,
-          live.workspace
+          live.view === 'environment' ? live.activeId : null,
+          live.environment
         )
         if (target) live.openSession(target)
         return
       }
-      if (action.startsWith('workspace-')) {
-        liveRef.current.switchWorkspace(Number(action.slice('workspace-'.length)))
+      if (action.startsWith('environment-')) {
+        liveRef.current.switchEnvironment(Number(action.slice('environment-'.length)))
         return
       }
 
-      // Everything else only acts within the terminals view, on the active
+      // Everything else only acts within the environment view, on the active
       // pane — a no-op elsewhere (e.g. on the home/landing view).
       const live = liveRef.current
-      if (live.view !== 'terminals' || live.activeId === null) return
+      if (live.view !== 'environment' || live.activeId === null) return
       const activeId = live.activeId
 
-      if (action.startsWith('move-to-workspace-')) {
-        void live.moveToWorkspace(activeId, Number(action.slice('move-to-workspace-'.length)))
+      if (action.startsWith('move-to-environment-')) {
+        void live.moveToEnvironment(activeId, Number(action.slice('move-to-environment-'.length)))
         return
       }
       if (action === 'enlarge-toggle') {
@@ -302,23 +308,35 @@ export default function App(): React.JSX.Element {
         setOrder((cur) => swapInOrder(cur, activeId, neighbor))
       }
     }
+    const onKey = (e: KeyboardEvent): void => {
+      const match = bindings.find(([, binding]) => eventMatches(binding, e))
+      if (!match) return
+      e.preventDefault()
+      e.stopPropagation()
+      runAction(match[0])
+    }
+    const offForwarded = window.localflow.onKeyAction((action) => runAction(action))
     window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
+    return () => {
+      offForwarded()
+      window.removeEventListener('keydown', onKey, true)
+    }
   }, [])
 
-  const showTerminals = view === 'terminals' && sessions.some((s) => s.workspace === workspace)
+  const showEnvironment =
+    view === 'environment' && sessions.some((s) => s.environment === environment)
 
   return (
     <div className="flex min-h-0 flex-1">
       {sidebarVisible && (
         <Sidebar
           sessions={sessions}
-          view={showTerminals ? 'terminals' : view === 'settings' ? 'settings' : 'home'}
+          view={showEnvironment ? 'environment' : view === 'settings' ? 'settings' : 'home'}
           activeId={activeId}
-          workspace={workspace}
-          onSwitchWorkspace={switchWorkspace}
+          environment={environment}
+          onSwitchEnvironment={switchEnvironment}
           onHome={() => setView('home')}
-          onTerminals={enterTerminals}
+          onEnvironment={enterEnvironment}
           onSettings={() => setView('settings')}
           onOpenSession={openSession}
           onDeleteSession={(id) => void deleteSession(id)}
@@ -328,23 +346,36 @@ export default function App(): React.JSX.Element {
       {/* No content header: the sidebar IS the navigation (user decision
           2026-07-07); cmd+esc / nav items cover the old header buttons. */}
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {showTerminals ? (
+        {showEnvironment ? (
           <div className="grid flex-1 auto-rows-[minmax(300px,1fr)] grid-cols-[repeat(auto-fit,minmax(460px,1fr))] gap-2.5 overflow-auto px-3 pt-3 pb-3">
             {order
               .map((id) => sessions.find((s) => s.id === id))
-              .filter((s): s is SessionInfo => s != null && s.workspace === workspace)
-              .map((s) => (
-                <TerminalPane
-                  key={s.id}
-                  session={s}
-                  enlarged={enlarged === s.id}
-                  active={activeId === s.id}
-                  onToggleEnlarge={() => setEnlarged((cur) => (cur === s.id ? null : s.id))}
-                  onActivate={() => setActiveId(s.id)}
-                  onRestart={(fresh) => void restart(s.id, fresh)}
-                  onClose={() => void closeTerminal(s.id)}
-                />
-              ))}
+              .filter((s): s is SessionInfo => s != null && s.environment === environment)
+              .map((s) =>
+                s.kind === 'browser' ? (
+                  <BrowserPane
+                    key={s.id}
+                    session={s}
+                    enlarged={enlarged === s.id}
+                    active={activeId === s.id}
+                    onToggleEnlarge={() => setEnlarged((cur) => (cur === s.id ? null : s.id))}
+                    onActivate={() => setActiveId(s.id)}
+                    onReopen={() => void restart(s.id, false)}
+                    onClose={() => void closeTerminal(s.id)}
+                  />
+                ) : (
+                  <TerminalPane
+                    key={s.id}
+                    session={s}
+                    enlarged={enlarged === s.id}
+                    active={activeId === s.id}
+                    onToggleEnlarge={() => setEnlarged((cur) => (cur === s.id ? null : s.id))}
+                    onActivate={() => setActiveId(s.id)}
+                    onRestart={(fresh) => void restart(s.id, fresh)}
+                    onClose={() => void closeTerminal(s.id)}
+                  />
+                )
+              )}
           </div>
         ) : view === 'settings' ? (
           <Settings />
@@ -352,6 +383,7 @@ export default function App(): React.JSX.Element {
           <Landing
             sessions={sessions}
             onCreate={(agentId, cmd) => void createSession(agentId, cmd)}
+            onCreateBrowser={(url) => void createBrowser(url)}
             onOpen={openSession}
             onResume={(id, fresh) => void restart(id, fresh)}
             onDelete={(id) => void deleteSession(id)}

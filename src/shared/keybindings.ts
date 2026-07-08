@@ -13,24 +13,24 @@ export type KeyAction =
   | 'go-up'
   | 'toggle-sidebar'
   | 'focus-needs-you'
-  | 'workspace-1'
-  | 'workspace-2'
-  | 'workspace-3'
-  | 'workspace-4'
-  | 'workspace-5'
-  | 'workspace-6'
-  | 'workspace-7'
-  | 'workspace-8'
-  | 'workspace-9'
-  | 'move-to-workspace-1'
-  | 'move-to-workspace-2'
-  | 'move-to-workspace-3'
-  | 'move-to-workspace-4'
-  | 'move-to-workspace-5'
-  | 'move-to-workspace-6'
-  | 'move-to-workspace-7'
-  | 'move-to-workspace-8'
-  | 'move-to-workspace-9'
+  | 'environment-1'
+  | 'environment-2'
+  | 'environment-3'
+  | 'environment-4'
+  | 'environment-5'
+  | 'environment-6'
+  | 'environment-7'
+  | 'environment-8'
+  | 'environment-9'
+  | 'move-to-environment-1'
+  | 'move-to-environment-2'
+  | 'move-to-environment-3'
+  | 'move-to-environment-4'
+  | 'move-to-environment-5'
+  | 'move-to-environment-6'
+  | 'move-to-environment-7'
+  | 'move-to-environment-8'
+  | 'move-to-environment-9'
 
 export const DEFAULT_BINDINGS: Record<KeyAction, string> = {
   'focus-left': 'cmd+h',
@@ -47,24 +47,24 @@ export const DEFAULT_BINDINGS: Record<KeyAction, string> = {
   'go-up': 'cmd+escape',
   'toggle-sidebar': 'cmd+b',
   'focus-needs-you': 'cmd+u',
-  'workspace-1': 'cmd+1',
-  'workspace-2': 'cmd+2',
-  'workspace-3': 'cmd+3',
-  'workspace-4': 'cmd+4',
-  'workspace-5': 'cmd+5',
-  'workspace-6': 'cmd+6',
-  'workspace-7': 'cmd+7',
-  'workspace-8': 'cmd+8',
-  'workspace-9': 'cmd+9',
-  'move-to-workspace-1': 'ctrl+1',
-  'move-to-workspace-2': 'ctrl+2',
-  'move-to-workspace-3': 'ctrl+3',
-  'move-to-workspace-4': 'ctrl+4',
-  'move-to-workspace-5': 'ctrl+5',
-  'move-to-workspace-6': 'ctrl+6',
-  'move-to-workspace-7': 'ctrl+7',
-  'move-to-workspace-8': 'ctrl+8',
-  'move-to-workspace-9': 'ctrl+9'
+  'environment-1': 'cmd+1',
+  'environment-2': 'cmd+2',
+  'environment-3': 'cmd+3',
+  'environment-4': 'cmd+4',
+  'environment-5': 'cmd+5',
+  'environment-6': 'cmd+6',
+  'environment-7': 'cmd+7',
+  'environment-8': 'cmd+8',
+  'environment-9': 'cmd+9',
+  'move-to-environment-1': 'ctrl+1',
+  'move-to-environment-2': 'ctrl+2',
+  'move-to-environment-3': 'ctrl+3',
+  'move-to-environment-4': 'ctrl+4',
+  'move-to-environment-5': 'ctrl+5',
+  'move-to-environment-6': 'ctrl+6',
+  'move-to-environment-7': 'ctrl+7',
+  'move-to-environment-8': 'ctrl+8',
+  'move-to-environment-9': 'ctrl+9'
 }
 
 /**

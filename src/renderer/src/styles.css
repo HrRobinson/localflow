@@ -96,16 +96,16 @@ body {
   background: var(--running);
 }
 
-[data-nav-workspace] .dot[data-status='working'] {
+[data-nav-environment] .dot[data-status='working'] {
   background: var(--working);
 }
-[data-nav-workspace] .dot[data-status='needs-you'] {
+[data-nav-environment] .dot[data-status='needs-you'] {
   background: var(--needs-you);
 }
-[data-nav-workspace] .dot[data-status='idle'] {
+[data-nav-environment] .dot[data-status='idle'] {
   background: var(--idle);
 }
-[data-nav-workspace] .dot[data-status='running'] {
+[data-nav-environment] .dot[data-status='running'] {
   background: var(--running);
 }
 

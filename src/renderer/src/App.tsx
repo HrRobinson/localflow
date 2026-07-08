@@ -91,6 +91,15 @@ export default function App(): React.JSX.Element {
       await refresh()
     }
   }
+  const createBrowser = async (url: string): Promise<void> => {
+    const created = await window.localflow.createBrowserSession(url, environment)
+    if (created) {
+      setView('environment')
+      setEnlarged(null)
+      setActiveId(created.id)
+      await refresh()
+    }
+  }
   const restart = async (id: string, fresh: boolean): Promise<void> => {
     await window.localflow.restartSession(id, fresh)
     await refresh()
@@ -374,6 +383,7 @@ export default function App(): React.JSX.Element {
           <Landing
             sessions={sessions}
             onCreate={(agentId, cmd) => void createSession(agentId, cmd)}
+            onCreateBrowser={(url) => void createBrowser(url)}
             onOpen={openSession}
             onResume={(id, fresh) => void restart(id, fresh)}
             onDelete={(id) => void deleteSession(id)}

@@ -38,6 +38,12 @@ describe('activityLine', () => {
     expect(activityLine('Notification', undefined)).toBe('waiting for your approval')
     expect(activityLine('Notification', 1)).toBe('waiting for your approval')
   })
+
+  it('pins the >1 boundary: count 2 gets a suffix, count 0 does not', () => {
+    expect(activityLine('Notification', 2)).toBe('waiting for your approval ×2')
+    // main never emits count 0 (absent = 1), but the formatter stays honest anyway
+    expect(activityLine('Notification', 0)).toBe('waiting for your approval')
+  })
 })
 
 describe('relativeTime', () => {
@@ -52,6 +58,20 @@ describe('relativeTime', () => {
     expect(relativeTime(0, 3 * 3_600_000)).toBe('3h ago')
     expect(relativeTime(0, 2 * 86_400_000)).toBe('2d ago')
   })
+  it('pins the exact unit cutoffs', () => {
+    // just-now floor: 4999ms floors to 4s (< 5), 5000ms is the first "s ago"
+    expect(relativeTime(0, 4_999)).toBe('just now')
+    expect(relativeTime(0, 5_000)).toBe('5s ago')
+    // seconds → minutes at exactly 60s
+    expect(relativeTime(0, 59_000)).toBe('59s ago')
+    expect(relativeTime(0, 60_000)).toBe('1m ago')
+    // minutes → hours at exactly 60m
+    expect(relativeTime(0, 59 * 60_000)).toBe('59m ago')
+    expect(relativeTime(0, 60 * 60_000)).toBe('1h ago')
+    // hours → days at exactly 24h (23h59m still floors to 23h)
+    expect(relativeTime(0, 23 * 3_600_000 + 59 * 60_000)).toBe('23h ago')
+    expect(relativeTime(0, 24 * 3_600_000)).toBe('1d ago')
+  })
 })
 
 describe('humanDuration', () => {
@@ -61,6 +81,20 @@ describe('humanDuration', () => {
     expect(humanDuration(12 * 60_000)).toBe('12m')
     expect(humanDuration(3 * 3_600_000)).toBe('3h')
     expect(humanDuration(2 * 86_400_000)).toBe('2d')
+  })
+  it('pins the exact unit cutoffs', () => {
+    // no just-now floor here: 4999ms floors to 4s, 5000ms to 5s
+    expect(humanDuration(4_999)).toBe('4s')
+    expect(humanDuration(5_000)).toBe('5s')
+    // seconds → minutes at exactly 60s
+    expect(humanDuration(59_000)).toBe('59s')
+    expect(humanDuration(60_000)).toBe('1m')
+    // minutes → hours at exactly 60m
+    expect(humanDuration(59 * 60_000)).toBe('59m')
+    expect(humanDuration(60 * 60_000)).toBe('1h')
+    // hours → days at exactly 24h (23h59m still floors to 23h)
+    expect(humanDuration(23 * 3_600_000 + 59 * 60_000)).toBe('23h')
+    expect(humanDuration(24 * 3_600_000)).toBe('1d')
   })
 })
 

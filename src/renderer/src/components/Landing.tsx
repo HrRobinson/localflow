@@ -97,8 +97,11 @@ export default function Landing({
           (last.agentId === 'custom' || list.find((a) => a.id === last.agentId)?.resolvedPath)
             ? last
             : null
+        // Precedence: configured default (if launchable) -> last-used ->
+        // first resolved -> first preset. Custom is never a default.
+        const defaultValid = list.find((a) => a.isDefault && a.resolvedPath)?.id
         const firstResolved = list.find((a) => a.resolvedPath)?.id
-        const fallback = lastValid?.agentId ?? firstResolved ?? AGENT_PRESETS[0].id
+        const fallback = defaultValid ?? lastValid?.agentId ?? firstResolved ?? AGENT_PRESETS[0].id
         setSelectedAgentId(fallback)
         if (lastValid?.agentId === 'custom') {
           setCustomCommand(lastValid.customCommand ?? '')

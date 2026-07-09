@@ -877,6 +877,95 @@ test('browser pane: UI creation, chrome, close/reopen, persistence', async () =>
   server.close()
 })
 
+test('settings: live rebind, default agent preselect, live theme', async () => {
+  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  // Point gemini at the real fake-claude fixture so it RESOLVES — that makes
+  // "default agent" observable: without a default, the launcher would
+  // preselect claude (first resolved); setting gemini as default must win.
+  const app = await launchApp(userData, { gemini: join(here, '../fixtures/fake-claude.sh') })
+  const win = await app.firstWindow()
+  await win.setViewportSize({ width: 1400, height: 900 })
+  await expect(win.locator('.new-session')).toBeVisible()
+
+  await win.getByRole('button', { name: 'Settings', exact: true }).click()
+
+  // --- Live rebind: toggle-sidebar from cmd+b to cmd+y, then use it. ---
+  const kbRow = win.locator('.kb-row[data-action="toggle-sidebar"]')
+  await expect(kbRow.locator('.kb-capture')).toHaveText('cmd+b')
+  await kbRow.locator('.kb-capture').click()
+  await expect(kbRow.locator('.kb-capture')).toHaveText('press keys…')
+  await win.keyboard.press('Meta+y')
+  await expect(kbRow.locator('.kb-capture')).toHaveText('cmd+y')
+  // The live key dispatcher updates from the keybindings:changed push, which is
+  // separate from Settings' own UI text asserted above and can land a beat
+  // later. Poll the new combo until it actually toggles the sidebar, so we
+  // never race the push when asserting the old combo is dead.
+  await expect(async () => {
+    const before = await win.locator('aside').count()
+    await win.keyboard.press('Meta+y')
+    await expect(win.locator('aside')).toHaveCount(before === 0 ? 1 : 0, { timeout: 500 })
+  }).toPass({ timeout: 5000 })
+  // Dispatcher confirmed live. Normalize to visible, then verify the OLD combo
+  // is now dead (cmd+b is a no-op) and the NEW combo still toggles.
+  if ((await win.locator('aside').count()) === 0) await win.keyboard.press('Meta+y')
+  await expect(win.locator('aside')).toBeVisible()
+  await win.keyboard.press('Meta+b')
+  await expect(win.locator('aside')).toBeVisible()
+  await win.keyboard.press('Meta+y')
+  await expect(win.locator('aside')).toHaveCount(0)
+  await win.keyboard.press('Meta+y')
+  await expect(win.locator('aside')).toBeVisible()
+
+  // --- Live theme: switch to light, probe a CSS variable on :root. ---
+  const surfaceBefore = await win.evaluate(() =>
+    getComputedStyle(document.documentElement).getPropertyValue('--color-surface').trim()
+  )
+  expect(surfaceBefore).toBe('#111318')
+  await win.locator('.theme-select').selectOption('light')
+  await expect
+    .poll(() =>
+      win.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue('--color-surface').trim()
+      )
+    )
+    .toBe('#f5f5f4')
+
+  // --- Default agent: make gemini the default, verify launcher preselect. ---
+  // Not .check(): the radio's `checked` prop is driven by an async IPC
+  // round-trip (makeDefault awaits setDefaultAgent before setAgents), so
+  // Playwright's .check() — which verifies checked state synchronously right
+  // after the click, with no polling — fails even though the click and the
+  // resulting state change are both correct. .click() + a polling
+  // expect(...).toBeChecked() exercises the exact same user action and
+  // end-state without that tooling mismatch.
+  await win.locator('.agent-default[data-agent="gemini"]').click()
+  await expect(win.locator('.agent-default[data-agent="gemini"]')).toBeChecked()
+  await win.getByRole('button', { name: 'Overview', exact: true }).click()
+  await expect(win.locator('.landing select')).toHaveValue('gemini')
+
+  await app.close()
+
+  // The config file is the contract: assert on-disk shape too.
+  const config = JSON.parse(readFileSync(join(userData, 'config.json'), 'utf8'))
+  expect(config.defaultAgent).toBe('gemini')
+  expect(config.theme).toBe('light')
+  const kb = JSON.parse(readFileSync(join(userData, 'keybindings.json'), 'utf8'))
+  expect(kb['toggle-sidebar']).toBe('cmd+y')
+
+  // Relaunch: the persisted theme applies at startup (probe reflects light).
+  const app2 = await launchApp(userData, { gemini: join(here, '../fixtures/fake-claude.sh') })
+  const win2 = await app2.firstWindow()
+  await expect
+    .poll(() =>
+      win2.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue('--color-surface').trim()
+      )
+    )
+    .toBe('#f5f5f4')
+  await expect(win2.locator('.landing select')).toHaveValue('gemini')
+  await app2.close()
+})
+
 test('activity feed + overview stats: lines in order, waiting jump', async () => {
   const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
   const app = await launchApp(userData)

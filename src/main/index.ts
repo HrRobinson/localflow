@@ -1,16 +1,23 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
 import { join } from 'node:path'
 import { existsSync, writeFileSync } from 'node:fs'
-import type { AgentId } from '../shared/types'
+import type { AgentId, AgentOverride, AgentOverrideResult } from '../shared/types'
 import { clampEnvironment } from '../shared/environment'
 import { normalizeHttpUrl, isHttpUrl } from '../shared/urls'
 import { startHookServer } from './hook-server'
 import { SessionManager, type SpawnSpec } from './session-manager'
 import { loadSavedSessions, saveSessions } from './persistence'
 import { AgentRegistry } from './agent-registry'
-import { loadOrCreateKeybindings } from './keybindings-file'
+import { ensureThemesSeeded, listThemeNames, resolveTheme } from './theme-store'
+import { loadOrCreateKeybindings, writeKeybindings } from './keybindings-file'
 import { loadEnvironmentNames } from './environment-names'
 import { installWebviewPolicy } from './webview-policy'
+import {
+  DEFAULT_BINDINGS,
+  applyBindingChange,
+  type BindingChangeResult,
+  type KeyAction
+} from '../shared/keybindings'
 
 if (process.env['LOCALFLOW_USER_DATA']) {
   app.setPath('userData', process.env['LOCALFLOW_USER_DATA'])
@@ -98,13 +105,16 @@ app.whenReady().then(async () => {
 
   const userData = app.getPath('userData')
   const sessionsFile = join(userData, 'sessions.json')
-  const keybindings = loadOrCreateKeybindings(join(userData, 'keybindings.json'))
+  let keybindings = loadOrCreateKeybindings(join(userData, 'keybindings.json'))
 
   const registry = new AgentRegistry(
     join(userData, 'config.json'),
     undefined,
     process.env['LOCALFLOW_CLAUDE_BIN']
   )
+
+  const themesDir = join(userData, 'themes')
+  ensureThemesSeeded(themesDir)
 
   const endpoint = await startHookServer((e) => manager.applyHookEvent(e))
   if (process.env['LOCALFLOW_E2E'] === '1') {
@@ -126,7 +136,9 @@ app.whenReady().then(async () => {
     agentId,
     command: registry.commandFor(agentId, customCommand),
     resumeArgs: registry.argsFor(agentId, true),
-    hookAdapter: registry.hookAdapter(agentId)
+    hookAdapter: registry.hookAdapter(agentId),
+    extraArgs: registry.extraArgsFor(agentId),
+    env: registry.envFor(agentId)
   })
 
   // A destroyed BrowserWindow still non-null: guard every send, because pty
@@ -135,7 +147,7 @@ app.whenReady().then(async () => {
   const sendToWindow = (channel: string, ...args: unknown[]): void => {
     if (win && !win.isDestroyed()) win.webContents.send(channel, ...args)
   }
-  installWebviewPolicy({
+  const webviewPolicy = installWebviewPolicy({
     bindings: keybindings,
     onAction: (action) => sendToWindow('keybinding:action', action)
   })
@@ -233,6 +245,37 @@ app.whenReady().then(async () => {
   })
 
   ipcMain.handle('keybindings:get', () => keybindings)
+
+  // One write path for every keybinding change: persist (hand-editable file
+  // stays the source of truth), update the in-memory copy, re-point the
+  // webview key-forwarder, and push the full map so the renderer dispatcher
+  // re-parses. No restart.
+  const applyKeybindings = (next: Record<KeyAction, string>): Record<KeyAction, string> => {
+    keybindings = next
+    writeKeybindings(join(userData, 'keybindings.json'), next)
+    webviewPolicy.updateBindings(next)
+    sendToWindow('keybindings:changed', next)
+    return next
+  }
+  ipcMain.handle('keybindings:set', (_e, action: string, binding: string): BindingChangeResult => {
+    if (!(action in DEFAULT_BINDINGS) || typeof binding !== 'string') {
+      return { ok: false, reason: 'invalid', conflicts: [] }
+    }
+    // Conflicts are rejected here, not just surfaced in the UI: main's IPC is
+    // the gatekeeper for keybindings.json, so no caller can persist a combo
+    // another action already holds. A no-op re-set skips the write + push.
+    const result = applyBindingChange(keybindings, action as KeyAction, binding)
+    if (result.ok && result.changed) applyKeybindings(result.bindings)
+    return result
+  })
+  ipcMain.handle('keybindings:reset', (_e, action: string) => {
+    if (!(action in DEFAULT_BINDINGS)) return keybindings
+    return applyKeybindings({
+      ...keybindings,
+      [action as KeyAction]: DEFAULT_BINDINGS[action as KeyAction]
+    })
+  })
+  ipcMain.handle('keybindings:resetAll', () => applyKeybindings({ ...DEFAULT_BINDINGS }))
   ipcMain.handle('environments:getNames', () => loadEnvironmentNames(join(userData, 'config.json')))
 
   ipcMain.handle('agents:list', () => registry.list())
@@ -247,6 +290,34 @@ app.whenReady().then(async () => {
     registry.setPath(agentId, result.filePaths[0])
     return registry.list()
   })
+  ipcMain.handle('agents:setDefaultAgent', (_e, agentId: AgentId) => {
+    if (!VALID_AGENTS.includes(agentId)) return null
+    registry.setDefaultAgent(agentId)
+    return registry.list()
+  })
+  ipcMain.handle(
+    'agents:setOverride',
+    async (_e, agentId: AgentId, override: AgentOverride): Promise<AgentOverrideResult | null> => {
+      if (!VALID_AGENTS.includes(agentId) || typeof override !== 'object' || override === null) {
+        return null
+      }
+      const result = registry.setAgentOverride(agentId, override)
+      if (!result.ok) return result
+      return { ok: true, agents: await registry.list() }
+    }
+  )
+
+  ipcMain.handle('theme:get', () => resolveTheme(themesDir, registry.getTheme()))
+  ipcMain.handle('theme:list', () => listThemeNames(themesDir))
+  ipcMain.handle('theme:set', (_e, name: string) => {
+    if (typeof name !== 'string' || name.length === 0)
+      return resolveTheme(themesDir, registry.getTheme())
+    registry.setTheme(name)
+    const resolved = resolveTheme(themesDir, name)
+    sendToWindow('theme:changed', resolved)
+    return resolved
+  })
+  ipcMain.on('theme:openFolder', () => void shell.openPath(themesDir))
 
   createWindow()
 })

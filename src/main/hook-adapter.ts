@@ -9,6 +9,14 @@ export interface HookInjection {
 }
 
 /**
+ * Env keys the hook injection owns (buildHookInjection puts them in the
+ * spawn env). User per-agent env overrides win last in the spawn merge, so
+ * an override on one of these would silently kill that agent's status feed
+ * — setAgentOverride rejects them at the config boundary instead.
+ */
+export const RESERVED_ENV_KEYS: readonly string[] = ['GEMINI_CLI_SYSTEM_SETTINGS_PATH']
+
+/**
  * Dispatches to the per-agent hook-injection mechanism: a written settings
  * file + CLI flag (Claude), an env var pointing at a written settings file
  * (Gemini), inline `-c` CLI overrides (Codex), or nothing at all.

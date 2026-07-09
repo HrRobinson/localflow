@@ -17,6 +17,13 @@ import {
 } from '../../shared/keybindings'
 import { clampEnvironment } from '../../shared/environment'
 import type { AgentId, SessionInfo } from '../../shared/types'
+import {
+  DEFAULT_THEME,
+  themeToCssVars,
+  themeToXterm,
+  type Theme,
+  type XtermTheme
+} from '../../shared/theme'
 
 // Which pane-nav direction each focus-*/swap-* action moves in.
 const ACTION_DIRECTION: Partial<Record<KeyAction, Direction>> = {
@@ -46,6 +53,14 @@ export default function App(): React.JSX.Element {
   // mounted-invisible? No — they simply don't render; their ptys live in
   // main regardless, so nothing is lost when a pane isn't shown.
   const [environment, setEnvironment] = useState(1)
+  // Terminal theme handed to every TerminalPane; app tokens go straight onto
+  // :root. Both live-update on the theme:changed push.
+  const [terminalTheme, setTerminalTheme] = useState<{
+    theme: XtermTheme
+    fontFamily: string
+    fontSize: number
+  }>(() => themeToXterm(DEFAULT_THEME))
+  const [themeNotice, setThemeNotice] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
     const list = await window.localflow.listSessions()
@@ -220,14 +235,18 @@ export default function App(): React.JSX.Element {
   })
 
   useEffect(() => {
+    // Refilled IN PLACE (not reassigned) so the stable onKey closure below
+    // always reads the current set — this is the live-rebind path.
     const bindings: [KeyAction, ParsedBinding][] = []
-    void (async () => {
-      const raw = await window.localflow.getKeybindings()
+    const loadBindings = (raw: Record<KeyAction, string>): void => {
+      bindings.length = 0
       for (const [action, binding] of bindingEntries(raw)) {
         const parsed = parseBinding(binding)
         if (parsed) bindings.push([action, parsed])
       }
-    })()
+    }
+    void window.localflow.getKeybindings().then(loadBindings)
+    const offChanged = window.localflow.onKeybindingsChanged(loadBindings)
 
     // Capture phase: this dispatcher runs before terminal xterm instances
     // see the event, so it can claim bound combos (cmd+w, cmd+enter, ...)
@@ -318,6 +337,9 @@ export default function App(): React.JSX.Element {
       }
     }
     const onKey = (e: KeyboardEvent): void => {
+      // While a keybinding capture is armed, the editor owns the keyboard —
+      // a captured combo that is currently bound must not fire its action.
+      if (document.documentElement.dataset.capturingKeybind === '1') return
       const match = bindings.find(([, binding]) => eventMatches(binding, e))
       if (!match) return
       e.preventDefault()
@@ -327,9 +349,22 @@ export default function App(): React.JSX.Element {
     const offForwarded = window.localflow.onKeyAction((action) => runAction(action))
     window.addEventListener('keydown', onKey, true)
     return () => {
+      offChanged()
       offForwarded()
       window.removeEventListener('keydown', onKey, true)
     }
+  }, [])
+
+  useEffect(() => {
+    const apply = (payload: { theme: Theme; error?: string }): void => {
+      const vars = themeToCssVars(payload.theme)
+      for (const [k, v] of Object.entries(vars)) document.documentElement.style.setProperty(k, v)
+      setTerminalTheme(themeToXterm(payload.theme))
+      setThemeNotice(payload.error ?? null)
+    }
+    void window.localflow.getTheme().then(apply)
+    const off = window.localflow.onThemeChanged(apply)
+    return () => off()
   }, [])
 
   const showEnvironment =
@@ -337,6 +372,18 @@ export default function App(): React.JSX.Element {
 
   return (
     <div className="flex min-h-0 flex-1">
+      {themeNotice && (
+        <div className="theme-notice fixed top-2 left-1/2 z-50 -translate-x-1/2 rounded-md border border-yellow-500/50 bg-yellow-500/15 px-3 py-1.5 text-[12px] text-yellow-200">
+          {themeNotice}
+          <button
+            className="ml-3 cursor-pointer border-0 bg-transparent text-yellow-200/70 hover:text-white"
+            onClick={() => setThemeNotice(null)}
+            onMouseDown={(e) => e.preventDefault()}
+          >
+            dismiss
+          </button>
+        </div>
+      )}
       {sidebarVisible && (
         <Sidebar
           sessions={sessions}
@@ -394,6 +441,7 @@ export default function App(): React.JSX.Element {
                     onActivate={() => setActiveId(s.id)}
                     onRestart={(fresh) => void restart(s.id, fresh)}
                     onClose={() => void closeTerminal(s.id)}
+                    terminalTheme={terminalTheme}
                   />
                 )
               )}

@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import type { AgentId, AgentInfo, LastAgent } from '../shared/types'
+import type { AgentId, AgentInfo, AgentOverride, LastAgent } from '../shared/types'
 type StatusFidelity = AgentInfo['statusFidelity']
 import {
   AGENT_PRESETS,
@@ -9,11 +9,19 @@ import {
   type AgentPreset,
   type HookAdapterKind
 } from '../shared/agents'
+import { splitArgs } from '../shared/args'
+import { RESERVED_ENV_KEYS } from './hook-adapter'
 
 export interface AgentConfig {
   /** User-configured absolute paths per agent, overriding PATH lookup. */
   agentPaths: Partial<Record<AgentId, string>>
   lastAgent?: LastAgent
+  /** Default agent for the New session launcher (M4). */
+  defaultAgent?: AgentId
+  /** Per-agent extra args + env overrides, composed into SpawnSpec (M4). */
+  agents?: Partial<Record<AgentId, AgentOverride>>
+  /** Selected theme name; resolved against userData/themes (M4). */
+  theme?: string
   /**
    * Unknown top-level keys found in config.json, preserved verbatim so
    * hand-added config-as-code entries survive a save round-trip.
@@ -35,7 +43,35 @@ function parseLastAgent(raw: unknown): LastAgent | null {
   return { agentId: agentId as AgentId }
 }
 
-const KNOWN_TOP_LEVEL_KEYS = new Set(['agentPaths', 'lastAgent'])
+const KNOWN_AGENT_IDS: AgentId[] = ['claude', 'codex', 'gemini', 'custom']
+
+function parseAgentOverride(raw: unknown): AgentOverride | null {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null
+  const out: AgentOverride = {}
+  const extraArgs = (raw as { extraArgs?: unknown }).extraArgs
+  if (typeof extraArgs === 'string' && extraArgs.trim().length > 0) out.extraArgs = extraArgs
+  const env = (raw as { env?: unknown }).env
+  if (typeof env === 'object' && env !== null && !Array.isArray(env)) {
+    const cleaned: Record<string, string> = {}
+    for (const [k, v] of Object.entries(env)) {
+      if (k.length > 0 && typeof v === 'string') cleaned[k] = v
+    }
+    if (Object.keys(cleaned).length > 0) out.env = cleaned
+  }
+  return out.extraArgs || out.env ? out : null
+}
+
+function parseAgents(raw: unknown): AgentConfig['agents'] | undefined {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return undefined
+  const out: Partial<Record<AgentId, AgentOverride>> = {}
+  for (const id of KNOWN_AGENT_IDS) {
+    const override = parseAgentOverride((raw as Record<string, unknown>)[id])
+    if (override) out[id] = override
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
+const KNOWN_TOP_LEVEL_KEYS = new Set(['agentPaths', 'lastAgent', 'defaultAgent', 'agents', 'theme'])
 
 export function loadAgentConfig(file: string): AgentConfig {
   try {
@@ -55,6 +91,13 @@ export function loadAgentConfig(file: string): AgentConfig {
     if (lastAgent !== null) {
       config.lastAgent = lastAgent
     }
+    const defaultAgent = obj.defaultAgent
+    if (typeof defaultAgent === 'string' && KNOWN_AGENT_IDS.includes(defaultAgent as AgentId)) {
+      config.defaultAgent = defaultAgent as AgentId
+    }
+    const agents = parseAgents(obj.agents)
+    if (agents) config.agents = agents
+    if (typeof obj.theme === 'string' && obj.theme.trim().length > 0) config.theme = obj.theme
     // Preserve any hand-added top-level keys (config-as-code) so they
     // survive a later saveAgentConfig call untouched.
     const extra: Record<string, unknown> = {}
@@ -163,6 +206,59 @@ export class AgentRegistry {
     saveAgentConfig(this.configFile, this.config)
   }
 
+  getDefaultAgent(): AgentId | null {
+    return this.config.defaultAgent ?? null
+  }
+
+  setDefaultAgent(agentId: AgentId): void {
+    this.config.defaultAgent = agentId
+    saveAgentConfig(this.configFile, this.config)
+  }
+
+  getAgentOverride(agentId: AgentId): AgentOverride {
+    return this.config.agents?.[agentId] ?? {}
+  }
+
+  /**
+   * Persists a per-agent override. Env keys owned by the hook injection
+   * (RESERVED_ENV_KEYS) are rejected before anything is written — user env
+   * overrides win last in the spawn merge, so letting one through would
+   * silently kill that agent's status feed.
+   */
+  setAgentOverride(
+    agentId: AgentId,
+    override: AgentOverride
+  ): { ok: true } | { ok: false; reserved: string[] } {
+    const reserved = Object.keys(override.env ?? {}).filter((k) => RESERVED_ENV_KEYS.includes(k))
+    if (reserved.length > 0) return { ok: false, reserved }
+    const cleaned = parseAgentOverride(override)
+    const agents = { ...this.config.agents }
+    if (cleaned) agents[agentId] = cleaned
+    else delete agents[agentId]
+    this.config.agents = Object.keys(agents).length > 0 ? agents : undefined
+    saveAgentConfig(this.configFile, this.config)
+    return { ok: true }
+  }
+
+  /** Shell-split extra args for spawn composition (empty when unset). */
+  extraArgsFor(agentId: AgentId): string[] {
+    return splitArgs(this.config.agents?.[agentId]?.extraArgs ?? '')
+  }
+
+  /** Env overrides for spawn composition (empty when unset). */
+  envFor(agentId: AgentId): Record<string, string> {
+    return { ...(this.config.agents?.[agentId]?.env ?? {}) }
+  }
+
+  getTheme(): string | null {
+    return this.config.theme ?? null
+  }
+
+  setTheme(name: string): void {
+    this.config.theme = name
+    saveAgentConfig(this.configFile, this.config)
+  }
+
   async list(): Promise<AgentInfo[]> {
     const infos: AgentInfo[] = []
     for (const preset of AGENT_PRESETS) {
@@ -173,7 +269,10 @@ export class AgentRegistry {
         command,
         resolvedPath: await this.resolve(preset, command),
         hasStatusFeed: hasHookAdapter(preset.hookAdapter),
-        statusFidelity: statusFidelityFor(preset.hookAdapter)
+        statusFidelity: statusFidelityFor(preset.hookAdapter),
+        isDefault: this.config.defaultAgent === preset.id,
+        extraArgs: this.config.agents?.[preset.id]?.extraArgs ?? '',
+        env: this.config.agents?.[preset.id]?.env ?? {}
       })
     }
     return infos

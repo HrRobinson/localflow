@@ -39,6 +39,10 @@ export interface SpawnSpec {
   resumeArgs: string[]
   /** Which hook-injection mechanism to use to feed this session's status. */
   hookAdapter: HookAdapterKind
+  /** Extra CLI args appended after resume args (per-agent override, M4). */
+  extraArgs?: string[]
+  /** Env overrides applied last at spawn (per-agent override, M4). */
+  env?: Record<string, string>
 }
 
 const defaultSpawn: SpawnFn = (bin, args, opts) => {
@@ -278,13 +282,21 @@ export class SessionManager {
         this.opts.token
       )
       const resumeArgs = resume ? spec.resumeArgs : []
-      pty = (this.opts.spawnFn ?? defaultSpawn)(spec.command, [...injection.args, ...resumeArgs], {
-        cwd,
-        cols: 80,
-        rows: 24,
-        name: 'xterm-256color',
-        env: { ...process.env, ...injection.env }
-      })
+      pty = (this.opts.spawnFn ?? defaultSpawn)(
+        spec.command,
+        [...injection.args, ...resumeArgs, ...(spec.extraArgs ?? [])],
+        {
+          cwd,
+          cols: 80,
+          rows: 24,
+          name: 'xterm-256color',
+          // Precedence: process env < hook injection < user override. User
+          // overrides win last (explicit intent); collisions with the
+          // hook-owned vars cannot reach here — setAgentOverride rejects
+          // RESERVED_ENV_KEYS (hook-adapter.ts) at the config boundary.
+          env: { ...process.env, ...injection.env, ...(spec.env ?? {}) }
+        }
+      )
     } catch {
       const message = `Could not start '${spec.command}'. Check the agent's path in the launcher.`
       info.status = 'exited'

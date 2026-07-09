@@ -328,3 +328,9 @@ body {
 .activity-entry {
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
+
+/* Captures (Layer 4): a halted capture is awaiting a resume/stop decision —
+   flag it with the same "needs-you" token used everywhere else. */
+.capture-row.halted {
+  border-left: 2px solid var(--needs-you);
+}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { ActivityEntry, OperatorStatus } from '../../../shared/operator'
+import type { ActivityEntry, Capture, OperatorStatus, Watchpoint } from '../../../shared/operator'
 
 interface Props {
   environment: number
@@ -32,6 +32,25 @@ export default function Cockpit({ environment }: Props): React.JSX.Element {
       )
     })
   }, [environment])
+
+  const [captures, setCaptures] = useState<Capture[]>([])
+  const [watchpoints, setWatchpoints] = useState<Watchpoint[]>([])
+
+  const reloadSub = useCallback(async (): Promise<void> => {
+    const [c, w] = await Promise.all([
+      window.localflow.listCaptures(environment),
+      window.localflow.listWatchpoints(environment)
+    ])
+    setCaptures(c)
+    setWatchpoints(w)
+  }, [environment])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch on mount / environment change
+    void reloadSub()
+    const iv = setInterval(() => void reloadSub(), 2000)
+    return () => clearInterval(iv)
+  }, [reloadSub])
 
   const grant = async (): Promise<void> => {
     await window.localflow.grantOperator(environment)
@@ -93,6 +112,77 @@ export default function Cockpit({ environment }: Props): React.JSX.Element {
                 <span className="text-gray-200">{e.route}</span>
                 {e.handle && <span className="text-gray-500">{e.handle}</span>}
                 {e.detail && <span className="truncate text-gray-500">{e.detail}</span>}
+              </div>
+            ))
+        )}
+      </div>
+      <div className="watchpoints-list flex-none border-t border-white/[0.07] px-3 py-2 text-[11px]">
+        <div className="mb-1 font-semibold text-gray-300">Watchpoints</div>
+        {watchpoints.length === 0 ? (
+          <div className="text-gray-500">No watchpoints registered.</div>
+        ) : (
+          watchpoints.map((w) => (
+            <div
+              key={w.id}
+              className="watchpoint-row flex gap-2 py-0.5 text-gray-300"
+              data-watchpoint-id={w.id}
+              data-hit={w.hit ? 'true' : 'false'}
+            >
+              <span className="text-gray-200">{w.workflow}</span>
+              <span className="text-gray-500">@ {w.step}</span>
+              <span className="text-gray-600">{w.capture.join(',')}</span>
+              <span className={w.hit ? 'text-idle' : 'text-gray-500'}>
+                {w.hit ? 'hit' : 'pending'}
+              </span>
+            </div>
+          ))
+        )}
+      </div>
+      <div className="captures-list flex-none border-t border-white/[0.07] px-3 py-2 text-[11px]">
+        <div className="mb-1 font-semibold text-gray-300">Captures</div>
+        {captures.length === 0 ? (
+          <div className="text-gray-500">No captures yet.</div>
+        ) : (
+          captures
+            .slice()
+            .reverse()
+            .map((c) => (
+              <div
+                key={c.id}
+                className={`capture-row flex items-center gap-2 py-0.5 text-gray-300 ${c.halted ? 'halted' : ''}`}
+                data-capture-id={c.id}
+              >
+                <span className="text-gray-600">{new Date(c.createdAt).toLocaleTimeString()}</span>
+                {c.screenshotPath && (
+                  <span className="truncate text-gray-500">{c.screenshotPath}</span>
+                )}
+                {c.output && <span className="text-gray-500">{c.output.length} lines</span>}
+                {c.halted ? (
+                  <>
+                    <button
+                      className="capture-resume text-idle cursor-pointer rounded border border-white/10 px-1.5"
+                      onClick={() =>
+                        void window.localflow.resumeCapture(environment, c.id, true).then(reloadSub)
+                      }
+                      onMouseDown={(e) => e.preventDefault()}
+                    >
+                      Resume
+                    </button>
+                    <button
+                      className="capture-stop cursor-pointer rounded border border-white/10 px-1.5 text-gray-400"
+                      onClick={() =>
+                        void window.localflow
+                          .resumeCapture(environment, c.id, false)
+                          .then(reloadSub)
+                      }
+                      onMouseDown={(e) => e.preventDefault()}
+                    >
+                      Stop
+                    </button>
+                  </>
+                ) : (
+                  <span className="text-gray-600">stored</span>
+                )}
               </div>
             ))
         )}

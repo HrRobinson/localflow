@@ -20,6 +20,8 @@ import { PaneRegistry } from './pane-registry'
 import { OperatorGrantStore } from './operator-grant'
 import { startControlServer } from './control-api'
 import { BrowserBridge } from './browser-bridge'
+import { WebviewBrowserControl } from './browser-control'
+import { CaptureStore } from './capture-store'
 import type { ActivityEntry, GrantInfo, OperatorStatus } from '../shared/operator'
 import type { Capabilities } from '../shared/git'
 import {
@@ -165,10 +167,17 @@ app.whenReady().then(async () => {
   // Rolling per-environment action log (newest last, capped). In-memory only —
   // the feed is deliberately not persisted across restarts (spec "Out of scope").
   const activity = new Map<number, ActivityEntry[]>()
+
+  const browserBridge = new BrowserBridge()
+  const captureStore = new CaptureStore(join(userData, 'captures'))
+  const browserControl = new WebviewBrowserControl(browserBridge, captureStore)
+
   const control = await startControlServer({
     registry: paneRegistry,
     grants,
     manager,
+    browser: browserControl,
+    captures: captureStore,
     onActivity: (env, entry) => {
       const log = activity.get(env) ?? []
       log.push(entry)
@@ -179,7 +188,6 @@ app.whenReady().then(async () => {
   })
   app.on('before-quit', () => control.close())
 
-  const browserBridge = new BrowserBridge()
   ipcMain.on('browser:register', (_e, handle: string, webContentsId: number) => {
     if (typeof handle === 'string' && Number.isInteger(webContentsId)) {
       browserBridge.register(handle, webContentsId)

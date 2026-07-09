@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process'
+import { existsSync, realpathSync } from 'node:fs'
 import { devNull } from 'node:os'
-import { isAbsolute, relative, resolve } from 'node:path'
+import { dirname, isAbsolute, relative, resolve, sep as pathSep } from 'node:path'
 import { capDiff, parsePorcelain, type DiffResult, type GitStatus } from '../shared/git'
 
 const GIT_TIMEOUT_MS = 5000
@@ -46,15 +47,21 @@ function runGit(cwd: string, args: string[]): Promise<GitRun> {
 
 /**
  * Confine a candidate path to the repo toplevel, returning the RESOLVED ABSOLUTE
- * path only when it is strictly inside `toplevel`, else null. Pure and lexical
- * (no symlink resolution) — it runs BEFORE any git spawn so a renderer-supplied
- * path can never reach `git diff --no-index`, which has NO repository boundary
- * and would otherwise read any OS-readable file. Rejects NUL bytes, empty
- * inputs, the toplevel itself, and anything resolving to `..`/outside. Also
- * rejects anything under the repo's `.git` directory: those paths are never
- * emitted by status, so a request for one (e.g. `.git/config`, which can hold
- * embedded remote credentials) is hostile by construction.
+ * path only when it is strictly inside `toplevel`, else null. It runs BEFORE
+ * any git spawn so a renderer-supplied path can never reach `git diff
+ * --no-index`, which has NO repository boundary and would otherwise read any
+ * OS-readable file. Rejects NUL bytes, empty inputs, the toplevel itself, and
+ * anything resolving to `..`/outside. Also rejects anything under the repo's
+ * `.git` directory: those paths are never emitted by status, so a request for
+ * one (e.g. `.git/config`, which can hold embedded remote credentials) is
+ * hostile by construction.
  * `toplevel` is absolute (from `git rev-parse --show-toplevel`).
+ *
+ * Two passes: first a cheap LEXICAL check (string/segment based, no syscalls),
+ * then a REALPATH re-check — a directory component inside the repo can be a
+ * symlink to anywhere on disk (e.g. an untracked `etcdir -> /etc`), which
+ * lexically resolves under `toplevel` and would otherwise pass, but resolves
+ * OUTSIDE it once symlinks are followed. The realpath pass closes that hole.
  */
 export function confinePath(toplevel: string, candidate: string): string | null {
   if (!toplevel || !candidate) return null
@@ -73,6 +80,7 @@ export function confinePath(toplevel: string, candidate: string): string | null 
   // Exact per-segment match — `.gitignore`/`.github/…`/`.git-credentials`
   // (different segments) still pass.
   if (rel.split(sep).some((s) => s.toLowerCase() === '.git')) return null
+  if (!realpathContained(toplevel, resolved)) return null
   return resolved
 }
 
@@ -80,6 +88,41 @@ export function confinePath(toplevel: string, candidate: string): string | null 
 // dotdot check is correct on both POSIX ('/') and Windows ('\').
 function sepFor(rel: string): string {
   return rel.includes('\\') ? '\\' : '/'
+}
+
+/**
+ * Re-check containment AFTER resolving symlinks, so a symlinked directory
+ * component inside the repo (e.g. `etcdir -> /etc`) that lexically passes the
+ * checks above cannot smuggle an out-of-tree read through git's `--no-index`
+ * fallback (which has no repository boundary of its own).
+ *
+ * `toplevel` comes from `git rev-parse --show-toplevel`, which already prints
+ * a symlink-resolved path — but it's realpath'd here too, cheaply, rather
+ * than trusting that invariant across callers.
+ *
+ * `resolvedCandidate` usually exists (the --no-index caller diffs an existing
+ * untracked file), but stays robust when it doesn't: walks up to the nearest
+ * EXISTING ancestor directory and realpaths that instead — a symlinked
+ * directory is what matters for the escape, and that's always an existing
+ * ancestor even when the leaf name is fabricated.
+ *
+ * Any realpath failure (ENOENT on the whole chain, a broken symlink, a
+ * permission error) is treated as reject — a safe default, not a pass.
+ */
+function realpathContained(toplevel: string, resolvedCandidate: string): boolean {
+  try {
+    const realTop = realpathSync.native(toplevel)
+    let probe = resolvedCandidate
+    while (!existsSync(probe)) {
+      const parent = dirname(probe)
+      if (parent === probe) return false // hit the filesystem root; nothing exists
+      probe = parent
+    }
+    const realProbe = realpathSync.native(probe)
+    return realProbe === realTop || realProbe.startsWith(`${realTop}${pathSep}`)
+  } catch {
+    return false
+  }
 }
 
 /** The repo toplevel for `cwd`, or null when it is not a git repo / git is

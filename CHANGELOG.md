@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.1.0](https://github.com/HrRobinson/localflow/compare/v1.0.0...v1.1.0) (2026-07-09)
+
+
+### Features
+
+* activity feed and overview stats ([#31](https://github.com/HrRobinson/localflow/issues/31)) ([e9067b4](https://github.com/HrRobinson/localflow/commit/e9067b4575b4ca6ba2f82628714bb9ddb7432477))
+* environments rename + browser panes (M3.5) ([#29](https://github.com/HrRobinson/localflow/issues/29)) ([f7258c2](https://github.com/HrRobinson/localflow/commit/f7258c2c93b69ef3be0f067c4a0ce82307fc2ff3))
+* needs-you quick actions (M2.5) ([#26](https://github.com/HrRobinson/localflow/issues/26)) ([62b2c84](https://github.com/HrRobinson/localflow/commit/62b2c84c688a2df37cc86cafd55e42a68c2bea72))
+* read-only changes diff-review view ([#33](https://github.com/HrRobinson/localflow/issues/33)) ([a8c9ef5](https://github.com/HrRobinson/localflow/commit/a8c9ef59229df51198c1c9ed0979fec6a1dff294))
+* settings ui — keybindings, agents, themes ([#32](https://github.com/HrRobinson/localflow/issues/32)) ([0119074](https://github.com/HrRobinson/localflow/commit/0119074b2a6bad0785edb22b8860bb93c7690c34))
+* workspaces 1-9 (M3) ([#28](https://github.com/HrRobinson/localflow/issues/28)) ([96bee55](https://github.com/HrRobinson/localflow/commit/96bee55e2a5768ce94a01b04a368788f53bcb36b))
+
+
+### Bug Fixes
+
+* exempt squash PR suffix from commitlint ([#25](https://github.com/HrRobinson/localflow/issues/25)) ([745936d](https://github.com/HrRobinson/localflow/commit/745936d18644a0943ea740f81e092fdec12dc981))
+* release artifact build and changelog lint ([#23](https://github.com/HrRobinson/localflow/issues/23)) ([c786aa9](https://github.com/HrRobinson/localflow/commit/c786aa94e957e63471b41e69bf964d73630eb0c0))
+
 ## 1.0.0 (2026-07-07)
 
 

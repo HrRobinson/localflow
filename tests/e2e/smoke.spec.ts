@@ -1,4 +1,5 @@
 import { test, expect, _electron as electron, type ElectronApplication } from '@playwright/test'
+import { execFileSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
@@ -45,6 +46,11 @@ function launchApp(
       LOCALFLOW_E2E: '1',
       LOCALFLOW_USER_DATA: userData,
       LOCALFLOW_CLAUDE_BIN: join(here, '../fixtures/fake-claude.sh'),
+      // Escape-hatch tools resolve to "unavailable" without a login-shell spawn
+      // (the M6 hatches are gated by capabilities; real binaries aren't needed
+      // headless — unit tests cover the gating logic).
+      LOCALFLOW_LAZYGIT_BIN: '/nonexistent/lazygit',
+      LOCALFLOW_EDITOR_BIN: '/nonexistent/code',
       // Marker file the codex/gemini fixtures poll for before firing their
       // hook commands (SessionManager.spawn passes the app's env through to
       // every pty): a test creates it via goMarker() only once everything
@@ -875,4 +881,86 @@ test('browser pane: UI creation, chrome, close/reopen, persistence', async () =>
 
   await app2.close()
   server.close()
+})
+
+test('changes: file list, badges, diff coloring, j/k nav, non-repo empty', async () => {
+  // A real git repo fixture: one committed file modified (unstaged), a second
+  // file staged, and an untracked file — the three badge states in one repo.
+  const repo = mkdtempSync(join(tmpdir(), 'localflow-repo-'))
+  const git = (args: string[]): void => {
+    execFileSync('git', args, { cwd: repo })
+  }
+  git(['init', '-q'])
+  git(['config', 'user.email', 'e2e@localflow.test'])
+  git(['config', 'user.name', 'e2e'])
+  writeFileSync(join(repo, 'tracked.txt'), 'one\ntwo\nthree\n')
+  git(['add', 'tracked.txt'])
+  git(['commit', '-q', '-m', 'init'])
+  writeFileSync(join(repo, 'tracked.txt'), 'one\nTWO\nthree\n') // unstaged modify
+  writeFileSync(join(repo, 'staged.txt'), 'brand new staged file\n')
+  git(['add', 'staged.txt']) // staged add
+  writeFileSync(join(repo, 'untracked.txt'), 'i am untracked\n') // untracked
+
+  const nonRepo = mkdtempSync(join(tmpdir(), 'localflow-plain-'))
+
+  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const app = await launchApp(userData)
+  const win = await app.firstWindow()
+  await win.setViewportSize({ width: 1400, height: 900 })
+  await expect(win.locator('.new-session')).toBeVisible()
+
+  const createSession = (cwd: string): Promise<{ id: string } | null> =>
+    win.evaluate(
+      (dir) =>
+        (
+          window as unknown as {
+            localflow: { createSession(a: string, c: string): Promise<{ id: string } | null> }
+          }
+        ).localflow.createSession('claude', dir),
+      cwd
+    )
+
+  const repoSession = await createSession(repo)
+  const plainSession = await createSession(nonRepo)
+  await expect(win.locator(`[data-session-id="${plainSession!.id}"]`)).toBeVisible()
+
+  // Enter Changes for the repo session from its overview row.
+  await win
+    .locator(`[data-session-id="${repoSession!.id}"]`)
+    .getByRole('button', { name: 'changes', exact: true })
+    .click()
+  await expect(win.locator('.changes-view')).toBeVisible()
+
+  // The escape-hatch buttons render (disabled — the fixtures resolve nothing).
+  await expect(win.locator('.open-lazygit')).toBeVisible()
+  await expect(win.locator('.open-editor')).toBeVisible()
+
+  // File list: all three, each with the right badge.
+  await expect(win.locator('.changes-file')).toHaveCount(3)
+  await expect(win.locator('.changes-file[data-path="staged.txt"] .badge-staged')).toBeVisible()
+  await expect(win.locator('.changes-file[data-path="tracked.txt"] .badge-unstaged')).toBeVisible()
+  await expect(
+    win.locator('.changes-file[data-path="untracked.txt"] .badge-untracked')
+  ).toBeVisible()
+
+  // Selecting the modified file renders a colored diff (one +, one -).
+  await win.locator('.changes-file[data-path="tracked.txt"]').click()
+  await expect(win.locator('.changes-diff .diff-add')).toHaveCount(1) // +TWO
+  await expect(win.locator('.changes-diff .diff-del')).toHaveCount(1) // -two
+
+  // j/k move the selection (view-local, bare letters).
+  const firstActive = await win.locator('.changes-file.active').getAttribute('data-path')
+  expect(firstActive).toBe('tracked.txt')
+  await win.keyboard.press('j')
+  await expect(win.locator('.changes-file.active')).not.toHaveAttribute('data-path', firstActive!)
+  await win.keyboard.press('k')
+  await expect(win.locator('.changes-file.active')).toHaveAttribute('data-path', firstActive!)
+
+  // Switch to the non-repo session via the in-view switcher → friendly empty.
+  await win.locator('.changes-session-select').selectOption(plainSession!.id)
+  await expect(win.locator('.changes-empty')).toBeVisible()
+  await expect(win.locator('.changes-empty')).toContainText('git repository')
+  await expect(win.locator('.changes-file')).toHaveCount(0)
+
+  await app.close()
 })

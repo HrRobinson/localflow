@@ -245,8 +245,7 @@ with." First non-terminal pane type: an embedded **browser pane**
 
 ## M6 — Changes / diff review
 
-**Superseded by docs/superpowers/specs/2026-07-08-m6-changes-design.md
-(approved design; read-only v1).**
+**Superseded by docs/superpowers/specs/2026-07-08-m6-changes-design.md (approved design; shipped).**
 
 - Per-session Changes view (GitHub Desktop-style): git status file list of the
   session's cwd, syntax-highlighted diffs, `j/k` file/hunk navigation.

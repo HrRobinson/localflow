@@ -114,6 +114,21 @@ renamed inline — double-click the name, or use the pencil icon that
 appears on hover — in both Overview and the sidebar; press Enter to save
 or Escape to cancel.
 
+## Changes / diff review
+
+Every session can show what its agent changed — pick **Changes** in the sidebar
+(or the "changes" action on an overview row) to review one session's repo,
+read-only. The left column is the `git status` file list with **staged**,
+**unstaged**, and **untracked** badges; the right pane shows the selected file's
+diff (staged and worktree changes merged; new files as full additions), tinted
+at the diff level — additions green, deletions red, hunks blue. `j`/`k` walk the
+file list. It never writes to your repo. When you want to actually stage or
+commit, two escape hatches take you to real tools: **Open lazygit here** opens
+lazygit as a terminal pane in that folder, and **Open in editor** opens the
+folder in your editor (`config.json`'s `editorCommand`, default `code`). Both
+disable themselves with a hint when the tool isn't on your PATH. A session whose
+folder isn't a git repository just shows a plain "not a git repository" note.
+
 ## Keyboard
 
 The Environment view is fully keyboard-drivable: exactly one pane is always

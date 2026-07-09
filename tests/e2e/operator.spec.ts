@@ -54,19 +54,22 @@ function makeClient(endpoint: string, token: string) {
 }
 
 test('operator drives a granted environment and is denied cross-env', async () => {
-  // De-risk note 3: navigate needs a real loadable http URL. Stand up a tiny
-  // loopback server for the whole test; close it in teardown.
-  const server = createServer((_req, res) => {
-    res.setHeader('Content-Type', 'text/html')
-    res.end('<!doctype html><title>operator-fixture</title><h1>operator fixture page</h1>')
-  })
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
-  const pageUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`
-
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
-  const app = await launchApp(userData)
+  let server: ReturnType<typeof createServer> | undefined
+  let app: ElectronApplication | undefined
 
   try {
+    // De-risk note 3: navigate needs a real loadable http URL. Stand up a tiny
+    // loopback server for the whole test; close it in teardown.
+    server = createServer((_req, res) => {
+      res.setHeader('Content-Type', 'text/html')
+      res.end('<!doctype html><title>operator-fixture</title><h1>operator fixture page</h1>')
+    })
+    await new Promise<void>((resolve) => server!.listen(0, '127.0.0.1', resolve))
+    const pageUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`
+
+    const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+    app = await launchApp(userData)
+
     const win = await app.firstWindow()
     await win.setViewportSize({ width: 1400, height: 900 })
     await expect(win.locator('.new-session')).toBeVisible()
@@ -242,7 +245,7 @@ test('operator drives a granted environment and is denied cross-env', async () =
       .poll(async () => (await client.call('GET', '/panes')).status, { timeout: 10_000 })
       .toBe(403)
   } finally {
-    await app.close()
-    server.close()
+    if (app) await app.close()
+    if (server) await new Promise<void>((resolve) => server!.close(() => resolve()))
   }
 })

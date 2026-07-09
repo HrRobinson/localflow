@@ -11,7 +11,7 @@ import type {
 import type { BindingChangeResult, KeyAction } from './keybindings'
 import type { Theme } from './theme'
 import type { GitStatus, DiffResult, Capabilities } from './git'
-import type { GrantInfo, OperatorStatus } from './operator'
+import type { GrantInfo, OperatorStatus, ActivityEntry as OperatorActivityEntry } from './operator'
 
 export interface LocalflowApi {
   /**
@@ -89,6 +89,8 @@ export interface LocalflowApi {
   revokeOperator(environment: number): Promise<void>
   /** Grant + connection state + the rolling action log for an environment. */
   operatorStatus(environment: number): Promise<OperatorStatus>
+  /** Live control-API action-log entries, per environment. */
+  onOperatorActivity(cb: (environment: number, entry: OperatorActivityEntry) => void): () => void
   /** Working-tree status for a session's repo. `repo:false` when the cwd isn't a git repo (or the session has none). */
   gitStatus(id: string): Promise<GitStatus>
   /** Diff text for one path at one layer. Untracked files come back as full additions; size-capped. */

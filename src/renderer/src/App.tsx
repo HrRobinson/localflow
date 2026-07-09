@@ -6,6 +6,7 @@ import Settings from './components/Settings'
 import Activity from './components/Activity'
 import Sidebar from './components/Sidebar'
 import Changes from './components/Changes'
+import Cockpit from './components/Cockpit'
 import { reconcileOrder } from './lib/order'
 import { pickNeighbor, swapInOrder, type PaneRect, type Direction } from './lib/pane-nav'
 import { nextNeedsYou } from './lib/needs-you'
@@ -49,9 +50,9 @@ export default function App(): React.JSX.Element {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [order, setOrder] = useState<string[]>([])
   // The app opens on the home overview; the environment view is entered explicitly.
-  const [view, setView] = useState<'home' | 'environment' | 'settings' | 'changes' | 'activity'>(
-    'home'
-  )
+  const [view, setView] = useState<
+    'home' | 'environment' | 'settings' | 'changes' | 'activity' | 'cockpit'
+  >('home')
   // Which environment's grid is visible. Sessions on other environments stay
   // mounted-invisible? No — they simply don't render; their ptys live in
   // main regardless, so nothing is lost when a pane isn't shown.
@@ -211,6 +212,7 @@ export default function App(): React.JSX.Element {
     }
   }
   const enterActivity = (): void => setView('activity')
+  const enterCockpit = (): void => setView('cockpit')
   // Switching environments re-scopes focus: the active/enlarged pane must be
   // one of the target environment's panes, or null.
   const switchEnvironment = (n: number): void => {
@@ -435,7 +437,9 @@ export default function App(): React.JSX.Element {
                   ? 'changes'
                   : view === 'activity'
                     ? 'activity'
-                    : 'home'
+                    : view === 'cockpit'
+                      ? 'cockpit'
+                      : 'home'
           }
           activeId={activeId}
           environment={environment}
@@ -443,6 +447,7 @@ export default function App(): React.JSX.Element {
           onHome={() => setView('home')}
           onEnvironment={enterEnvironment}
           onActivity={enterActivity}
+          onCockpit={enterCockpit}
           onSettings={() => setView('settings')}
           onChanges={enterChanges}
           onOpenSession={openSession}
@@ -499,6 +504,8 @@ export default function App(): React.JSX.Element {
           <Settings />
         ) : view === 'activity' ? (
           <Activity sessions={sessions} activeId={activeId} onOpenSession={openSession} />
+        ) : view === 'cockpit' ? (
+          <Cockpit environment={environment} />
         ) : (
           <Landing
             sessions={sessions}

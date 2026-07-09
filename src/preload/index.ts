@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import type { LocalflowApi } from '../shared/api'
 import type { ActivityEntry, AgentId, AgentOverride, SessionStatus } from '../shared/types'
+import type { ActivityEntry as OperatorActivityEntry } from '../shared/operator'
 import type { KeyAction } from '../shared/keybindings'
 import type { Theme } from '../shared/theme'
 
@@ -65,6 +66,15 @@ const api: LocalflowApi = {
   grantOperator: (environment: number) => ipcRenderer.invoke('operator:grant', environment),
   revokeOperator: (environment: number) => ipcRenderer.invoke('operator:revoke', environment),
   operatorStatus: (environment: number) => ipcRenderer.invoke('operator:status', environment),
+  onOperatorActivity: (cb) => {
+    const listener = (
+      _e: IpcRendererEvent,
+      environment: number,
+      entry: OperatorActivityEntry
+    ): void => cb(environment, entry)
+    ipcRenderer.on('operator:activity', listener)
+    return () => ipcRenderer.removeListener('operator:activity', listener)
+  },
   gitStatus: (id: string) => ipcRenderer.invoke('git:status', id),
   gitDiff: (id: string, path: string, staged: boolean) =>
     ipcRenderer.invoke('git:diff', id, path, staged),

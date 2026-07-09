@@ -320,3 +320,11 @@ body {
     background: var(--idle);
   }
 }
+
+/* Operator cockpit. Reuses status tokens; no new palette. */
+.operator-status[data-connected='true'] {
+  color: var(--idle);
+}
+.activity-entry {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}

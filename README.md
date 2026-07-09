@@ -137,6 +137,22 @@ Open **Settings** from the sidebar.
 localflow never stores provider secrets — every supported agent authenticates
 in its own service.
 
+## Activity & Overview stats
+
+Every session has an **Activity** view (sidebar nav): a plain-language feed of
+what happened — "you sent a prompt", "waiting for your approval · 12m ago",
+"turn finished", "process exited", "session reopened" — over the same hook
+events that drive the status colors. A persistent header line ("⏳ waiting for
+your approval for 12m") keeps it glanceable, and the terminal is one click away
+via **open terminal**. Browser panes list lifecycle events only (they have no
+status feed). The feed is in-memory and honest about it: it starts fresh each
+launch ("since localflow started"), keeping the last 200 events per session.
+
+The **Overview** carries a compact stats strip above Latest sessions — counts
+by status ("2 working · 1 needs you · 3 done · 1 off") and the oldest unattended
+session as "waiting 12m". Clicking that chip jumps to attention exactly like
+`cmd+u`. Numbers only — no charts.
+
 ## Keyboard
 
 The Environment view is fully keyboard-drivable: exactly one pane is always

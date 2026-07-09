@@ -1,4 +1,5 @@
 import type {
+  ActivityEntry,
   AgentId,
   AgentInfo,
   AgentOverride,
@@ -59,6 +60,10 @@ export interface LocalflowApi {
   resize(id: string, cols: number, rows: number): void
   onData(cb: (id: string, data: string) => void): () => void
   onStatus(cb: (id: string, status: SessionStatus) => void): () => void
+  /** The full activity ring for a session (oldest first). */
+  getActivity(id: string): Promise<ActivityEntry[]>
+  /** New activity entries pushed as they happen (mirrors onStatus). */
+  onActivity(cb: (id: string, entry: ActivityEntry) => void): () => void
   getKeybindings(): Promise<Record<KeyAction, string>>
   /**
    * Rebinds one action live. Rejected with a typed reason when the binding

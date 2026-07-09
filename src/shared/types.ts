@@ -11,6 +11,51 @@ export type AgentId = 'claude' | 'codex' | 'gemini' | 'custom'
 
 export type SessionKind = 'terminal' | 'browser'
 
+/**
+ * The vocabulary of the activity feed (M7): the three hook events localflow
+ * applies, plus the lifecycle moments it already knows. Lives only in main's
+ * memory — the ring is never persisted, so the feed says "since localflow
+ * started".
+ */
+export type ActivityEventKind =
+  HookEventName | 'created' | 'reopened' | 'closed' | 'exited' | 'moved'
+
+/**
+ * Lifecycle activity kinds always append to the ring — two consecutive
+ * `moved` events with unchanged status are two real history rows — while
+ * repeated hook events collapse into the previous entry (count bumped).
+ * Shared so main's ring writer (recordActivity) and the renderer's push
+ * handler (upsertActivity) agree on which pushes are in-place updates
+ * versus fresh rows.
+ */
+export const LIFECYCLE_KINDS: ReadonlySet<ActivityEventKind> = new Set([
+  'created',
+  'reopened',
+  'closed',
+  'exited',
+  'moved'
+])
+
+/** One entry in a session's in-memory activity ring (last 200 kept, M7). */
+export interface ActivityEntry {
+  /**
+   * Epoch ms; SessionManager's clock (overridable in tests). Refreshed to the
+   * latest occurrence when a repeated hook event collapses into this entry.
+   */
+  timestamp: number
+  /** An applied hook event or a lifecycle moment. */
+  kind: ActivityEventKind
+  /** The session's status immediately after this event. */
+  status: SessionStatus
+  /**
+   * How many consecutive identical hook events collapsed into this entry
+   * (absent = 1). A chatty agent re-emitting Notification while already
+   * needs-you is one logical "still waiting" signal — the count keeps history
+   * honest ("asked N times") without letting duplicates eat the 200-cap ring.
+   */
+  count?: number
+}
+
 export interface LastAgent {
   agentId: AgentId
   /** Only present when agentId === 'custom'. */
@@ -38,6 +83,13 @@ export interface SessionInfo {
   kind: SessionKind
   /** Browser panes only: the current URL, persisted as the user browses. */
   url?: string
+  /**
+   * When this session entered 'needs-you' (epoch ms), else absent. Set/cleared
+   * in SessionManager.setStatus using its clock; in-memory only (never
+   * persisted — a restored session is 'exited', so it has none). Drives the
+   * Overview's "oldest unattended" and the Activity header's "waiting Nm" (M7).
+   */
+  needsYouSince?: number
   message?: string
 }
 

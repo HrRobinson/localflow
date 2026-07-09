@@ -176,6 +176,10 @@ with." First non-terminal pane type: an embedded **browser pane**
 ## M4 — Settings UI
 
 **Superseded by docs/superpowers/specs/2026-07-08-m4-settings-design.md
+(approved design; shipped). Provider tokens were dropped from the roadmap —
+localflow stores no provider secrets.**
+
+**Superseded by docs/superpowers/specs/2026-07-08-m4-settings-design.md
 (approved design; scope = keybindings editor + agent management + themes).**
 
 - Keybindings editor (click binding, press keys).

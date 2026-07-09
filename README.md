@@ -97,7 +97,7 @@ system browser. Keyboard combos (`cmd+1…9`, `cmd+u`, …) keep working while a
 page has focus.
 
 The Overview page is intentionally minimal: your latest sessions plus a
-single "New session" control. Agent detection, configured paths, and (later)
+single "New session" control. Agent detection, configured paths, and
 keybindings/themes live on the **Settings** page, reachable from the
 sidebar. localflow remembers the last agent you launched and preselects it
 the next time you open Overview.
@@ -113,6 +113,29 @@ session. Session names default to the project folder's name and can be
 renamed inline — double-click the name, or use the pencil icon that
 appears on hover — in both Overview and the sidebar; press Enter to save
 or Escape to cancel.
+
+## Settings
+
+Open **Settings** from the sidebar.
+
+- **Keybindings** — click any shortcut and press a new combination; it applies
+  instantly (no restart) and round-trips with `keybindings.json`. Conflicts are
+  shown, not silently accepted; Escape cancels a capture; "reset" restores one
+  binding and "Reset all" restores every default. Hand edits to the file win on
+  the next launch.
+- **Agents** — set the **default agent** for the New session launcher, and give
+  any agent **extra CLI args** and **env overrides** (`KEY=VALUE` per line).
+  Env overrides are the local-LLM enabler: point an agent at Ollama or a
+  compatible base URL without localflow storing any credentials. Overrides live
+  under `config.json`'s `agents` key.
+- **Themes** — app and terminal colors are JSON token files in
+  `userData/themes/<name>.json`; pick one in Settings, or click **Open themes
+  folder** to add your own. Changes apply live. A malformed theme falls back to
+  the built-in dark default with a visible notice. Shipped presets: dark
+  (default), light, solarized-dark, nord.
+
+localflow never stores provider secrets — every supported agent authenticates
+in its own service.
 
 ## Keyboard
 

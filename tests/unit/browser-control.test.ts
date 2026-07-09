@@ -35,3 +35,23 @@ describe('WebviewBrowserControl', () => {
     expect(await bc.network('h')).toEqual([])
   })
 })
+
+describe('act validation', () => {
+  it('rejects a missing selector', async () => {
+    const bc = make()
+    const r = await bc.act('h', { action: 'click' })
+    expect(r).toEqual({ ok: false, error: expect.stringContaining('selector') })
+  })
+
+  it('rejects an unknown action', async () => {
+    const bc = make()
+    const r = await bc.act('h', { selector: '#go', action: 'teleport' })
+    expect(r).toEqual({ ok: false, error: expect.stringContaining('action') })
+  })
+
+  it('errors on an unregistered handle for a valid body', async () => {
+    const bc = make()
+    const r = await bc.act('h', { selector: '#go', action: 'click' })
+    expect(r.ok).toBe(false)
+  })
+})

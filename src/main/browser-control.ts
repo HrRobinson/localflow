@@ -39,6 +39,13 @@ interface ElectronDeps {
  */
 export class WebviewBrowserControl implements BrowserControl {
   private deps: ElectronDeps
+  // Rolling CDP network buffer per handle (newest last, capped). The debugger is
+  // attached lazily on first read and kept for the guest's life.
+  private netBuffers = new Map<
+    string,
+    { url: string; method: string; status?: number; type?: string }[]
+  >()
+  private attached = new Set<string>()
 
   constructor(
     private bridge: BrowserBridge,
@@ -57,6 +64,40 @@ export class WebviewBrowserControl implements BrowserControl {
     if (id === null) return null
     const wc = this.deps.fromId(id)
     return wc && !wc.isDestroyed() ? wc : null
+  }
+
+  private ensureNetwork(handle: string, wc: WebContents): void {
+    if (this.attached.has(handle)) return
+    try {
+      wc.debugger.attach('1.3')
+    } catch {
+      // Already attached (e.g. devtools) — reuse it.
+    }
+    this.attached.add(handle)
+    const buf: { url: string; method: string; status?: number; type?: string }[] = []
+    this.netBuffers.set(handle, buf)
+    wc.debugger.on('message', (_e, method, params) => {
+      const p = params as Record<string, unknown>
+      if (method === 'Network.requestWillBeSent') {
+        const req = p['request'] as { url?: string; method?: string } | undefined
+        buf.push({
+          url: req?.url ?? '',
+          method: req?.method ?? 'GET',
+          type: p['type'] as string | undefined
+        })
+        if (buf.length > 200) buf.splice(0, buf.length - 200)
+      } else if (method === 'Network.responseReceived') {
+        const res = p['response'] as { url?: string; status?: number } | undefined
+        const hit = [...buf].reverse().find((r) => r.url === res?.url && r.status === undefined)
+        if (hit) hit.status = res?.status
+      }
+    })
+    wc.debugger.sendCommand('Network.enable').catch(() => undefined)
+    // Detach cleanly when the guest goes away.
+    wc.once('destroyed', () => {
+      this.attached.delete(handle)
+      this.netBuffers.delete(handle)
+    })
   }
 
   async navigate(
@@ -113,18 +154,42 @@ export class WebviewBrowserControl implements BrowserControl {
   async network(
     handle: string
   ): Promise<{ url: string; method: string; status?: number; type?: string }[]> {
-    // Implemented in Task 8 (CDP Network buffer).
-    void handle
-    return []
+    const wc = this.wc(handle)
+    if (!wc) return []
+    try {
+      this.ensureNetwork(handle, wc)
+      return [...(this.netBuffers.get(handle) ?? [])]
+    } catch {
+      return []
+    }
   }
 
   async act(
     handle: string,
     body: Record<string, unknown>
   ): Promise<{ ok: true } | { ok: false; error: string }> {
-    // Implemented in Task 8 (selector-based executeJavaScript).
-    void handle
-    void body
-    return { ok: false, error: 'act not enabled' }
+    const selector = body['selector']
+    const action = body['action']
+    if (typeof selector !== 'string' || selector.length === 0)
+      return { ok: false, error: 'selector required' }
+    if (action !== 'click' && action !== 'type')
+      return { ok: false, error: 'action must be click|type' }
+    const wc = this.wc(handle)
+    if (!wc) return { ok: false, error: 'pane unavailable' }
+    // v1 selector-based act, confined to the guest page. The richer snapshot-ref
+    // interaction model is deferred (spec "Out of scope"). String is JSON-encoded
+    // to neutralize injection into the guest expression.
+    const sel = JSON.stringify(selector)
+    const text = JSON.stringify(typeof body['text'] === 'string' ? body['text'] : '')
+    const expr =
+      action === 'click'
+        ? `(() => { const el = document.querySelector(${sel}); if (!el) return false; el.click(); return true; })()`
+        : `(() => { const el = document.querySelector(${sel}); if (!el) return false; el.focus(); el.value = ${text}; el.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`
+    try {
+      const ok = await wc.executeJavaScript(expr, true)
+      return ok ? { ok: true } : { ok: false, error: 'selector matched nothing' }
+    } catch (e) {
+      return { ok: false, error: `act failed: ${(e as Error).message}` }
+    }
   }
 }

@@ -18,6 +18,12 @@ jobs:
         id: release
         with:
           release-type: node
+          # A PAT (not the default GITHUB_TOKEN) so release-please's release-branch
+          # commits trigger the required CI checks. GITHUB_TOKEN-authored commits
+          # never run workflows, which deadlocks the release PR against the
+          # protect-main required-status-check rules. Branch protection is
+          # unchanged — the PAT only authors the release branch, not main.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
 
   # Releases published with GITHUB_TOKEN never fire the `release` event,
   # so call the artifact build directly instead of relying on the trigger.

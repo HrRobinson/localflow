@@ -26,6 +26,7 @@ Verbs: `panes`, `navigate <handle> <url>`, `screenshot <handle>`,
 `screenshot` returns a `{path}` on the target project's disk — reference that
 path in a following `prompt` to hand the image to a coding-agent terminal.
 
-<!-- Wiring: localflow injects LOCALFLOW_ENDPOINT + LOCALFLOW_TOKEN via
-     skills.entries.localflow.env in ~/.openclaw/openclaw.json, auto-written when
-     it launches a managed OpenClaw session (and shown to the user). -->
+<!-- Wiring (v1, manual): set LOCALFLOW_ENDPOINT + LOCALFLOW_TOKEN from the grant
+     as process env or under skills.entries.localflow.env in
+     ~/.openclaw/openclaw.json. Auto-writing that block from a managed OpenClaw
+     session is planned, not shipped in v1 — see README.md. -->

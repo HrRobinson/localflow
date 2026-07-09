@@ -17,14 +17,16 @@ prompt a terminal pane, read its output, and record a watchpoint checkpoint.
 1. In localflow, grant operator access to an environment. This mints an
    endpoint (`LOCALFLOW_ENDPOINT`, the loopback control-API base URL) and a
    bearer token (`LOCALFLOW_TOKEN`) scoped to that one environment.
-2. Make both available to the OpenClaw agent process:
-   - **Automatic:** when localflow launches a managed OpenClaw session, it
-     auto-writes the `skills.entries.localflow.env` block in
-     `~/.openclaw/openclaw.json` for you, and surfaces exactly what it wrote.
-   - **Manual:** copy the endpoint and token from the grant and set
-     `LOCALFLOW_ENDPOINT` / `LOCALFLOW_TOKEN` yourself, either as process env
-     or under `skills.entries.localflow.env` in `~/.openclaw/openclaw.json`
-     (the config block documented for per-skill env at docs.openclaw.ai).
+2. Make both available to the OpenClaw agent process (v1 is manual): copy the
+   endpoint and token from the grant and set `LOCALFLOW_ENDPOINT` /
+   `LOCALFLOW_TOKEN` yourself, either as process env or under
+   `skills.entries.localflow.env` in `~/.openclaw/openclaw.json` (the config
+   block documented for per-skill env at docs.openclaw.ai).
+
+   > Planned (not in v1): when localflow launches a managed OpenClaw session it
+   > will auto-write that `skills.entries.localflow.env` block for you and show
+   > exactly what it wrote. Until then, use the manual step above.
+
 3. The skill declares both env vars as required in `SKILL.md`'s
    `metadata.openclaw.requires.env`, and `node` in `requires.bins`.
 

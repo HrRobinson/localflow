@@ -436,6 +436,18 @@ describe('SessionManager', () => {
     expect(restarted?.message).toContain('Could not start')
   })
 
+  describe('get', () => {
+    it('returns a copy of a session by id, null for unknown', () => {
+      const info = mgr.create('/tmp/repo', claudeSpec, 1)
+      const got = mgr.get(info.id)
+      expect(got?.id).toBe(info.id)
+      expect(got?.cwd).toBe('/tmp/repo')
+      // A copy, not the live record.
+      expect(got).not.toBe(mgr.get(info.id))
+      expect(mgr.get('nope')).toBeNull()
+    })
+  })
+
   describe('peek', () => {
     it('returns the last cleaned lines of a live session output', () => {
       const info = mgr.create('/p', claudeSpec, 1)

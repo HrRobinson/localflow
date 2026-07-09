@@ -62,6 +62,12 @@ const api: LocalflowApi = {
     return () => ipcRenderer.removeListener('keybinding:action', listener)
   },
   getEnvironmentNames: () => ipcRenderer.invoke('environments:getNames'),
+  gitStatus: (id: string) => ipcRenderer.invoke('git:status', id),
+  gitDiff: (id: string, path: string, staged: boolean) =>
+    ipcRenderer.invoke('git:diff', id, path, staged),
+  getCapabilities: () => ipcRenderer.invoke('git:capabilities'),
+  openLazygit: (id: string) => ipcRenderer.invoke('git:openLazygit', id),
+  openEditor: (id: string) => ipcRenderer.invoke('git:openEditor', id),
   getTheme: () => ipcRenderer.invoke('theme:get'),
   listThemes: () => ipcRenderer.invoke('theme:list'),
   setTheme: (name: string) => ipcRenderer.invoke('theme:set', name),

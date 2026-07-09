@@ -1,17 +1,22 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
 import { join } from 'node:path'
 import { existsSync, writeFileSync } from 'node:fs'
+import { spawn } from 'node:child_process'
 import type { AgentId, AgentOverride, AgentOverrideResult } from '../shared/types'
 import { clampEnvironment } from '../shared/environment'
 import { normalizeHttpUrl, isHttpUrl } from '../shared/urls'
 import { startHookServer } from './hook-server'
 import { SessionManager, type SpawnSpec } from './session-manager'
 import { loadSavedSessions, saveSessions } from './persistence'
-import { AgentRegistry } from './agent-registry'
+import { AgentRegistry, whichViaLoginShell } from './agent-registry'
 import { ensureThemesSeeded, listThemeNames, resolveTheme } from './theme-store'
 import { loadOrCreateKeybindings, writeKeybindings } from './keybindings-file'
 import { loadEnvironmentNames } from './environment-names'
 import { installWebviewPolicy } from './webview-policy'
+import { gitStatus, gitDiff } from './git'
+import { describeTool, gateBin } from './tools'
+import { loadEditorCommand, splitCommandLine } from './editor-config'
+import type { Capabilities } from '../shared/git'
 import {
   DEFAULT_BINDINGS,
   applyBindingChange,
@@ -229,6 +234,100 @@ app.whenReady().then(async () => {
   ipcMain.handle('session:setUrl', (_e, id: string, url: string) =>
     typeof url === 'string' ? manager.setUrl(id, url) : null
   )
+  ipcMain.handle('git:status', (_e, id: string) => {
+    // cwd is resolved from the session record here — NEVER trusted from the
+    // renderer. Browser panes (and unknown ids) have no working tree.
+    const s = manager.get(id)
+    if (!s || s.kind !== 'terminal') return { repo: false }
+    return gitStatus(s.cwd)
+  })
+  ipcMain.handle('git:diff', (_e, id: string, path: string, staged: boolean) => {
+    const s = manager.get(id)
+    if (!s || s.kind !== 'terminal' || typeof path !== 'string') {
+      return { text: '', truncated: false }
+    }
+    return gitDiff(s.cwd, path, staged === true)
+  })
+
+  // Escape-hatch tool resolution. An absolute-path env override is honored via
+  // existsSync (tests point these at nonexistent/fixture paths so the suite
+  // never spawns a real login shell). Otherwise the token is security-gated
+  // first: whichViaLoginShell interpolates its argument into a shell line
+  // (`$SHELL -ilc "command -v ${bin}"`), so only vetted tokens may reach it —
+  // absolute paths (spaces fine) are checked with existsSync and never touch a
+  // shell; strict safe-identifier names get the login-shell PATH lookup a GUI
+  // app needs; anything else (config.json is user-edited) is unresolvable.
+  const resolveTool = (bin: string, override?: string): Promise<string | null> => {
+    if (override) return Promise.resolve(existsSync(override) ? override : null)
+    switch (gateBin(bin)) {
+      case 'absolute':
+        return Promise.resolve(existsSync(bin) ? bin : null)
+      case 'login-shell':
+        return whichViaLoginShell(bin)
+      case 'rejected':
+        return Promise.resolve(null)
+    }
+  }
+
+  // Probed once and cached: a login-shell lookup is expensive, and the Changes
+  // view re-enters often. Newly installed tools / edited editorCommand apply on
+  // next launch — same resolution-caching trade-off AgentRegistry makes.
+  let capsCache: Capabilities | null = null
+  ipcMain.handle('git:capabilities', async (): Promise<Capabilities> => {
+    if (capsCache) return capsCache
+    const editorCommand = loadEditorCommand(join(userData, 'config.json'))
+    // Quote-aware split: null (unbalanced quote) or an empty first token means
+    // the configured command is unusable — report the editor unavailable.
+    const editorBin = splitCommandLine(editorCommand)?.[0] || null
+    const [lazygitPath, editorPath] = await Promise.all([
+      resolveTool('lazygit', process.env['LOCALFLOW_LAZYGIT_BIN']),
+      editorBin
+        ? resolveTool(editorBin, process.env['LOCALFLOW_EDITOR_BIN'])
+        : Promise.resolve<string | null>(null)
+    ])
+    capsCache = {
+      lazygit: describeTool('lazygit', lazygitPath),
+      editor: { ...describeTool(editorBin ?? editorCommand, editorPath), command: editorCommand }
+    }
+    return capsCache
+  })
+
+  ipcMain.handle('git:openLazygit', async (_e, id: string) => {
+    const s = manager.get(id)
+    if (!s || s.kind !== 'terminal' || !s.cwd) return null
+    const lazygitPath = await resolveTool('lazygit', process.env['LOCALFLOW_LAZYGIT_BIN'])
+    if (!lazygitPath) return null
+    // Reuse the custom-agent plumbing verbatim: a durable custom session running
+    // lazygit (by resolved absolute path — a GUI app's env lacks the login PATH)
+    // in the reviewed session's OWN cwd + environment. cwd comes from the record.
+    return manager.create(s.cwd, specFor('custom', lazygitPath), s.environment)
+  })
+
+  ipcMain.handle('git:openEditor', async (_e, id: string) => {
+    const s = manager.get(id)
+    if (!s || s.kind !== 'terminal' || !s.cwd) return false
+    const parts = splitCommandLine(loadEditorCommand(join(userData, 'config.json')))
+    const bin = parts?.[0]
+    if (!parts || !bin) return false
+    const resolved = await resolveTool(bin, process.env['LOCALFLOW_EDITOR_BIN'])
+    if (!resolved) return false
+    try {
+      // External, detached, fire-and-forget process — never a pane. stdio
+      // ignored + unref so it can neither hold quit nor be killed by our pipe
+      // lifetime; async spawn failures get a log line instead of vanishing.
+      const child = spawn(resolved, [...parts.slice(1), s.cwd], {
+        cwd: s.cwd,
+        detached: true,
+        stdio: 'ignore'
+      })
+      child.on('error', (err) => console.error('editor launch failed', err))
+      child.unref()
+    } catch {
+      return false
+    }
+    return true
+  })
+
   ipcMain.handle('session:list', () => manager.list())
   ipcMain.handle('activity:get', (_e, id: string) => manager.getActivity(id))
   ipcMain.handle('session:peek', (_e, id: string, maxLines?: number) => {

@@ -31,24 +31,50 @@ export class CaptureStore {
     return path
   }
 
-  /** Layer 4 fills in envelope/output/memory handling; see Task 15. */
   async ingest(
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _environment: number,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _body: Record<string, unknown>,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _watchpoints: WatchpointRegistry
+    environment: number,
+    body: Record<string, unknown>,
+    watchpoints: WatchpointRegistry
   ): Promise<Capture | null> {
-    return null
+    const watchpointId = body['watchpointId']
+    if (typeof watchpointId !== 'string') return null
+    const wp = watchpoints.get(watchpointId)
+    // Scope: the watch must exist AND belong to the ingesting environment.
+    if (!wp || wp.environment !== environment) return null
+    const capture: Capture = {
+      id: randomUUID(),
+      environment,
+      watchpointId,
+      createdAt: Date.now(),
+      envelope: body['envelope'],
+      output: Array.isArray(body['output']) ? (body['output'] as string[]) : undefined,
+      memoryRef: typeof body['memoryRef'] === 'string' ? (body['memoryRef'] as string) : undefined,
+      screenshotPath:
+        typeof body['screenshotPath'] === 'string' ? (body['screenshotPath'] as string) : undefined,
+      halted: body['halted'] === true,
+      resumeToken:
+        typeof body['resumeToken'] === 'string' ? (body['resumeToken'] as string) : undefined
+    }
+    this.store(capture)
+    watchpoints.markHit(watchpointId)
+    return capture
   }
 
   get(environment: number, id: string): Capture | null {
     return this.byEnv.get(environment)?.get(id) ?? null
   }
 
-  /** Internal helper Layer 4 uses to file a completed capture. */
-  protected store(capture: Capture): void {
+  list(environment: number): Capture[] {
+    return [...this.byEnvList(environment)]
+  }
+
+  private byEnvList(environment: number): Capture[] {
+    return [...(this.byEnv.get(environment)?.values() ?? [])].sort(
+      (a, b) => a.createdAt - b.createdAt
+    )
+  }
+
+  private store(capture: Capture): void {
     const map = this.byEnv.get(capture.environment) ?? new Map<string, Capture>()
     map.set(capture.id, capture)
     this.byEnv.set(capture.environment, map)

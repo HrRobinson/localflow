@@ -22,6 +22,7 @@ import { startControlServer } from './control-api'
 import { BrowserBridge } from './browser-bridge'
 import { WebviewBrowserControl } from './browser-control'
 import { CaptureStore } from './capture-store'
+import { WatchpointRegistry } from './watchpoints'
 import type { ActivityEntry, GrantInfo, OperatorStatus } from '../shared/operator'
 import type { Capabilities } from '../shared/git'
 import {
@@ -171,6 +172,7 @@ app.whenReady().then(async () => {
   const browserBridge = new BrowserBridge()
   const captureStore = new CaptureStore(join(userData, 'captures'))
   const browserControl = new WebviewBrowserControl(browserBridge, captureStore)
+  const watchpoints = new WatchpointRegistry()
 
   const control = await startControlServer({
     registry: paneRegistry,
@@ -178,6 +180,7 @@ app.whenReady().then(async () => {
     manager,
     browser: browserControl,
     captures: captureStore,
+    watchpoints,
     onActivity: (env, entry) => {
       const log = activity.get(env) ?? []
       log.push(entry)

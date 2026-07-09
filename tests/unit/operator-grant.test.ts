@@ -33,4 +33,12 @@ describe('OperatorGrantStore', () => {
     store.markConnected(5)
     expect(store.isConnected(5)).toBe(true)
   })
+
+  it('rejects malformed tokens without throwing', () => {
+    const store = new OperatorGrantStore()
+    store.grant(6)
+    expect(store.environmentForToken('')).toBeNull()
+    expect(store.environmentForToken(null as unknown as string)).toBeNull()
+    expect(store.environmentForToken(42 as unknown as string)).toBeNull()
+  })
 })

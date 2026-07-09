@@ -82,7 +82,10 @@ const api: LocalflowApi = {
     ): void => cb(payload)
     ipcRenderer.on('theme:changed', listener)
     return () => ipcRenderer.removeListener('theme:changed', listener)
-  }
+  },
+  registerBrowser: (handle: string, webContentsId: number) =>
+    ipcRenderer.send('browser:register', handle, webContentsId),
+  unregisterBrowser: (handle: string) => ipcRenderer.send('browser:unregister', handle)
 }
 
 contextBridge.exposeInMainWorld('localflow', api)

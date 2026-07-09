@@ -19,6 +19,7 @@ import { loadEditorCommand, splitCommandLine } from './editor-config'
 import { PaneRegistry } from './pane-registry'
 import { OperatorGrantStore } from './operator-grant'
 import { startControlServer } from './control-api'
+import { BrowserBridge } from './browser-bridge'
 import type { ActivityEntry, GrantInfo, OperatorStatus } from '../shared/operator'
 import type { Capabilities } from '../shared/git'
 import {
@@ -177,6 +178,16 @@ app.whenReady().then(async () => {
     }
   })
   app.on('before-quit', () => control.close())
+
+  const browserBridge = new BrowserBridge()
+  ipcMain.on('browser:register', (_e, handle: string, webContentsId: number) => {
+    if (typeof handle === 'string' && Number.isInteger(webContentsId)) {
+      browserBridge.register(handle, webContentsId)
+    }
+  })
+  ipcMain.on('browser:unregister', (_e, handle: string) => {
+    if (typeof handle === 'string') browserBridge.unregister(handle)
+  })
 
   const webviewPolicy = installWebviewPolicy({
     bindings: keybindings,

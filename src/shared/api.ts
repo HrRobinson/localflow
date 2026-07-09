@@ -109,4 +109,8 @@ export interface LocalflowApi {
   openThemesFolder(): void
   /** Theme pushed from main after a set — the live-apply channel. */
   onThemeChanged(cb: (payload: { name: string; theme: Theme; error?: string }) => void): () => void
+  /** Browser panes report their guest webContents id so the operator API can drive them. */
+  registerBrowser(handle: string, webContentsId: number): void
+  /** Dropped on unmount/exit; a closed pane then resolves to 404 over the control API. */
+  unregisterBrowser(handle: string): void
 }

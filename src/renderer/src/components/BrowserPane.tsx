@@ -81,6 +81,30 @@ export default function BrowserPane({
     }
   }, [session.id, alive, editing])
 
+  // Report this pane's guest webContents id to main so the operator control API
+  // can drive the SAME webview a human drives. Registered on dom-ready (the id
+  // is stable for the guest's life); unregistered on unmount / exit.
+  useEffect(() => {
+    if (!alive) {
+      window.localflow.unregisterBrowser(session.id)
+      return
+    }
+    const view = viewRef.current
+    if (!view) return
+    const onReady = (): void => {
+      try {
+        window.localflow.registerBrowser(session.id, view.getWebContentsId())
+      } catch {
+        /* guest not attached yet; a later dom-ready will catch it */
+      }
+    }
+    view.addEventListener('dom-ready', onReady)
+    return () => {
+      view.removeEventListener('dom-ready', onReady)
+      window.localflow.unregisterBrowser(session.id)
+    }
+  }, [session.id, alive])
+
   // Parallel to TerminalPane's xterm focus rule: the active pane's guest
   // page owns the keyboard (bound combos still work — main forwards them).
   useEffect(() => {

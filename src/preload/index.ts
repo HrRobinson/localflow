@@ -62,6 +62,9 @@ const api: LocalflowApi = {
     return () => ipcRenderer.removeListener('keybinding:action', listener)
   },
   getEnvironmentNames: () => ipcRenderer.invoke('environments:getNames'),
+  grantOperator: (environment: number) => ipcRenderer.invoke('operator:grant', environment),
+  revokeOperator: (environment: number) => ipcRenderer.invoke('operator:revoke', environment),
+  operatorStatus: (environment: number) => ipcRenderer.invoke('operator:status', environment),
   gitStatus: (id: string) => ipcRenderer.invoke('git:status', id),
   gitDiff: (id: string, path: string, staged: boolean) =>
     ipcRenderer.invoke('git:diff', id, path, staged),

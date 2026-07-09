@@ -16,6 +16,10 @@ import { installWebviewPolicy } from './webview-policy'
 import { gitStatus, gitDiff } from './git'
 import { describeTool, gateBin } from './tools'
 import { loadEditorCommand, splitCommandLine } from './editor-config'
+import { PaneRegistry } from './pane-registry'
+import { OperatorGrantStore } from './operator-grant'
+import { startControlServer } from './control-api'
+import type { ActivityEntry, GrantInfo, OperatorStatus } from '../shared/operator'
 import type { Capabilities } from '../shared/git'
 import {
   DEFAULT_BINDINGS,
@@ -152,6 +156,28 @@ app.whenReady().then(async () => {
   const sendToWindow = (channel: string, ...args: unknown[]): void => {
     if (win && !win.isDestroyed()) win.webContents.send(channel, ...args)
   }
+
+  const grants = new OperatorGrantStore()
+  // Named paneRegistry, not registry — `registry` above is already the
+  // AgentRegistry instance used throughout this scope.
+  const paneRegistry = new PaneRegistry(manager)
+  // Rolling per-environment action log (newest last, capped). In-memory only —
+  // the feed is deliberately not persisted across restarts (spec "Out of scope").
+  const activity = new Map<number, ActivityEntry[]>()
+  const control = await startControlServer({
+    registry: paneRegistry,
+    grants,
+    manager,
+    onActivity: (env, entry) => {
+      const log = activity.get(env) ?? []
+      log.push(entry)
+      if (log.length > 200) log.splice(0, log.length - 200)
+      activity.set(env, log)
+      sendToWindow('operator:activity', env, entry)
+    }
+  })
+  app.on('before-quit', () => control.close())
+
   const webviewPolicy = installWebviewPolicy({
     bindings: keybindings,
     onAction: (action) => sendToWindow('keybinding:action', action)
@@ -388,6 +414,36 @@ app.whenReady().then(async () => {
     if (result.canceled || result.filePaths.length === 0) return null
     registry.setPath(agentId, result.filePaths[0])
     return registry.list()
+  })
+  ipcMain.handle('operator:grant', (_e, environment: number): GrantInfo => {
+    const env = clampEnvironment(environment)
+    const token = grants.grant(env)
+    const info: GrantInfo = {
+      environment: env,
+      endpoint: `http://127.0.0.1:${control.port}`,
+      token
+    }
+    // Under e2e, expose the grant to the scripted control-API client on disk
+    // (mirrors the hook server's endpoint.json handshake).
+    if (process.env['LOCALFLOW_E2E'] === '1') {
+      writeFileSync(join(userData, `operator-grant-${env}.json`), JSON.stringify(info), {
+        mode: 0o600
+      })
+    }
+    return info
+  })
+  ipcMain.handle('operator:revoke', (_e, environment: number) => {
+    grants.revoke(clampEnvironment(environment))
+  })
+  ipcMain.handle('operator:status', (_e, environment: number): OperatorStatus => {
+    const env = clampEnvironment(environment)
+    return {
+      environment: env,
+      granted: grants.isGranted(env),
+      connected: grants.isConnected(env),
+      endpoint: grants.isGranted(env) ? `http://127.0.0.1:${control.port}` : undefined,
+      activity: activity.get(env) ?? []
+    }
   })
   ipcMain.handle('agents:setDefaultAgent', (_e, agentId: AgentId) => {
     if (!VALID_AGENTS.includes(agentId)) return null

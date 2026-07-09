@@ -23,6 +23,7 @@
   --bg: #111318;
   --pane-bg: #1a1b1e;
   --running: #8b5cf6;
+  --text: #e5e7eb;
 }
 * {
   box-sizing: border-box;
@@ -30,7 +31,7 @@
 body {
   margin: 0;
   background: var(--bg);
-  color: #e5e7eb;
+  color: var(--text);
   font-family: system-ui, sans-serif;
 }
 #root {
@@ -150,9 +151,12 @@ body {
 }
 
 /* .pane.enlarged (not bare .enlarged): must out-specify the
-   .pane[data-status='exited'] opacity dimming above. */
+   .pane[data-status='exited'] opacity dimming above.
+   position: absolute (not fixed) so the enlarge is scoped to <main> (the
+   sidebar's positioned sibling in App.tsx), not the viewport — otherwise it
+   covers the <aside> Sidebar and makes primary nav unclickable by mouse. */
 .pane.enlarged {
-  position: fixed;
+  position: absolute;
   inset: 12px;
   z-index: 10;
   opacity: 1;

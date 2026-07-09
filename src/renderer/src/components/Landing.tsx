@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import type { AgentId, AgentInfo, SessionInfo } from '../../../shared/types'
 import { AGENT_PRESETS } from '../../../shared/agents'
 import { normalizeHttpUrl } from '../../../shared/urls'
+import { deriveOverviewStats } from '../lib/overview-stats'
+import { humanDuration } from '../lib/activity-format'
 import ApproveButton from './ApproveButton'
 
 interface Props {
@@ -15,6 +17,8 @@ interface Props {
   onChanges: (id: string) => void
   // Used by Task 4's "Configure in Settings" hint.
   onOpenSettings: () => void
+  /** Jumps to the oldest waiting session (like cmd+u); wired to the "waiting Nm" chip. */
+  onJumpToAttention: () => void
 }
 
 const GHOST_LINES = [3, 4, 2]
@@ -42,7 +46,8 @@ export default function Landing({
   onRename,
   onChanges,
   onOpenSettings,
-  onCreateBrowser
+  onCreateBrowser,
+  onJumpToAttention
 }: Props): React.JSX.Element {
   const [agents, setAgents] = useState<AgentInfo[] | null>(null)
   const [selectedAgentId, setSelectedAgentId] = useState<AgentId | 'browser'>(AGENT_PRESETS[0].id)
@@ -94,8 +99,11 @@ export default function Landing({
           (last.agentId === 'custom' || list.find((a) => a.id === last.agentId)?.resolvedPath)
             ? last
             : null
+        // Precedence: configured default (if launchable) -> last-used ->
+        // first resolved -> first preset. Custom is never a default.
+        const defaultValid = list.find((a) => a.isDefault && a.resolvedPath)?.id
         const firstResolved = list.find((a) => a.resolvedPath)?.id
-        const fallback = lastValid?.agentId ?? firstResolved ?? AGENT_PRESETS[0].id
+        const fallback = defaultValid ?? lastValid?.agentId ?? firstResolved ?? AGENT_PRESETS[0].id
         setSelectedAgentId(fallback)
         if (lastValid?.agentId === 'custom') {
           setCustomCommand(lastValid.customCommand ?? '')
@@ -125,6 +133,20 @@ export default function Landing({
     onCreate(selectedAgentId, selectedAgentId === 'custom' ? customCommand.trim() : undefined)
   }
 
+  // `now` powers the stats strip's "waiting Nm" span. Two lint rules rule out
+  // the simplest options: react-hooks/purity forbids calling Date.now()
+  // directly during render, and react-hooks/set-state-in-effect forbids
+  // calling setState synchronously in an effect body (which piggybacking on
+  // the `sessions` poll would require). A small 1s ticker — matching the
+  // granularity humanDuration renders at, and the cadence of App's own
+  // session poll — is the smallest fix that satisfies both.
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const iv = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(iv)
+  }, [])
+  const stats = deriveOverviewStats(sessions, now)
+
   return (
     <div className="landing mx-auto flex w-full max-w-[720px] flex-1 flex-col items-stretch gap-8 overflow-auto px-6 py-8 text-left">
       {sessions.length === 0 && (
@@ -142,6 +164,27 @@ export default function Landing({
               </div>
             </div>
           ))}
+        </div>
+      )}
+      {sessions.length > 0 && (
+        <div className="overview-stats flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-gray-400">
+          {stats.segments.map((seg, i) => (
+            <span key={seg.status} className="flex items-center gap-2">
+              {i > 0 && <span className="text-gray-600">·</span>}
+              <span data-stat={seg.status}>
+                <strong className="font-semibold text-gray-200">{seg.count}</strong> {seg.label}
+              </span>
+            </span>
+          ))}
+          {stats.oldestWaitMs !== null && (
+            <button
+              className="stats-waiting ml-1 cursor-pointer rounded border border-yellow-500/50 bg-yellow-500/10 px-2 py-0.5 text-yellow-300 hover:bg-yellow-500/20"
+              onClick={onJumpToAttention}
+              onMouseDown={(e) => e.preventDefault()}
+            >
+              waiting {humanDuration(stats.oldestWaitMs)}
+            </button>
+          )}
         </div>
       )}
       {sessions.length > 0 && (

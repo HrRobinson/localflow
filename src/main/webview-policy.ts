@@ -5,7 +5,8 @@ import {
   eventMatches,
   bindingEntries,
   type KeyAction,
-  type KeyEventLike
+  type KeyEventLike,
+  type ParsedBinding
 } from '../shared/keybindings'
 
 /** The isolated storage partition every browser-pane webview runs in. */
@@ -22,15 +23,20 @@ export const BROWSER_PARTITION = 'persist:browser-panes'
 export function installWebviewPolicy(opts: {
   bindings: Record<KeyAction, string>
   onAction: (action: KeyAction) => void
-}): void {
+}): { updateBindings(bindings: Record<KeyAction, string>): void } {
   session.fromPartition(BROWSER_PARTITION).setPermissionRequestHandler((_wc, _permission, cb) => {
     cb(false)
   })
 
-  const parsed = bindingEntries(opts.bindings).flatMap(([action, binding]) => {
-    const p = parseBinding(binding)
-    return p ? ([[action, p]] as const) : []
-  })
+  // Mutable: rebinding replaces the compiled list in place, so the
+  // before-input-event closure below follows without re-installing the
+  // web-contents-created handler.
+  const compile = (bindings: Record<KeyAction, string>): [KeyAction, ParsedBinding][] =>
+    bindingEntries(bindings).flatMap(([action, binding]) => {
+      const p = parseBinding(binding)
+      return p ? ([[action, p]] as [KeyAction, ParsedBinding][]) : []
+    })
+  let parsed = compile(opts.bindings)
 
   app.on('web-contents-created', (_event, contents) => {
     if (contents.getType() !== 'webview') return
@@ -70,4 +76,10 @@ export function installWebviewPolicy(opts: {
       opts.onAction(match[0])
     })
   })
+
+  return {
+    updateBindings(bindings: Record<KeyAction, string>): void {
+      parsed = compile(bindings)
+    }
+  }
 }

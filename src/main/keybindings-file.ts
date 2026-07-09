@@ -20,3 +20,8 @@ export function loadOrCreateKeybindings(file: string): Record<KeyAction, string>
     return { ...DEFAULT_BINDINGS }
   }
 }
+
+/** Overwrites the keybindings file with the full merged map (GUI edits). */
+export function writeKeybindings(file: string, bindings: Record<KeyAction, string>): void {
+  writeFileSync(file, JSON.stringify(bindings, null, 2))
+}

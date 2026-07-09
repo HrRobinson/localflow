@@ -3,6 +3,9 @@ import {
   parseBinding,
   eventMatches,
   mergeBindings,
+  serializeKeyEvent,
+  findConflicts,
+  applyBindingChange,
   DEFAULT_BINDINGS,
   type KeyAction,
   type ParsedBinding,
@@ -319,5 +322,117 @@ describe('environment bindings', () => {
       shiftKey: true
     }
     expect(eventMatches(parsed, event)).toBe(true)
+  })
+})
+
+describe('serializeKeyEvent', () => {
+  const ev = (over: Partial<KeyEventLike>): KeyEventLike => ({
+    key: '',
+    metaKey: false,
+    ctrlKey: false,
+    altKey: false,
+    shiftKey: false,
+    ...over
+  })
+
+  it('serializes a modifier + letter in canonical order', () => {
+    expect(serializeKeyEvent(ev({ key: 'h', code: 'KeyH', metaKey: true }))).toBe('cmd+h')
+    expect(serializeKeyEvent(ev({ key: 'H', code: 'KeyH', metaKey: true, shiftKey: true }))).toBe(
+      'cmd+shift+h'
+    )
+    expect(serializeKeyEvent(ev({ key: 'x', code: 'KeyX', ctrlKey: true, altKey: true }))).toBe(
+      'ctrl+alt+x'
+    )
+  })
+
+  it('serializes digits from e.code even when shift mangles e.key', () => {
+    expect(serializeKeyEvent(ev({ key: '3', code: 'Digit3', metaKey: true }))).toBe('cmd+3')
+    // US layout: shift+1 reports '!' — the physical code still gives '1'.
+    expect(serializeKeyEvent(ev({ key: '!', code: 'Digit1', metaKey: true, shiftKey: true }))).toBe(
+      'cmd+shift+1'
+    )
+  })
+
+  it('serializes named keys back to the binding grammar', () => {
+    expect(serializeKeyEvent(ev({ key: 'Enter', code: 'Enter', metaKey: true }))).toBe('cmd+enter')
+    expect(serializeKeyEvent(ev({ key: 'ArrowLeft', code: 'ArrowLeft', ctrlKey: true }))).toBe(
+      'ctrl+arrow-left'
+    )
+    expect(serializeKeyEvent(ev({ key: ' ', code: 'Space', altKey: true }))).toBe('alt+space')
+  })
+
+  it('returns null for modifier-only and unmodified presses', () => {
+    expect(serializeKeyEvent(ev({ key: 'Meta', metaKey: true }))).toBeNull()
+    expect(serializeKeyEvent(ev({ key: 'Shift', shiftKey: true }))).toBeNull()
+    expect(serializeKeyEvent(ev({ key: 'a', code: 'KeyA' }))).toBeNull()
+  })
+
+  it('round-trips through parseBinding', () => {
+    const s = serializeKeyEvent(ev({ key: 'l', code: 'KeyL', metaKey: true, shiftKey: true }))!
+    expect(parseBinding(s)).toEqual({ cmd: true, ctrl: false, alt: false, shift: true, key: 'l' })
+  })
+})
+
+describe('findConflicts', () => {
+  it('reports other actions sharing the same parsed combo', () => {
+    const b = { ...DEFAULT_BINDINGS }
+    // cmd+h is focus-left by default; assigning it to close-pane conflicts.
+    expect(findConflicts(b, 'close-pane', 'cmd+h')).toEqual(['focus-left'])
+  })
+
+  it('ignores the action being edited and returns [] when free', () => {
+    const b = { ...DEFAULT_BINDINGS }
+    expect(findConflicts(b, 'focus-left', 'cmd+h')).toEqual([])
+    expect(findConflicts(b, 'close-pane', 'cmd+y')).toEqual([])
+  })
+
+  it('treats a digit combo as conflicting regardless of key vs code', () => {
+    const b = { ...DEFAULT_BINDINGS }
+    // environment-1 defaults to cmd+1; binding new-session to cmd+1 conflicts.
+    expect(findConflicts(b, 'new-session', 'cmd+1')).toEqual(['environment-1'])
+  })
+
+  it('returns [] for an unparseable candidate', () => {
+    expect(findConflicts({ ...DEFAULT_BINDINGS }, 'close-pane', 'nonsense')).toEqual([])
+  })
+})
+
+describe('applyBindingChange', () => {
+  it('rejects a conflicting binding and leaves the map unchanged', () => {
+    const b = { ...DEFAULT_BINDINGS }
+    // cmd+h is focus-left's default; close-pane may not take it silently.
+    const result = applyBindingChange(b, 'close-pane', 'cmd+h')
+    expect(result).toEqual({ ok: false, reason: 'conflict', conflicts: ['focus-left'] })
+    expect(b).toEqual(DEFAULT_BINDINGS)
+  })
+
+  it('rejects an unparseable binding as invalid', () => {
+    const b = { ...DEFAULT_BINDINGS }
+    const result = applyBindingChange(b, 'close-pane', 'nonsense')
+    expect(result).toEqual({ ok: false, reason: 'invalid', conflicts: [] })
+    expect(b).toEqual(DEFAULT_BINDINGS)
+  })
+
+  it('accepts a valid, conflict-free change without mutating the input', () => {
+    const b = { ...DEFAULT_BINDINGS }
+    const result = applyBindingChange(b, 'close-pane', 'cmd+y')
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.changed).toBe(true)
+      expect(result.bindings['close-pane']).toBe('cmd+y')
+      expect(result.bindings['focus-left']).toBe(DEFAULT_BINDINGS['focus-left'])
+    }
+    // Input map is never mutated — main swaps in the returned copy.
+    expect(b['close-pane']).toBe(DEFAULT_BINDINGS['close-pane'])
+  })
+
+  it('treats setting the current binding again as a successful no-op', () => {
+    const b = { ...DEFAULT_BINDINGS }
+    const result = applyBindingChange(b, 'focus-left', 'cmd+h')
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.changed).toBe(false)
+      expect(result.bindings).toBe(b)
+    }
   })
 })

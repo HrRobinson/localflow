@@ -964,3 +964,167 @@ test('changes: file list, badges, diff coloring, j/k nav, non-repo empty', async
 
   await app.close()
 })
+
+test('settings: live rebind, default agent preselect, live theme', async () => {
+  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  // Point gemini at the real fake-claude fixture so it RESOLVES — that makes
+  // "default agent" observable: without a default, the launcher would
+  // preselect claude (first resolved); setting gemini as default must win.
+  const app = await launchApp(userData, { gemini: join(here, '../fixtures/fake-claude.sh') })
+  const win = await app.firstWindow()
+  await win.setViewportSize({ width: 1400, height: 900 })
+  await expect(win.locator('.new-session')).toBeVisible()
+
+  await win.getByRole('button', { name: 'Settings', exact: true }).click()
+
+  // --- Live rebind: toggle-sidebar from cmd+b to cmd+y, then use it. ---
+  const kbRow = win.locator('.kb-row[data-action="toggle-sidebar"]')
+  await expect(kbRow.locator('.kb-capture')).toHaveText('cmd+b')
+  await kbRow.locator('.kb-capture').click()
+  await expect(kbRow.locator('.kb-capture')).toHaveText('press keys…')
+  await win.keyboard.press('Meta+y')
+  await expect(kbRow.locator('.kb-capture')).toHaveText('cmd+y')
+  // The live key dispatcher updates from the keybindings:changed push, which is
+  // separate from Settings' own UI text asserted above and can land a beat
+  // later. Poll the new combo until it actually toggles the sidebar, so we
+  // never race the push when asserting the old combo is dead.
+  await expect(async () => {
+    const before = await win.locator('aside').count()
+    await win.keyboard.press('Meta+y')
+    await expect(win.locator('aside')).toHaveCount(before === 0 ? 1 : 0, { timeout: 500 })
+  }).toPass({ timeout: 5000 })
+  // Dispatcher confirmed live. Normalize to visible, then verify the OLD combo
+  // is now dead (cmd+b is a no-op) and the NEW combo still toggles.
+  if ((await win.locator('aside').count()) === 0) await win.keyboard.press('Meta+y')
+  await expect(win.locator('aside')).toBeVisible()
+  await win.keyboard.press('Meta+b')
+  await expect(win.locator('aside')).toBeVisible()
+  await win.keyboard.press('Meta+y')
+  await expect(win.locator('aside')).toHaveCount(0)
+  await win.keyboard.press('Meta+y')
+  await expect(win.locator('aside')).toBeVisible()
+
+  // --- Live theme: switch to light, probe a CSS variable on :root. ---
+  const surfaceBefore = await win.evaluate(() =>
+    getComputedStyle(document.documentElement).getPropertyValue('--color-surface').trim()
+  )
+  expect(surfaceBefore).toBe('#111318')
+  await win.locator('.theme-select').selectOption('light')
+  await expect
+    .poll(() =>
+      win.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue('--color-surface').trim()
+      )
+    )
+    .toBe('#f5f5f4')
+
+  // --- Default agent: make gemini the default, verify launcher preselect. ---
+  // Not .check(): the radio's `checked` prop is driven by an async IPC
+  // round-trip (makeDefault awaits setDefaultAgent before setAgents), so
+  // Playwright's .check() — which verifies checked state synchronously right
+  // after the click, with no polling — fails even though the click and the
+  // resulting state change are both correct. .click() + a polling
+  // expect(...).toBeChecked() exercises the exact same user action and
+  // end-state without that tooling mismatch.
+  await win.locator('.agent-default[data-agent="gemini"]').click()
+  await expect(win.locator('.agent-default[data-agent="gemini"]')).toBeChecked()
+  await win.getByRole('button', { name: 'Overview', exact: true }).click()
+  await expect(win.locator('.landing select')).toHaveValue('gemini')
+
+  await app.close()
+
+  // The config file is the contract: assert on-disk shape too.
+  const config = JSON.parse(readFileSync(join(userData, 'config.json'), 'utf8'))
+  expect(config.defaultAgent).toBe('gemini')
+  expect(config.theme).toBe('light')
+  const kb = JSON.parse(readFileSync(join(userData, 'keybindings.json'), 'utf8'))
+  expect(kb['toggle-sidebar']).toBe('cmd+y')
+
+  // Relaunch: the persisted theme applies at startup (probe reflects light).
+  const app2 = await launchApp(userData, { gemini: join(here, '../fixtures/fake-claude.sh') })
+  const win2 = await app2.firstWindow()
+  await expect
+    .poll(() =>
+      win2.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue('--color-surface').trim()
+      )
+    )
+    .toBe('#f5f5f4')
+  await expect(win2.locator('.landing select')).toHaveValue('gemini')
+  await app2.close()
+})
+
+test('activity feed + overview stats: lines in order, waiting jump', async () => {
+  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const app = await launchApp(userData)
+  const win = await app.firstWindow()
+  await win.setViewportSize({ width: 1400, height: 900 })
+  await expect(win.locator('.new-session')).toBeVisible()
+
+  const createSession = (cwd: string): Promise<{ id: string } | null> =>
+    win.evaluate(
+      (dir) =>
+        (
+          window as unknown as {
+            localflow: { createSession(a: string, c: string): Promise<{ id: string } | null> }
+          }
+        ).localflow.createSession('claude', dir),
+      cwd
+    )
+
+  const a = await createSession(userData)
+  const b = await createSession(userData)
+  await expect(win.locator(`[data-session-id="${b!.id}"]`)).toBeVisible()
+
+  const { port, token } = JSON.parse(readFileSync(join(userData, 'endpoint.json'), 'utf8'))
+  const post = (paneId: string, event: string): Promise<Response> =>
+    fetch(`http://127.0.0.1:${port}/event`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Localflow-Token': token },
+      body: JSON.stringify({ paneId, event })
+    })
+
+  // Drive a turn on session a and leave it waiting: prompt -> working ->
+  // needs-you. Session b stays idle.
+  const rowA = win.locator(`[data-session-id="${a!.id}"]`)
+  await post(a!.id, 'UserPromptSubmit')
+  await expect(rowA.locator('.session-status')).toHaveText('working')
+  await post(a!.id, 'Notification')
+  await expect(rowA.locator('.session-status')).toHaveText('needs you')
+
+  // Overview stats strip: counts by status + the clickable waiting fragment.
+  const stats = win.locator('.overview-stats')
+  await expect(stats).toBeVisible()
+  await expect(stats.locator('[data-stat="needs-you"]')).toContainText('1 needs you')
+  await expect(stats.locator('[data-stat="idle"]')).toContainText('1 done')
+  const waiting = win.locator('.stats-waiting')
+  await expect(waiting).toBeVisible()
+
+  // Clicking "waiting Nm" behaves like cmd+u: enters the environment view with
+  // the waiting pane active (and enlarged — more than one session exists).
+  await waiting.click()
+  const paneA = win.locator(`[data-pane-id="${a!.id}"]`)
+  await expect(paneA).toBeVisible()
+  await expect(paneA).toHaveClass(/active/)
+
+  // Open the Activity view and select session a.
+  await win.getByRole('button', { name: 'Activity', exact: true }).click()
+  await win.locator('.activity-switcher').selectOption(a!.id)
+
+  // The feed lists the plain-language lines newest-first, in order.
+  const lines = win.locator('.activity-line')
+  await expect(lines.nth(0)).toContainText('waiting for your approval')
+  await expect(lines.nth(1)).toContainText('you sent a prompt')
+  await expect(lines.nth(2)).toContainText('session created')
+
+  // The persistent header reflects the current pending state.
+  await expect(win.locator('.activity-current')).toContainText('waiting for your approval')
+
+  // A further hook event streams in live (activity:event push) and updates
+  // both the header and the newest feed line.
+  await post(a!.id, 'Stop')
+  await expect(win.locator('.activity-current')).toContainText('idle')
+  await expect(lines.nth(0)).toContainText('turn finished')
+
+  await app.close()
+})

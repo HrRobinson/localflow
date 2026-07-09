@@ -97,7 +97,7 @@ system browser. Keyboard combos (`cmd+1…9`, `cmd+u`, …) keep working while a
 page has focus.
 
 The Overview page is intentionally minimal: your latest sessions plus a
-single "New session" control. Agent detection, configured paths, and (later)
+single "New session" control. Agent detection, configured paths, and
 keybindings/themes live on the **Settings** page, reachable from the
 sidebar. localflow remembers the last agent you launched and preselects it
 the next time you open Overview.
@@ -128,6 +128,45 @@ lazygit as a terminal pane in that folder, and **Open in editor** opens the
 folder in your editor (`config.json`'s `editorCommand`, default `code`). Both
 disable themselves with a hint when the tool isn't on your PATH. A session whose
 folder isn't a git repository just shows a plain "not a git repository" note.
+
+## Settings
+
+Open **Settings** from the sidebar.
+
+- **Keybindings** — click any shortcut and press a new combination; it applies
+  instantly (no restart) and round-trips with `keybindings.json`. Conflicts are
+  shown, not silently accepted; Escape cancels a capture; "reset" restores one
+  binding and "Reset all" restores every default. Hand edits to the file win on
+  the next launch.
+- **Agents** — set the **default agent** for the New session launcher, and give
+  any agent **extra CLI args** and **env overrides** (`KEY=VALUE` per line).
+  Env overrides are the local-LLM enabler: point an agent at Ollama or a
+  compatible base URL without localflow storing any credentials. Overrides live
+  under `config.json`'s `agents` key.
+- **Themes** — app and terminal colors are JSON token files in
+  `userData/themes/<name>.json`; pick one in Settings, or click **Open themes
+  folder** to add your own. Changes apply live. A malformed theme falls back to
+  the built-in dark default with a visible notice. Shipped presets: dark
+  (default), light, solarized-dark, nord.
+
+localflow never stores provider secrets — every supported agent authenticates
+in its own service.
+
+## Activity & Overview stats
+
+Every session has an **Activity** view (sidebar nav): a plain-language feed of
+what happened — "you sent a prompt", "waiting for your approval · 12m ago",
+"turn finished", "process exited", "session reopened" — over the same hook
+events that drive the status colors. A persistent header line ("⏳ waiting for
+your approval for 12m") keeps it glanceable, and the terminal is one click away
+via **open terminal**. Browser panes list lifecycle events only (they have no
+status feed). The feed is in-memory and honest about it: it starts fresh each
+launch ("since localflow started"), keeping the last 200 events per session.
+
+The **Overview** carries a compact stats strip above Latest sessions — counts
+by status ("2 working · 1 needs you · 3 done · 1 off") and the oldest unattended
+session as "waiting 12m". Clicking that chip jumps to attention exactly like
+`cmd+u`. Numbers only — no charts.
 
 ## Keyboard
 

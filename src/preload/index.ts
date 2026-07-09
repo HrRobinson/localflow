@@ -1,7 +1,8 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import type { LocalflowApi } from '../shared/api'
-import type { AgentId, SessionStatus } from '../shared/types'
+import type { ActivityEntry, AgentId, AgentOverride, SessionStatus } from '../shared/types'
 import type { KeyAction } from '../shared/keybindings'
+import type { Theme } from '../shared/theme'
 
 const api: LocalflowApi = {
   createSession: (agentId: AgentId, cwd?: string, customCommand?: string, environment?: number) =>
@@ -20,6 +21,9 @@ const api: LocalflowApi = {
   peekSession: (id: string, maxLines?: number) => ipcRenderer.invoke('session:peek', id, maxLines),
   listAgents: () => ipcRenderer.invoke('agents:list'),
   setAgentPath: (agentId: AgentId) => ipcRenderer.invoke('agents:setPath', agentId),
+  setDefaultAgent: (agentId: AgentId) => ipcRenderer.invoke('agents:setDefaultAgent', agentId),
+  setAgentOverride: (agentId: AgentId, override: AgentOverride) =>
+    ipcRenderer.invoke('agents:setOverride', agentId, override),
   getLastAgent: () => ipcRenderer.invoke('agents:getLastAgent'),
   write: (id: string, data: string) => ipcRenderer.send('session:write', id, data),
   resize: (id: string, cols: number, rows: number) =>
@@ -35,7 +39,23 @@ const api: LocalflowApi = {
     ipcRenderer.on('session:status', listener)
     return () => ipcRenderer.removeListener('session:status', listener)
   },
+  getActivity: (id: string) => ipcRenderer.invoke('activity:get', id),
+  onActivity: (cb) => {
+    const listener = (_e: IpcRendererEvent, id: string, entry: ActivityEntry): void => cb(id, entry)
+    ipcRenderer.on('activity:event', listener)
+    return () => ipcRenderer.removeListener('activity:event', listener)
+  },
   getKeybindings: () => ipcRenderer.invoke('keybindings:get'),
+  setKeybinding: (action: KeyAction, binding: string) =>
+    ipcRenderer.invoke('keybindings:set', action, binding),
+  resetKeybinding: (action: KeyAction) => ipcRenderer.invoke('keybindings:reset', action),
+  resetAllKeybindings: () => ipcRenderer.invoke('keybindings:resetAll'),
+  onKeybindingsChanged: (cb) => {
+    const listener = (_e: IpcRendererEvent, bindings: Record<KeyAction, string>): void =>
+      cb(bindings)
+    ipcRenderer.on('keybindings:changed', listener)
+    return () => ipcRenderer.removeListener('keybindings:changed', listener)
+  },
   onKeyAction: (cb) => {
     const listener = (_e: IpcRendererEvent, action: KeyAction): void => cb(action)
     ipcRenderer.on('keybinding:action', listener)
@@ -47,7 +67,19 @@ const api: LocalflowApi = {
     ipcRenderer.invoke('git:diff', id, path, staged),
   getCapabilities: () => ipcRenderer.invoke('git:capabilities'),
   openLazygit: (id: string) => ipcRenderer.invoke('git:openLazygit', id),
-  openEditor: (id: string) => ipcRenderer.invoke('git:openEditor', id)
+  openEditor: (id: string) => ipcRenderer.invoke('git:openEditor', id),
+  getTheme: () => ipcRenderer.invoke('theme:get'),
+  listThemes: () => ipcRenderer.invoke('theme:list'),
+  setTheme: (name: string) => ipcRenderer.invoke('theme:set', name),
+  openThemesFolder: () => ipcRenderer.send('theme:openFolder'),
+  onThemeChanged: (cb) => {
+    const listener = (
+      _e: IpcRendererEvent,
+      payload: { name: string; theme: Theme; error?: string }
+    ): void => cb(payload)
+    ipcRenderer.on('theme:changed', listener)
+    return () => ipcRenderer.removeListener('theme:changed', listener)
+  }
 }
 
 contextBridge.exposeInMainWorld('localflow', api)

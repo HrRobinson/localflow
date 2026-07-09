@@ -67,6 +67,23 @@ export default function App(): React.JSX.Element {
     fontSize: number
   }>(() => themeToXterm(DEFAULT_THEME))
   const [themeNotice, setThemeNotice] = useState<string | null>(null)
+  // Which environments currently have an operator, for the sidebar indicator.
+  const [grantedEnvs, setGrantedEnvs] = useState<Set<number>>(new Set())
+  useEffect(() => {
+    let cancelled = false
+    const tick = async (): Promise<void> => {
+      const envs = [...new Set(sessions.map((s) => s.environment))]
+      const flags = await Promise.all(envs.map((e) => window.localflow.operatorStatus(e)))
+      if (cancelled) return
+      setGrantedEnvs(new Set(flags.filter((f) => f.granted).map((f) => f.environment)))
+    }
+    void tick()
+    const iv = setInterval(() => void tick(), 3000)
+    return () => {
+      cancelled = true
+      clearInterval(iv)
+    }
+  }, [sessions])
 
   const refresh = useCallback(async () => {
     const list = await window.localflow.listSessions()
@@ -443,6 +460,7 @@ export default function App(): React.JSX.Element {
           }
           activeId={activeId}
           environment={environment}
+          grantedEnvs={grantedEnvs}
           onSwitchEnvironment={switchEnvironment}
           onHome={() => setView('home')}
           onEnvironment={enterEnvironment}

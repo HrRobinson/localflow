@@ -8,6 +8,7 @@ interface Props {
   view: 'home' | 'environment' | 'settings' | 'changes' | 'activity' | 'cockpit'
   activeId: string | null
   environment: number
+  grantedEnvs: Set<number>
   onSwitchEnvironment: (n: number) => void
   onHome: () => void
   onEnvironment: () => void
@@ -29,6 +30,7 @@ export default function Sidebar({
   view,
   activeId,
   environment,
+  grantedEnvs,
   onSwitchEnvironment,
   onHome,
   onEnvironment,
@@ -164,6 +166,14 @@ export default function Sidebar({
                   {n}
                   {envNames[String(n)] ? ` · ${envNames[String(n)]}` : ''}
                 </span>
+                {grantedEnvs.has(n) && (
+                  <span
+                    className="operator-indicator bg-idle ml-1 inline-block h-1.5 w-1.5 rounded-full align-middle"
+                    data-environment={n}
+                    data-granted="true"
+                    title="An operator can drive this environment"
+                  />
+                )}
                 <span className="text-[11px] text-gray-600">{envSessions.length || ''}</span>
               </button>
               {envSessions.map((s) => (

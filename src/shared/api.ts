@@ -11,7 +11,13 @@ import type {
 import type { BindingChangeResult, KeyAction } from './keybindings'
 import type { Theme } from './theme'
 import type { GitStatus, DiffResult, Capabilities } from './git'
-import type { GrantInfo, OperatorStatus, ActivityEntry as OperatorActivityEntry } from './operator'
+import type {
+  GrantInfo,
+  OperatorStatus,
+  ActivityEntry as OperatorActivityEntry,
+  Capture,
+  Watchpoint
+} from './operator'
 
 export interface LocalflowApi {
   /**
@@ -89,6 +95,12 @@ export interface LocalflowApi {
   revokeOperator(environment: number): Promise<void>
   /** Grant + connection state + the rolling action log for an environment. */
   operatorStatus(environment: number): Promise<OperatorStatus>
+  /** Watchpoint captures stored for an environment, oldest first. */
+  listCaptures(environment: number): Promise<Capture[]>
+  /** Registered watchpoints for an environment. */
+  listWatchpoints(environment: number): Promise<Watchpoint[]>
+  /** Resolve a halted capture (approve = continue, false = stop); returns whether a token was cleared. */
+  resumeCapture(environment: number, captureId: string, approve: boolean): Promise<boolean>
   /** Live control-API action-log entries, per environment. */
   onOperatorActivity(cb: (environment: number, entry: OperatorActivityEntry) => void): () => void
   /** Working-tree status for a session's repo. `repo:false` when the cwd isn't a git repo (or the session has none). */

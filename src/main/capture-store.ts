@@ -68,6 +68,14 @@ export class CaptureStore {
     return [...this.byEnvList(environment)]
   }
 
+  /** Clear the halted flag once the user resolves a halted capture; returns the resume token. */
+  resolve(environment: number, id: string): string | null {
+    const cap = this.byEnv.get(environment)?.get(id)
+    if (!cap) return null
+    cap.halted = false
+    return cap.resumeToken ?? null
+  }
+
   private byEnvList(environment: number): Capture[] {
     return [...(this.byEnv.get(environment)?.values() ?? [])].sort(
       (a, b) => a.createdAt - b.createdAt

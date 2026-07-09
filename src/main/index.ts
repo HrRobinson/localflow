@@ -467,6 +467,28 @@ app.whenReady().then(async () => {
       activity: activity.get(env) ?? []
     }
   })
+  ipcMain.handle('operator:captures', (_e, environment: number) =>
+    captureStore.list(clampEnvironment(environment))
+  )
+  ipcMain.handle('operator:watchpoints', (_e, environment: number) =>
+    watchpoints.list(clampEnvironment(environment))
+  )
+  ipcMain.handle(
+    'operator:resume',
+    (_e, environment: number, captureId: string, approve: boolean) => {
+      const env = clampEnvironment(environment)
+      const token = captureStore.resolve(env, captureId)
+      const log = activity.get(env) ?? []
+      log.push({
+        at: Date.now(),
+        route: 'operator:resume',
+        detail: `${captureId} ${approve ? 'approve' : 'stop'}`
+      })
+      activity.set(env, log)
+      sendToWindow('operator:activity', env, log[log.length - 1])
+      return token !== null
+    }
+  )
   ipcMain.handle('agents:setDefaultAgent', (_e, agentId: AgentId) => {
     if (!VALID_AGENTS.includes(agentId)) return null
     registry.setDefaultAgent(agentId)

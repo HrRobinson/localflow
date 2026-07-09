@@ -66,6 +66,10 @@ const api: LocalflowApi = {
   grantOperator: (environment: number) => ipcRenderer.invoke('operator:grant', environment),
   revokeOperator: (environment: number) => ipcRenderer.invoke('operator:revoke', environment),
   operatorStatus: (environment: number) => ipcRenderer.invoke('operator:status', environment),
+  listCaptures: (environment: number) => ipcRenderer.invoke('operator:captures', environment),
+  listWatchpoints: (environment: number) => ipcRenderer.invoke('operator:watchpoints', environment),
+  resumeCapture: (environment: number, captureId: string, approve: boolean) =>
+    ipcRenderer.invoke('operator:resume', environment, captureId, approve),
   onOperatorActivity: (cb) => {
     const listener = (
       _e: IpcRendererEvent,

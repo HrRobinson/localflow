@@ -44,6 +44,13 @@ export const AGENT_PRESETS: AgentPreset[] = [
     bin: 'gemini',
     resumeArgs: ['--resume', 'latest'],
     hookAdapter: 'env-settings-file'
+  },
+  {
+    id: 'openclaw',
+    label: 'OpenClaw',
+    bin: 'openclaw',
+    resumeArgs: [],
+    hookAdapter: 'none'
   }
 ]
 

@@ -36,7 +36,7 @@ if (process.env['LOCALFLOW_USER_DATA']) {
   app.setPath('userData', process.env['LOCALFLOW_USER_DATA'])
 }
 
-const VALID_AGENTS: AgentId[] = ['claude', 'codex', 'gemini', 'custom']
+const VALID_AGENTS: AgentId[] = ['claude', 'codex', 'gemini', 'openclaw', 'custom']
 
 let win: BrowserWindow | null = null
 let managerRef: SessionManager | null = null
@@ -123,7 +123,8 @@ app.whenReady().then(async () => {
   const registry = new AgentRegistry(
     join(userData, 'config.json'),
     undefined,
-    process.env['LOCALFLOW_CLAUDE_BIN']
+    process.env['LOCALFLOW_CLAUDE_BIN'],
+    process.env['LOCALFLOW_OPENCLAW_BIN']
   )
 
   const themesDir = join(userData, 'themes')

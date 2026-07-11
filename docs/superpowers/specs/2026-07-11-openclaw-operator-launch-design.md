@@ -61,8 +61,10 @@ process performs three steps atomically around the existing spawn:
 2. **Inject** — compose the credential (below) into the spawned pty's
    environment.
 3. **Track** — associate the grant with the session id so that when the session
-   exits (pty close, user delete, crash), localflow revokes the grant **iff the
-   launch created it** and clears any injected credential.
+   is **removed** (deleted from the session list), localflow revokes the grant
+   **iff the launch created it** and clears any injected credential. Closing or
+   exiting the pane keeps the session (it stays restartable), so the grant lives
+   as long as the durable session does — see "Grant ownership & lifecycle".
 
 ### 3. Credential model
 
@@ -100,11 +102,18 @@ credential actually reaches the skill.
 
 ### 5. Grant ownership & lifecycle
 
-- **Launch created the grant** → closing/exiting the pane revokes it and clears
-  the credential.
+- **Launch created the grant** → **deleting** the session revokes it and clears
+  the credential. Closing or exiting the pane keeps the session (restartable), so
+  the grant persists until the session is deleted or the app exits (grants are
+  in-memory). Keying revoke on deletion — not pty exit — is deliberate: a
+  closed-but-not-deleted OpenClaw session can be restarted, and its grant should
+  still be there when it is.
 - **Env was already operator-granted** (e.g. toggled in the cockpit, or a second
   OpenClaw pane in the same env) → launch **reuses** the token and does **not**
-  revoke on close. localflow only tears down grants it created.
+  revoke on delete. localflow only tears down grants it created.
+- **After an app restart**, a restored OpenClaw session is **not** re-wired
+  (grants are in-memory and do not survive restart) — relaunch it to re-grant.
+  Documented v1 limitation.
 - **Revoke from the cockpit while OpenClaw is live** → the next control-API call
   gets `403` (existing hardened behavior); the pane keeps running for the human,
   it just loses drive access.
@@ -128,8 +137,9 @@ New session (agentId=openclaw, env N)
   → spawn openclaw pty in the pane
   → OpenClaw runs its localflow skill → control API (env N scoped) → drives panes
   → cockpit shows env N "granted · connected"
-session exit / close
+session deleted (removed from the session list)
   → main: if launch-created the grant → revoke(N) + clear credential/config block
+  (closing/exiting the pane keeps the session + grant; delete or app-exit tears it down)
 ```
 
 ## What is unchanged

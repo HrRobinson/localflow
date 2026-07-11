@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { AgentId, AgentInfo, SessionInfo } from '../../../shared/types'
 import { AGENT_PRESETS } from '../../../shared/agents'
 import { normalizeHttpUrl } from '../../../shared/urls'
@@ -51,6 +51,9 @@ export default function Landing({
 }: Props): React.JSX.Element {
   const [agents, setAgents] = useState<AgentInfo[] | null>(null)
   const [selectedAgentId, setSelectedAgentId] = useState<AgentId | 'browser'>(AGENT_PRESETS[0].id)
+  // Async agent detection resolves a fallback default (below), but it must not
+  // clobber a selection the user already made while detection was in flight.
+  const userPickedAgent = useRef(false)
   const [urlInput, setUrlInput] = useState('')
   const [customCommand, setCustomCommand] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -104,7 +107,9 @@ export default function Landing({
         const defaultValid = list.find((a) => a.isDefault && a.resolvedPath)?.id
         const firstResolved = list.find((a) => a.resolvedPath)?.id
         const fallback = defaultValid ?? lastValid?.agentId ?? firstResolved ?? AGENT_PRESETS[0].id
-        setSelectedAgentId(fallback)
+        // Only seed the default if the user hasn't already picked an agent;
+        // otherwise a late-resolving agent list would reset their choice.
+        if (!userPickedAgent.current) setSelectedAgentId(fallback)
         if (lastValid?.agentId === 'custom') {
           setCustomCommand(lastValid.customCommand ?? '')
         }
@@ -368,7 +373,10 @@ export default function Landing({
             <select
               className="bg-surface-raised focus:border-working rounded-md border border-white/[0.14] px-2.5 py-2 text-[13px] text-gray-200 outline-none"
               value={selectedAgentId}
-              onChange={(e) => setSelectedAgentId(e.target.value as AgentId | 'browser')}
+              onChange={(e) => {
+                userPickedAgent.current = true
+                setSelectedAgentId(e.target.value as AgentId | 'browser')
+              }}
               aria-label="Agent"
             >
               {AGENT_PRESETS.map((preset) => (

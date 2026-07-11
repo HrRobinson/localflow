@@ -21,7 +21,8 @@ function session(over: Partial<SessionInfo>): SessionInfo {
 function deps(): { deps: ControlDeps; grants: OperatorGrantStore; writes: string[] } {
   const sessions = [
     session({ id: 'a-term', environment: 1, name: 'termA' }),
-    session({ id: 'b-term', environment: 2, name: 'termB' })
+    session({ id: 'b-term', environment: 2, name: 'termB' }),
+    session({ id: 'dead-term', environment: 1, name: 'termDead', status: 'exited' })
   ]
   const grants = new OperatorGrantStore()
   const writes: string[] = []
@@ -51,7 +52,8 @@ describe('control-api router', () => {
     const r = await handleRequest(d, 'GET', '/panes', token, '')
     expect(r.status).toBe(200)
     expect((r.json as { panes: { handle: string }[] }).panes.map((p) => p.handle)).toEqual([
-      'a-term'
+      'a-term',
+      'dead-term'
     ])
   })
 
@@ -80,6 +82,20 @@ describe('control-api router', () => {
     )
     expect(r.status).toBe(200)
     expect(writes).toEqual(['do it\r'])
+  })
+
+  it('prompt to an exited pane returns 409 and does not write', async () => {
+    const { deps: d, grants, writes } = deps()
+    const token = grants.grant(1)
+    const r = await handleRequest(
+      d,
+      'POST',
+      '/panes/dead-term/prompt',
+      token,
+      JSON.stringify({ text: 'hi' })
+    )
+    expect(r.status).toBe(409)
+    expect(writes).toEqual([])
   })
 
   it('output returns peeked lines, clamping maxLines', async () => {

@@ -114,6 +114,7 @@ export async function handleRequest(
     // Terminal routes (reuse write/peek).
     if (verb === 'prompt' && method === 'POST') {
       if (session.kind !== 'terminal') return json(400, { error: 'not a terminal pane' })
+      if (session.status === 'exited') return json(409, { error: 'pane exited' })
       const b = readBody()
       if (typeof b.text !== 'string') return json(400, { error: 'text required' })
       // Attachments are referenced by path in the prompt text by the operator;

@@ -151,9 +151,13 @@ describe('clampLines', () => {
     expect(clampLines('abc')).toBe(5)
   })
 
-  // NOTE: spec called for null -> 5, but Number(null) === 0 (finite), so it
-  // takes the numeric branch, not the NaN-fallback branch, and clamps to 1.
-  // Left out pending clarification — see hardening-report.md.
+  it('defaults null to 5', () => {
+    expect(clampLines(null)).toBe(5)
+  })
+
+  it('defaults empty string to 5', () => {
+    expect(clampLines('')).toBe(5)
+  })
 
   it('clamps a negative value up to 1', () => {
     expect(clampLines('-10')).toBe(1)

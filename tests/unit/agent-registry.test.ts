@@ -178,7 +178,7 @@ describe('AgentRegistry', () => {
     const file = tmpConfig()
     const reg = new AgentRegistry(file, async (bin) => (bin === 'claude' ? '/found/claude' : null))
     const agents = await reg.list()
-    expect(agents.map((a) => a.id)).toEqual(['claude', 'codex', 'gemini'])
+    expect(agents.map((a) => a.id)).toEqual(['claude', 'codex', 'gemini', 'openclaw'])
     expect(agents.find((a) => a.id === 'claude')?.resolvedPath).toBe('/found/claude')
     expect(agents.find((a) => a.id === 'codex')?.resolvedPath).toBeNull()
     expect(agents.find((a) => a.id === 'claude')?.hasStatusFeed).toBe(true)
@@ -189,6 +189,7 @@ describe('AgentRegistry', () => {
     expect(agents.find((a) => a.id === 'claude')?.statusFidelity).toBe('full')
     expect(agents.find((a) => a.id === 'codex')?.statusFidelity).toBe('done-only')
     expect(agents.find((a) => a.id === 'gemini')?.statusFidelity).toBe('full')
+    expect(agents.find((a) => a.id === 'openclaw')?.statusFidelity).toBe('none')
 
     reg.setPath('codex', '/somewhere/codex')
     expect(loadAgentConfig(file).agentPaths.codex).toBe('/somewhere/codex')

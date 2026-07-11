@@ -43,7 +43,7 @@ function parseLastAgent(raw: unknown): LastAgent | null {
   return { agentId: agentId as AgentId }
 }
 
-const KNOWN_AGENT_IDS: AgentId[] = ['claude', 'codex', 'gemini', 'custom']
+const KNOWN_AGENT_IDS: AgentId[] = ['claude', 'codex', 'gemini', 'openclaw', 'custom']
 
 function parseAgentOverride(raw: unknown): AgentOverride | null {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null
@@ -168,7 +168,9 @@ export class AgentRegistry {
     private configFile: string,
     private whichFn: (bin: string) => Promise<string | null> = whichViaLoginShell,
     /** Env override used by tests/e2e: forces the claude preset's command. */
-    private claudeBinOverride?: string
+    private claudeBinOverride?: string,
+    /** Env override used by tests/e2e: forces the openclaw preset's command. */
+    private openclawBinOverride?: string
   ) {
     this.config = loadAgentConfig(configFile)
   }
@@ -177,6 +179,7 @@ export class AgentRegistry {
   commandFor(agentId: AgentId, customCommand?: string): string {
     if (agentId === 'custom') return customCommand ?? ''
     if (agentId === 'claude' && this.claudeBinOverride) return this.claudeBinOverride
+    if (agentId === 'openclaw' && this.openclawBinOverride) return this.openclawBinOverride
     return this.config.agentPaths[agentId] ?? presetFor(agentId)?.bin ?? ''
   }
 

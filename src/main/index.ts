@@ -18,6 +18,7 @@ import { describeTool, gateBin } from './tools'
 import { loadEditorCommand, splitCommandLine } from './editor-config'
 import { PaneRegistry } from './pane-registry'
 import { OperatorGrantStore } from './operator-grant'
+import { credentialEnv, OperatorLaunchTracker } from './operator-launch'
 import { startControlServer } from './control-api'
 import { BrowserBridge } from './browser-bridge'
 import { WebviewBrowserControl } from './browser-control'
@@ -36,7 +37,7 @@ if (process.env['LOCALFLOW_USER_DATA']) {
   app.setPath('userData', process.env['LOCALFLOW_USER_DATA'])
 }
 
-const VALID_AGENTS: AgentId[] = ['claude', 'codex', 'gemini', 'custom']
+const VALID_AGENTS: AgentId[] = ['claude', 'codex', 'gemini', 'openclaw', 'custom']
 
 let win: BrowserWindow | null = null
 let managerRef: SessionManager | null = null
@@ -123,7 +124,8 @@ app.whenReady().then(async () => {
   const registry = new AgentRegistry(
     join(userData, 'config.json'),
     undefined,
-    process.env['LOCALFLOW_CLAUDE_BIN']
+    process.env['LOCALFLOW_CLAUDE_BIN'],
+    process.env['LOCALFLOW_OPENCLAW_BIN']
   )
 
   const themesDir = join(userData, 'themes')
@@ -190,6 +192,7 @@ app.whenReady().then(async () => {
     }
   })
   app.on('before-quit', () => control.close())
+  const launchTracker = new OperatorLaunchTracker()
 
   ipcMain.on('browser:register', (_e, handle: string, webContentsId: number) => {
     if (typeof handle === 'string' && Number.isInteger(webContentsId)) {
@@ -208,7 +211,14 @@ app.whenReady().then(async () => {
   manager.onData((id, data) => sendToWindow('session:data', id, data))
   manager.onStatus((id, status) => sendToWindow('session:status', id, status))
   manager.onActivity((id, entry) => sendToWindow('activity:event', id, entry))
-  manager.onSessionsChanged(() =>
+  manager.onSessionsChanged(() => {
+    const currentIds = new Set(manager.list().map((s) => s.id))
+    for (const id of launchTracker.trackedIds()) {
+      if (!currentIds.has(id)) {
+        const env = launchTracker.onClose(id)
+        if (env !== null) grants.revoke(env)
+      }
+    }
     saveSessions(
       sessionsFile,
       manager.list().map(({ id, cwd, agentId, command, name, environment, kind, url }) => ({
@@ -222,7 +232,7 @@ app.whenReady().then(async () => {
         url
       }))
     )
-  )
+  })
 
   for (const saved of loadSavedSessions(sessionsFile)) {
     if (saved.kind === 'browser') {
@@ -253,11 +263,20 @@ app.whenReady().then(async () => {
         if (result.canceled || result.filePaths.length === 0) return null
         dir = result.filePaths[0]
       }
-      const created = manager.create(
-        dir,
-        specFor(agentId, customCommand?.trim()),
-        clampEnvironment(environment)
-      )
+      let spec = specFor(agentId, customCommand?.trim())
+      let launch: { environment: number; wasGranted: boolean } | null = null
+      if (agentId === 'openclaw') {
+        const env = clampEnvironment(environment)
+        const wasGranted = grants.isGranted(env)
+        const token = grants.grant(env)
+        spec = {
+          ...spec,
+          env: { ...spec.env, ...credentialEnv(`http://127.0.0.1:${control.port}`, token) }
+        }
+        launch = { environment: env, wasGranted }
+      }
+      const created = manager.create(dir, spec, clampEnvironment(environment))
+      if (launch) launchTracker.onLaunch(launch.environment, created.id, launch.wasGranted)
       if (created.status !== 'exited') {
         registry.recordLastAgent(agentId, customCommand?.trim())
       }

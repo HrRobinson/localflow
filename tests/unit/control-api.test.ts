@@ -3,6 +3,7 @@ import { handleRequest, type ControlDeps } from '../../src/main/control-api'
 import { PaneRegistry } from '../../src/main/pane-registry'
 import { OperatorGrantStore } from '../../src/main/operator-grant'
 import type { SessionInfo } from '../../src/shared/types'
+import { CONTROL_MAX_BODY_BYTES } from '../../src/shared/operator'
 
 function session(over: Partial<SessionInfo>): SessionInfo {
   return {
@@ -117,6 +118,18 @@ describe('control-api router', () => {
       token,
       JSON.stringify({ text: big })
     )
+    expect(r.status).toBe(400)
+  })
+
+  it('rejects a body whose byte length exceeds the cap even when its UTF-16 length does not', async () => {
+    const { deps: d, grants } = deps()
+    const token = grants.grant(1)
+    // '€' is 1 UTF-16 code unit but 3 UTF-8 bytes: length === cap (passes a
+    // code-unit check) while byteLength === 3x cap (must fail a byte check).
+    const multibyte = '€'.repeat(CONTROL_MAX_BODY_BYTES)
+    expect(multibyte.length).toBe(CONTROL_MAX_BODY_BYTES)
+    expect(Buffer.byteLength(multibyte)).toBeGreaterThan(CONTROL_MAX_BODY_BYTES)
+    const r = await handleRequest(d, 'GET', '/panes', token, multibyte)
     expect(r.status).toBe(400)
   })
 })

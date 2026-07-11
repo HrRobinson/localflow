@@ -51,7 +51,8 @@ export async function handleRequest(
   token: string,
   body: string
 ): Promise<Result> {
-  if (body.length > CONTROL_MAX_BODY_BYTES) return json(400, { error: 'body too large' })
+  if (Buffer.byteLength(body) > CONTROL_MAX_BODY_BYTES)
+    return json(400, { error: 'body too large' })
   const environment = deps.grants.environmentForToken(token)
   if (environment === null) return json(403, { error: 'no grant' })
   deps.grants.markConnected(environment)
@@ -173,24 +174,28 @@ export function startControlServer(deps: ControlDeps): Promise<ControlEndpoint> 
   const server = createServer((req, res) => {
     const auth = req.headers['authorization']
     const token = typeof auth === 'string' && auth.startsWith('Bearer ') ? auth.slice(7) : ''
-    let body = ''
+    const chunks: Buffer[] = []
+    let bytes = 0
     let responded = false
     req.on('error', () => {
       responded = true
     })
     req.on('data', (chunk: Buffer) => {
       if (responded) return
-      body += chunk.toString()
-      if (body.length > CONTROL_MAX_BODY_BYTES) {
+      bytes += chunk.length
+      if (bytes > CONTROL_MAX_BODY_BYTES) {
         responded = true
         res.writeHead(400)
         res.end()
         req.destroy()
+        return
       }
+      chunks.push(chunk)
     })
     req.on('end', () => {
       if (responded) return
       responded = true
+      const body = Buffer.concat(chunks).toString('utf8')
       void handleRequest(deps, req.method ?? 'GET', req.url ?? '/', token, body).then((r) => {
         res.writeHead(r.status, { 'content-type': 'application/json' })
         res.end(JSON.stringify(r.json))

@@ -33,7 +33,7 @@ function json(status: number, body: unknown): Result {
   return { status, json: body }
 }
 
-function clampLines(raw: string | null): number {
+export function clampLines(raw: string | null): number {
   const n = Number(raw)
   return Math.min(Math.max(Number.isFinite(n) ? Math.trunc(n) : 5, 1), 50)
 }

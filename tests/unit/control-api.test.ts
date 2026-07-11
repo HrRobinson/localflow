@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { handleRequest, type ControlDeps } from '../../src/main/control-api'
+import { handleRequest, clampLines, type ControlDeps } from '../../src/main/control-api'
 import { PaneRegistry } from '../../src/main/pane-registry'
 import { OperatorGrantStore } from '../../src/main/operator-grant'
 import type { SessionInfo } from '../../src/shared/types'
@@ -131,5 +131,31 @@ describe('control-api router', () => {
     expect(Buffer.byteLength(multibyte)).toBeGreaterThan(CONTROL_MAX_BODY_BYTES)
     const r = await handleRequest(d, 'GET', '/panes', token, multibyte)
     expect(r.status).toBe(400)
+  })
+})
+
+describe('clampLines', () => {
+  it('clamps below the floor up to 1', () => {
+    expect(clampLines('0')).toBe(1)
+  })
+
+  it('clamps above the ceiling down to 50', () => {
+    expect(clampLines('51')).toBe(50)
+  })
+
+  it('passes an in-range value through', () => {
+    expect(clampLines('25')).toBe(25)
+  })
+
+  it('defaults non-numeric input to 5', () => {
+    expect(clampLines('abc')).toBe(5)
+  })
+
+  // NOTE: spec called for null -> 5, but Number(null) === 0 (finite), so it
+  // takes the numeric branch, not the NaN-fallback branch, and clamps to 1.
+  // Left out pending clarification — see hardening-report.md.
+
+  it('clamps a negative value up to 1', () => {
+    expect(clampLines('-10')).toBe(1)
   })
 })

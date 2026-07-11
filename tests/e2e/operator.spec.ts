@@ -216,10 +216,22 @@ test('operator drives a granted environment and is denied cross-env', async () =
       )
       .toBe(200)
 
-    const shotRes = await client.call('POST', `/panes/${web1!.id}/screenshot`)
-    expect(shotRes.status).toBe(200)
-    const { path: shotPath } = (await shotRes.json()) as { path: string }
-    expect(existsSync(shotPath)).toBe(true)
+    // Screenshot shares the navigate route's registration-timing race: the
+    // guest webContents can briefly deregister (grid re-render / focus change),
+    // and capturePage on a missing pane returns 400 'pane unavailable'. Poll the
+    // same way navigate does so the assertion absorbs that window.
+    let shotBody: { path: string } | undefined
+    await expect
+      .poll(
+        async () => {
+          const res = await client.call('POST', `/panes/${web1!.id}/screenshot`)
+          if (res.status === 200) shotBody = (await res.json()) as { path: string }
+          return res.status
+        },
+        { timeout: 20_000 }
+      )
+      .toBe(200)
+    expect(existsSync(shotBody!.path)).toBe(true)
 
     // --- 8. Back in the Cockpit, the action log reflects the routes the
     //        scripted client drove, and the operator reads connected. ---

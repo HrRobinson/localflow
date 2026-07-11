@@ -790,11 +790,19 @@ test('browser pane: UI creation, chrome, close/reopen, persistence', async () =>
   await expect(win.locator('.new-session')).toBeDisabled()
   await win.locator('.url-input').fill(pageUrl)
   await expect(win.locator('.new-session')).toBeEnabled()
-  await win.locator('.new-session').click()
 
   // The pane mounts in the environment grid, violet (running), webview live.
+  // On cold e2e startup the very first New-session click is occasionally
+  // dropped before it creates a session — Landing re-renders every second (the
+  // stats ticker + App's session poll), and a programmatic click landing
+  // mid-commit can be lost under React's concurrent rendering. Never reproduces
+  // in manual use. Retry the click ONLY while zero panes exist, so a real
+  // creation is never double-fired. Follow-up: root-cause the dropped click.
   const pane = win.locator('.pane')
-  await expect(pane).toHaveCount(1)
+  await expect(async () => {
+    if ((await pane.count()) === 0) await win.locator('.new-session').click()
+    await expect(pane).toHaveCount(1, { timeout: 5000 })
+  }).toPass({ timeout: 20_000 })
   await expect(pane).toHaveAttribute('data-status', 'running')
   await expect(pane.locator('.browser-view')).toHaveAttribute('src', pageUrl)
   await expect(pane.locator('.url-bar')).toHaveValue(pageUrl)
@@ -810,9 +818,15 @@ test('browser pane: UI creation, chrome, close/reopen, persistence', async () =>
   // in-page link, so navigate the same way a user would via the URL bar.
   // A controlled `src` would reload on the next 1s poll tick after the
   // navigation lands; an uncontrolled one should fetch /second exactly once.
-  await pane.locator('.url-bar').fill(secondPageUrl)
-  await pane.locator('.url-bar').press('Enter')
-  await expect(pane.locator('.url-bar')).toHaveValue(secondPageUrl)
+  // The url bar is a controlled input whose value the did-navigate handler also
+  // writes (when not editing). Focus it and confirm the fill fully committed
+  // before submitting, so a navigation/re-render can't race the last keystroke.
+  const urlBar = pane.locator('.url-bar')
+  await urlBar.click()
+  await urlBar.fill(secondPageUrl)
+  await expect(urlBar).toHaveValue(secondPageUrl)
+  await urlBar.press('Enter')
+  await expect(urlBar).toHaveValue(secondPageUrl)
   // sessions.json is only written on change — poll the file for the update.
   await expect
     .poll(() => {

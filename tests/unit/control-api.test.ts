@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { handleRequest, type ControlDeps } from '../../src/main/control-api'
+import { handleRequest, clampLines, type ControlDeps } from '../../src/main/control-api'
 import { PaneRegistry } from '../../src/main/pane-registry'
 import { OperatorGrantStore } from '../../src/main/operator-grant'
 import type { SessionInfo } from '../../src/shared/types'
+import { CONTROL_MAX_BODY_BYTES } from '../../src/shared/operator'
 
 function session(over: Partial<SessionInfo>): SessionInfo {
   return {
@@ -21,7 +22,8 @@ function session(over: Partial<SessionInfo>): SessionInfo {
 function deps(): { deps: ControlDeps; grants: OperatorGrantStore; writes: string[] } {
   const sessions = [
     session({ id: 'a-term', environment: 1, name: 'termA' }),
-    session({ id: 'b-term', environment: 2, name: 'termB' })
+    session({ id: 'b-term', environment: 2, name: 'termB' }),
+    session({ id: 'dead-term', environment: 1, name: 'termDead', status: 'exited' })
   ]
   const grants = new OperatorGrantStore()
   const writes: string[] = []
@@ -51,7 +53,8 @@ describe('control-api router', () => {
     const r = await handleRequest(d, 'GET', '/panes', token, '')
     expect(r.status).toBe(200)
     expect((r.json as { panes: { handle: string }[] }).panes.map((p) => p.handle)).toEqual([
-      'a-term'
+      'a-term',
+      'dead-term'
     ])
   })
 
@@ -82,6 +85,20 @@ describe('control-api router', () => {
     expect(writes).toEqual(['do it\r'])
   })
 
+  it('prompt to an exited pane returns 409 and does not write', async () => {
+    const { deps: d, grants, writes } = deps()
+    const token = grants.grant(1)
+    const r = await handleRequest(
+      d,
+      'POST',
+      '/panes/dead-term/prompt',
+      token,
+      JSON.stringify({ text: 'hi' })
+    )
+    expect(r.status).toBe(409)
+    expect(writes).toEqual([])
+  })
+
   it('output returns peeked lines, clamping maxLines', async () => {
     const { deps: d, grants } = deps()
     const token = grants.grant(1)
@@ -102,5 +119,47 @@ describe('control-api router', () => {
       JSON.stringify({ text: big })
     )
     expect(r.status).toBe(400)
+  })
+
+  it('rejects a body whose byte length exceeds the cap even when its UTF-16 length does not', async () => {
+    const { deps: d, grants } = deps()
+    const token = grants.grant(1)
+    // '€' is 1 UTF-16 code unit but 3 UTF-8 bytes: length === cap (passes a
+    // code-unit check) while byteLength === 3x cap (must fail a byte check).
+    const multibyte = '€'.repeat(CONTROL_MAX_BODY_BYTES)
+    expect(multibyte.length).toBe(CONTROL_MAX_BODY_BYTES)
+    expect(Buffer.byteLength(multibyte)).toBeGreaterThan(CONTROL_MAX_BODY_BYTES)
+    const r = await handleRequest(d, 'GET', '/panes', token, multibyte)
+    expect(r.status).toBe(400)
+  })
+})
+
+describe('clampLines', () => {
+  it('clamps below the floor up to 1', () => {
+    expect(clampLines('0')).toBe(1)
+  })
+
+  it('clamps above the ceiling down to 50', () => {
+    expect(clampLines('51')).toBe(50)
+  })
+
+  it('passes an in-range value through', () => {
+    expect(clampLines('25')).toBe(25)
+  })
+
+  it('defaults non-numeric input to 5', () => {
+    expect(clampLines('abc')).toBe(5)
+  })
+
+  it('defaults null to 5', () => {
+    expect(clampLines(null)).toBe(5)
+  })
+
+  it('defaults empty string to 5', () => {
+    expect(clampLines('')).toBe(5)
+  })
+
+  it('clamps a negative value up to 1', () => {
+    expect(clampLines('-10')).toBe(1)
   })
 })

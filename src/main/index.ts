@@ -484,6 +484,7 @@ app.whenReady().then(async () => {
         route: 'operator:resume',
         detail: `${captureId} ${approve ? 'approve' : 'stop'}`
       })
+      if (log.length > 200) log.splice(0, log.length - 200)
       activity.set(env, log)
       sendToWindow('operator:activity', env, log[log.length - 1])
       return token !== null

@@ -1,17 +1,25 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, afterEach } from 'vitest'
 import { WebviewBrowserControl } from '../../src/main/browser-control'
 import { BrowserBridge } from '../../src/main/browser-bridge'
 import { CaptureStore } from '../../src/main/capture-store'
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+const tempDirs: string[] = []
+
 function make(): WebviewBrowserControl {
   const bridge = new BrowserBridge()
-  const captures = new CaptureStore(mkdtempSync(join(tmpdir(), 'lf-bc-')))
+  const dir = mkdtempSync(join(tmpdir(), 'lf-bc-'))
+  tempDirs.push(dir)
+  const captures = new CaptureStore(dir)
   // No webContents registered — every op should degrade, never throw.
   return new WebviewBrowserControl(bridge, captures)
 }
+
+afterEach(() => {
+  while (tempDirs.length) rmSync(tempDirs.pop()!, { recursive: true, force: true })
+})
 
 describe('WebviewBrowserControl', () => {
   it('navigate rejects a non-http url before touching the guest', async () => {

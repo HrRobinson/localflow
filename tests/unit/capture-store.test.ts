@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest'
-import { mkdtempSync, existsSync, readFileSync } from 'node:fs'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { mkdtempSync, existsSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { CaptureStore } from '../../src/main/capture-store'
@@ -8,6 +8,10 @@ describe('CaptureStore', () => {
   let base: string
   beforeEach(() => {
     base = mkdtempSync(join(tmpdir(), 'lf-cap-'))
+  })
+
+  afterEach(() => {
+    rmSync(base, { recursive: true, force: true })
   })
 
   it('creates a per-environment scratch dir', () => {

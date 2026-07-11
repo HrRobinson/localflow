@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/HrRobinson/localflow/compare/v1.2.0...v1.3.0) (2026-07-11)
+
+
+### Features
+
+* launch openclaw as operator agent ([#40](https://github.com/HrRobinson/localflow/issues/40)) ([d0268af](https://github.com/HrRobinson/localflow/commit/d0268afcad2dfdca3303009972bdfb4842d27e85))
+
 ## [1.2.0](https://github.com/HrRobinson/localflow/compare/v1.1.0...v1.2.0) (2026-07-11)
 
 

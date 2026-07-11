@@ -11,6 +11,13 @@ import type {
 import type { BindingChangeResult, KeyAction } from './keybindings'
 import type { Theme } from './theme'
 import type { GitStatus, DiffResult, Capabilities } from './git'
+import type {
+  GrantInfo,
+  OperatorStatus,
+  ActivityEntry as OperatorActivityEntry,
+  Capture,
+  Watchpoint
+} from './operator'
 
 export interface LocalflowApi {
   /**
@@ -82,6 +89,20 @@ export interface LocalflowApi {
   onKeyAction(cb: (action: KeyAction) => void): () => void
   /** Optional hand-configured environment names from config.json ("3" -> "backend"). */
   getEnvironmentNames(): Promise<Record<string, string>>
+  /** Grants (or returns the existing) operator on an environment; mints its bearer token + loopback endpoint. */
+  grantOperator(environment: number): Promise<GrantInfo>
+  /** Revokes the operator on an environment; its token stops resolving immediately. */
+  revokeOperator(environment: number): Promise<void>
+  /** Grant + connection state + the rolling action log for an environment. */
+  operatorStatus(environment: number): Promise<OperatorStatus>
+  /** Watchpoint captures stored for an environment, oldest first. */
+  listCaptures(environment: number): Promise<Capture[]>
+  /** Registered watchpoints for an environment. */
+  listWatchpoints(environment: number): Promise<Watchpoint[]>
+  /** Resolve a halted capture (approve = continue, false = stop); returns whether a token was cleared. */
+  resumeCapture(environment: number, captureId: string, approve: boolean): Promise<boolean>
+  /** Live control-API action-log entries, per environment. */
+  onOperatorActivity(cb: (environment: number, entry: OperatorActivityEntry) => void): () => void
   /** Working-tree status for a session's repo. `repo:false` when the cwd isn't a git repo (or the session has none). */
   gitStatus(id: string): Promise<GitStatus>
   /** Diff text for one path at one layer. Untracked files come back as full additions; size-capped. */
@@ -102,4 +123,8 @@ export interface LocalflowApi {
   openThemesFolder(): void
   /** Theme pushed from main after a set — the live-apply channel. */
   onThemeChanged(cb: (payload: { name: string; theme: Theme; error?: string }) => void): () => void
+  /** Browser panes report their guest webContents id so the operator API can drive them. */
+  registerBrowser(handle: string, webContentsId: number): void
+  /** Dropped on unmount/exit; a closed pane then resolves to 404 over the control API. */
+  unregisterBrowser(handle: string): void
 }

@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import type { LocalflowApi } from '../shared/api'
 import type { ActivityEntry, AgentId, AgentOverride, SessionStatus } from '../shared/types'
+import type { ActivityEntry as OperatorActivityEntry } from '../shared/operator'
 import type { KeyAction } from '../shared/keybindings'
 import type { Theme } from '../shared/theme'
 
@@ -62,6 +63,22 @@ const api: LocalflowApi = {
     return () => ipcRenderer.removeListener('keybinding:action', listener)
   },
   getEnvironmentNames: () => ipcRenderer.invoke('environments:getNames'),
+  grantOperator: (environment: number) => ipcRenderer.invoke('operator:grant', environment),
+  revokeOperator: (environment: number) => ipcRenderer.invoke('operator:revoke', environment),
+  operatorStatus: (environment: number) => ipcRenderer.invoke('operator:status', environment),
+  listCaptures: (environment: number) => ipcRenderer.invoke('operator:captures', environment),
+  listWatchpoints: (environment: number) => ipcRenderer.invoke('operator:watchpoints', environment),
+  resumeCapture: (environment: number, captureId: string, approve: boolean) =>
+    ipcRenderer.invoke('operator:resume', environment, captureId, approve),
+  onOperatorActivity: (cb) => {
+    const listener = (
+      _e: IpcRendererEvent,
+      environment: number,
+      entry: OperatorActivityEntry
+    ): void => cb(environment, entry)
+    ipcRenderer.on('operator:activity', listener)
+    return () => ipcRenderer.removeListener('operator:activity', listener)
+  },
   gitStatus: (id: string) => ipcRenderer.invoke('git:status', id),
   gitDiff: (id: string, path: string, staged: boolean) =>
     ipcRenderer.invoke('git:diff', id, path, staged),
@@ -79,7 +96,10 @@ const api: LocalflowApi = {
     ): void => cb(payload)
     ipcRenderer.on('theme:changed', listener)
     return () => ipcRenderer.removeListener('theme:changed', listener)
-  }
+  },
+  registerBrowser: (handle: string, webContentsId: number) =>
+    ipcRenderer.send('browser:register', handle, webContentsId),
+  unregisterBrowser: (handle: string) => ipcRenderer.send('browser:unregister', handle)
 }
 
 contextBridge.exposeInMainWorld('localflow', api)

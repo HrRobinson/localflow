@@ -131,7 +131,9 @@ export default function App(): React.JSX.Element {
     }
   }
   const createBrowser = async (url: string): Promise<void> => {
+    console.log('DIAG createBrowser:start', JSON.stringify({ url, environment }))
     const created = await window.localflow.createBrowserSession(url, environment)
+    console.log('DIAG createBrowser:result', JSON.stringify({ created: created ?? null }))
     if (created) {
       setView('environment')
       setEnlarged(null)

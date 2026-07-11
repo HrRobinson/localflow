@@ -781,6 +781,17 @@ test('browser pane: UI creation, chrome, close/reopen, persistence', async () =>
   const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
   const app = await launchApp(userData)
   const win = await app.firstWindow()
+  // DIAG: forward renderer console + unhandled rejections to CI stdout.
+  win.on('console', (m) => console.log(`[page:${m.type()}] ${m.text()}`))
+  win.on('pageerror', (e) => console.log(`[pageerror] ${e.message}`))
+  await win.evaluate(() => {
+    window.addEventListener('unhandledrejection', (e) =>
+      console.error(
+        'UNHANDLED_REJECTION',
+        (e as PromiseRejectionEvent).reason?.message ?? String((e as PromiseRejectionEvent).reason)
+      )
+    )
+  })
   await win.setViewportSize({ width: 1400, height: 900 })
   await expect(win.locator('.new-session')).toBeVisible()
 

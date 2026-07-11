@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.2.0](https://github.com/HrRobinson/localflow/compare/v1.1.0...v1.2.0) (2026-07-11)
+
+
+### Features
+
+* agent-driven environment control ([#37](https://github.com/HrRobinson/localflow/issues/37)) ([2f2dd67](https://github.com/HrRobinson/localflow/commit/2f2dd67bd5ac1f3fc1aee0c248e67c2fbdc90bb2))
+
+
+### Bug Fixes
+
+* harden agent-env-control control API ([#39](https://github.com/HrRobinson/localflow/issues/39)) ([acca0a7](https://github.com/HrRobinson/localflow/commit/acca0a73a3078267724d11ba435d87fc2b319bf0))
+
 ## [1.1.0](https://github.com/HrRobinson/localflow/compare/v1.0.0...v1.1.0) (2026-07-09)
 
 

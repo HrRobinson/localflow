@@ -1,15 +1,23 @@
-import { describe, it, expect } from 'vitest'
-import { mkdtempSync } from 'node:fs'
+import { describe, it, expect, afterEach } from 'vitest'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { CaptureStore } from '../../src/main/capture-store'
 import { WatchpointRegistry } from '../../src/main/watchpoints'
 
+const tempDirs: string[] = []
+
 function store(): CaptureStore {
-  return new CaptureStore(mkdtempSync(join(tmpdir(), 'lf-ing-')))
+  const dir = mkdtempSync(join(tmpdir(), 'lf-ing-'))
+  tempDirs.push(dir)
+  return new CaptureStore(dir)
 }
 
 describe('CaptureStore.ingest', () => {
+  afterEach(() => {
+    while (tempDirs.length) rmSync(tempDirs.pop()!, { recursive: true, force: true })
+  })
+
   it('stores a capture, marks the watch hit, and is retrievable', async () => {
     const wps = new WatchpointRegistry()
     const wp = wps.register(1, { workflow: 'w', step: 'verify', capture: ['envelope', 'output'] })!

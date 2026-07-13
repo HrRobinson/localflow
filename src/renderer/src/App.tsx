@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import TerminalPane from './components/TerminalPane'
 import BrowserPane from './components/BrowserPane'
+import GroupBox from './components/GroupBox'
 import Landing from './components/Landing'
 import Settings from './components/Settings'
 import Activity from './components/Activity'
@@ -17,8 +18,9 @@ import {
   type KeyAction,
   type ParsedBinding
 } from '../../shared/keybindings'
-import { clampEnvironment } from '../../shared/environment'
-import type { AgentId, SessionInfo } from '../../shared/types'
+import { clampEnvironment, worstStatus } from '../../shared/environment'
+import { groupedOrder } from '../../shared/group-order'
+import type { AgentId, SessionGroup, SessionInfo } from '../../shared/types'
 import {
   DEFAULT_THEME,
   themeToCssVars,
@@ -41,6 +43,9 @@ const ACTION_DIRECTION: Partial<Record<KeyAction, Direction>> = {
 
 export default function App(): React.JSX.Element {
   const [sessions, setSessions] = useState<SessionInfo[]>([])
+  // Groups ("sessions" in UI copy) a pane can belong to; polled alongside
+  // sessions in refresh() so the grid's grouping stays in sync.
+  const [groups, setGroups] = useState<SessionGroup[]>([])
   const [enlarged, setEnlarged] = useState<string | null>(null)
   // cmd+b hides the sidebar for a fullscreen-style focus mode.
   const [sidebarVisible, setSidebarVisible] = useState(true)
@@ -86,8 +91,12 @@ export default function App(): React.JSX.Element {
   }, [sessions])
 
   const refresh = useCallback(async () => {
-    const list = await window.localflow.listSessions()
+    const [list, groupList] = await Promise.all([
+      window.localflow.listSessions(),
+      window.localflow.listGroups()
+    ])
     setSessions(list)
+    setGroups(groupList)
     setOrder((cur) =>
       reconcileOrder(
         cur,
@@ -427,6 +436,35 @@ export default function App(): React.JSX.Element {
 
   const showEnvironment =
     view === 'environment' && sessions.some((s) => s.environment === environment)
+  const envSessions = sessions.filter((s) => s.environment === environment)
+  // Shared by both the solo and grouped render paths below so a pane's
+  // element is identical either way — grouping must not change a solo
+  // pane's DOM (existing e2e selectors depend on that).
+  const renderPane = (s: SessionInfo): React.JSX.Element =>
+    s.kind === 'browser' ? (
+      <BrowserPane
+        key={s.id}
+        session={s}
+        enlarged={enlarged === s.id}
+        active={activeId === s.id}
+        onToggleEnlarge={() => setEnlarged((cur) => (cur === s.id ? null : s.id))}
+        onActivate={() => setActiveId(s.id)}
+        onReopen={() => void restart(s.id, false)}
+        onClose={() => void closeTerminal(s.id)}
+      />
+    ) : (
+      <TerminalPane
+        key={s.id}
+        session={s}
+        enlarged={enlarged === s.id}
+        active={activeId === s.id}
+        onToggleEnlarge={() => setEnlarged((cur) => (cur === s.id ? null : s.id))}
+        onActivate={() => setActiveId(s.id)}
+        onRestart={(fresh) => void restart(s.id, fresh)}
+        onClose={() => void closeTerminal(s.id)}
+        terminalTheme={terminalTheme}
+      />
+    )
 
   return (
     <div className="flex min-h-0 flex-1">
@@ -481,35 +519,32 @@ export default function App(): React.JSX.Element {
       <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
         {showEnvironment ? (
           <div className="grid flex-1 auto-rows-[minmax(300px,1fr)] grid-cols-[repeat(auto-fit,minmax(460px,1fr))] gap-2.5 overflow-auto px-3 pt-3 pb-3">
-            {order
-              .map((id) => sessions.find((s) => s.id === id))
-              .filter((s): s is SessionInfo => s != null && s.environment === environment)
-              .map((s) =>
-                s.kind === 'browser' ? (
-                  <BrowserPane
-                    key={s.id}
-                    session={s}
-                    enlarged={enlarged === s.id}
-                    active={activeId === s.id}
-                    onToggleEnlarge={() => setEnlarged((cur) => (cur === s.id ? null : s.id))}
-                    onActivate={() => setActiveId(s.id)}
-                    onReopen={() => void restart(s.id, false)}
-                    onClose={() => void closeTerminal(s.id)}
-                  />
-                ) : (
-                  <TerminalPane
-                    key={s.id}
-                    session={s}
-                    enlarged={enlarged === s.id}
-                    active={activeId === s.id}
-                    onToggleEnlarge={() => setEnlarged((cur) => (cur === s.id ? null : s.id))}
-                    onActivate={() => setActiveId(s.id)}
-                    onRestart={(fresh) => void restart(s.id, fresh)}
-                    onClose={() => void closeTerminal(s.id)}
-                    terminalTheme={terminalTheme}
-                  />
-                )
-              )}
+            {groupedOrder(order, envSessions).map((run) => {
+              // Solo pane: render exactly as before grouping existed — same
+              // element, same position, zero DOM change.
+              if (run.group === null) {
+                const s = envSessions.find((p) => p.id === run.ids[0])
+                return s ? renderPane(s) : null
+              }
+              const members = run.ids
+                .map((id) => envSessions.find((p) => p.id === id))
+                .filter((p): p is SessionInfo => p != null)
+              const group = groups.find((g) => g.id === run.group)
+              // Race guard: a group record not yet loaded (or emptied out)
+              // must not drop its panes — fall back to rendering them solo.
+              if (!group || members.length === 0) return members.map((s) => renderPane(s))
+              return (
+                <GroupBox
+                  key={group.id}
+                  group={group}
+                  status={worstStatus(members.map((m) => m.status))}
+                  onAddPane={() => {}}
+                  onEnlargeSession={() => {}}
+                >
+                  {members.map((s) => renderPane(s))}
+                </GroupBox>
+              )
+            })}
           </div>
         ) : view === 'changes' ? (
           <Changes

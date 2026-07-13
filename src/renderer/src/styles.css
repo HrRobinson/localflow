@@ -24,6 +24,7 @@
   --pane-bg: #1a1b1e;
   --running: #8b5cf6;
   --text: #e5e7eb;
+  --border: rgba(255, 255, 255, 0.12);
 }
 * {
   box-sizing: border-box;
@@ -108,6 +109,31 @@ body {
 }
 [data-nav-environment] .dot[data-status='running'] {
   background: var(--running);
+}
+
+/* Grouped grid (M5): a group ("session" in UI copy) wraps ≥1 pane elements
+   unchanged — GroupBox only adds this border/header chrome around them. The
+   rollup dot reuses the same var(--working) etc. tokens as .pane/.dot above,
+   just scoped to its own class since it isn't nested in a .pane. */
+.group-box {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+}
+.group-rollup[data-status='working'] {
+  background: var(--working);
+}
+.group-rollup[data-status='needs-you'] {
+  background: var(--needs-you);
+}
+.group-rollup[data-status='idle'] {
+  background: var(--idle);
+}
+.group-rollup[data-status='running'] {
+  background: var(--running);
+}
+.group-rollup[data-status='exited'] {
+  background: var(--exited);
 }
 
 /* Changes / diff review (M6). Diff-level coloring only — reuses status tokens

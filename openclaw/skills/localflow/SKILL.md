@@ -28,6 +28,9 @@ Verbs: `panes`, `navigate <handle> <url>`, `screenshot <handle>`,
 optional (omit it for a standalone pane); a terminal pane's `groupId` is
 required — its cwd is derived from an existing member of that group, never
 supplied by the caller. An unknown/foreign-environment `groupId` is rejected.
+Terminal `agentId` is limited to `claude`/`codex`/`gemini` — agent presets
+that carry their own tool-permission gates — not raw `shell` (or `openclaw`,
+a raw operator-agent preset); those are rejected with `invalid pane request`.
 
 `screenshot` returns a `{path}` on the target project's disk — reference that
 path in a following `prompt` to hand the image to a coding-agent terminal.

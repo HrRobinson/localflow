@@ -39,11 +39,27 @@ export type OperatorPaneRequest =
   | { kind: 'terminal'; agentId: AgentId; groupId: string }
 
 /**
+ * Terminal agents an operator grant is allowed to spin up via POST /panes.
+ * Deliberately narrower than `VALID_AGENTS`: this is a capability boundary,
+ * not a shape check. An operator grant means "drive this environment's
+ * agents", not "run arbitrary shell commands here" — 'shell', combined with
+ * the existing POST /panes/:handle/prompt route (which writes text+CR
+ * straight to the pty), would hand a granted operator arbitrary RCE in the
+ * project dir. 'openclaw' is excluded for the same reason: it's a raw
+ * operator-agent preset with no tool-permission gate of its own. 'custom' is
+ * already excluded below (it has no field on this request to carry a command
+ * line). claude/codex/gemini are allowed because each carries its own
+ * tool-permission gates.
+ */
+const OPERATOR_TERMINAL_AGENTS: ReadonlySet<AgentId> = new Set(['claude', 'codex', 'gemini'])
+
+/**
  * Validates a raw POST /panes body into an `OperatorPaneRequest`, or null if
  * the shape is invalid — bad/missing `kind`, a non-string/empty `groupId`, a
  * browser pane without a `normalizeHttpUrl`-valid `url`, or a terminal pane
- * missing `groupId`/a recognized non-'custom' `agentId` ('custom' has no
- * field on this request to carry a command line).
+ * missing `groupId`/an agentId outside `OPERATOR_TERMINAL_AGENTS` (which
+ * excludes 'custom' — no field here carries a command line — and 'shell' /
+ * 'openclaw', excluded as a capability boundary; see that constant's doc).
  */
 function parseOperatorPaneRequest(b: Record<string, unknown>): OperatorPaneRequest | null {
   const rawGroupId = b['groupId']
@@ -63,7 +79,7 @@ function parseOperatorPaneRequest(b: Record<string, unknown>): OperatorPaneReque
     if (groupId === undefined) return null
     const agentId = b['agentId']
     if (typeof agentId !== 'string' || !VALID_AGENTS.includes(agentId as AgentId)) return null
-    if (agentId === 'custom') return null
+    if (!OPERATOR_TERMINAL_AGENTS.has(agentId as AgentId)) return null
     return { kind: 'terminal', agentId: agentId as AgentId, groupId }
   }
 

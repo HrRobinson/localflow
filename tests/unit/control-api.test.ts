@@ -323,6 +323,59 @@ describe('POST /panes (operator pane creation)', () => {
     expect(r.status).toBe(400)
     expect(r.json).toEqual({ error: 'invalid pane request' })
   })
+
+  // Security: an operator grant means "drive this environment's agents", not
+  // "run arbitrary shell commands here". `shell` combined with the existing
+  // POST /panes/:handle/prompt route (writes text+CR straight to the pty)
+  // would hand a granted operator arbitrary RCE in the project dir — an
+  // escalation past the grant model's intent. `openclaw` is excluded for the
+  // same reason: it's a raw operator-agent preset with no tool-permission
+  // gate of its own. claude/codex/gemini are allowed because each carries
+  // its own tool-permission gates.
+  it('rejects a terminal pane request with agentId "shell"', async () => {
+    const { deps: d, grants } = deps()
+    const token = grants.grant(1)
+    const r = await handleRequest(
+      d,
+      'POST',
+      '/panes',
+      token,
+      JSON.stringify({ kind: 'terminal', agentId: 'shell', groupId: 'g1' })
+    )
+    expect(r.status).toBe(400)
+    expect(r.json).toEqual({ error: 'invalid pane request' })
+  })
+
+  it('rejects a terminal pane request with agentId "openclaw"', async () => {
+    const { deps: d, grants } = deps()
+    const token = grants.grant(1)
+    const r = await handleRequest(
+      d,
+      'POST',
+      '/panes',
+      token,
+      JSON.stringify({ kind: 'terminal', agentId: 'openclaw', groupId: 'g1' })
+    )
+    expect(r.status).toBe(400)
+    expect(r.json).toEqual({ error: 'invalid pane request' })
+  })
+
+  it.each(['claude', 'codex', 'gemini'])(
+    'still allows a terminal pane request with agentId %s',
+    async (agentId) => {
+      const { deps: d, grants } = deps()
+      const token = grants.grant(1)
+      const r = await handleRequest(
+        d,
+        'POST',
+        '/panes',
+        token,
+        JSON.stringify({ kind: 'terminal', agentId, groupId: 'g1' })
+      )
+      expect(r.status).toBe(200)
+      expect((r.json as { pane: { kind: string } }).pane.kind).toBe('terminal')
+    }
+  )
 })
 
 describe('control-api streaming server', () => {

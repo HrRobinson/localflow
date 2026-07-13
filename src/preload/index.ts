@@ -7,7 +7,7 @@ import type {
   AgentOverride,
   SessionStatus
 } from '../shared/types'
-import type { ActivityEntry as OperatorActivityEntry } from '../shared/operator'
+import type { ActivityEntry as OperatorActivityEntry, CaptureKind } from '../shared/operator'
 import type { KeyAction } from '../shared/keybindings'
 import type { Theme } from '../shared/theme'
 
@@ -85,6 +85,12 @@ const api: LocalflowApi = {
   operatorStatus: (environment: number) => ipcRenderer.invoke('operator:status', environment),
   listCaptures: (environment: number) => ipcRenderer.invoke('operator:captures', environment),
   listWatchpoints: (environment: number) => ipcRenderer.invoke('operator:watchpoints', environment),
+  registerWatchpoint: (
+    environment: number,
+    workflow: string,
+    step: string,
+    capture: CaptureKind[]
+  ) => ipcRenderer.invoke('operator:registerWatchpoint', environment, workflow, step, capture),
   resumeCapture: (environment: number, captureId: string, approve: boolean) =>
     ipcRenderer.invoke('operator:resume', environment, captureId, approve),
   onOperatorActivity: (cb) => {

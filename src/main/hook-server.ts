@@ -1,6 +1,7 @@
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { randomUUID, createHash, timingSafeEqual } from 'node:crypto'
+import { applyLoopbackTimeouts } from './server-timeouts'
 import type { HookEvent } from '../shared/types'
 
 export interface HookEndpoint {
@@ -81,6 +82,7 @@ export function startHookServer(onEvent: (e: HookEvent) => void): Promise<HookEn
       res.end()
     })
   })
+  applyLoopbackTimeouts(server)
   return new Promise((resolve) => {
     server.listen(0, '127.0.0.1', () => {
       const { port } = server.address() as AddressInfo

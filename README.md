@@ -177,6 +177,22 @@ folder in your editor (`config.json`'s `editorCommand`, default `code`). Both
 disable themselves with a hint when the tool isn't on your PATH. A session whose
 folder isn't a git repository just shows a plain "not a git repository" note.
 
+## Editors
+
+Two ways to pair an editor with your agents:
+
+- **Open in editor** — every terminal pane's header has an **editor** button
+  (also `cmd+e` for the focused pane, and the Changes view's button) that opens
+  the session's folder in your editor as an external app. The command comes
+  from `config.json`'s `editorCommand` (default `code`) with the folder
+  appended, so `"editorCommand": "subl -n"` runs `subl -n <folder>`. The button
+  disables itself with a hint when the binary isn't on your PATH.
+- **An editor pane beside your agent** — terminal editors are already
+  first-class panes: create a session with the **Custom** command set to
+  `nvim`, `hx`, or `emacs -nw` in the same folder as your agent, and you get an
+  editor living in the grid next to it — focusable, swappable, and enlargeable
+  like any other pane.
+
 ## Settings
 
 Open **Settings** from the sidebar.
@@ -232,6 +248,7 @@ given direction), so they work regardless of grid layout.
 | Add pane                 | `cmd+t`                                                       | opens the picker to add a companion pane next to the active one, grouping them into a session (see [Grouped sessions](#grouped-sessions))                       |
 | Group pane               | `cmd+g`                                                       | moves the active pane into another session (or a new one) via a picker                                                                                          |
 | Ungroup pane             | `cmd+shift+g`                                                 | pulls the active pane out of its session, back to solo                                                                                                          |
+| Open in editor           | `cmd+e`                                                       | opens the active pane's folder in your configured editor (`config.json`'s `editorCommand`, default `code`) as an external app                                   |
 | New session              | `cmd+enter`                                                   | jumps to Overview                                                                                                                                               |
 | Toggle sidebar           | `cmd+b`                                                       | hides/shows the sidebar (fullscreen-style focus mode)                                                                                                           |
 | Go up                    | `cmd+escape`                                                  | walks the enlarge staircase back down one level at a time (session → pane → grid), then goes to Overview                                                        |
@@ -267,6 +284,7 @@ The file is a flat JSON object mapping action name to binding string:
   "add-pane": "cmd+t",
   "group-pane": "cmd+g",
   "ungroup-pane": "cmd+shift+g",
+  "open-editor": "cmd+e",
   "new-session": "cmd+enter",
   "go-up": "cmd+escape",
   "toggle-sidebar": "cmd+b",

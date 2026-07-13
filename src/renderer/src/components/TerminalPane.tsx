@@ -4,6 +4,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import type { SessionInfo } from '../../../shared/types'
 import type { XtermTheme } from '../../../shared/theme'
+import type { Capabilities } from '../../../shared/git'
 import ApproveButton from './ApproveButton'
 
 interface Props {
@@ -15,6 +16,10 @@ interface Props {
   /** Relaunch the agent; `fresh` starts a new conversation instead of resuming. */
   onRestart: (fresh: boolean) => void
   onClose: () => void
+  /** Launch the configured editor on this session's cwd (external app). */
+  onOpenEditor: () => void
+  /** Editor availability + configured command; null while capabilities load. */
+  editor: Capabilities['editor'] | null
   /** Live terminal theme (xterm ITheme + font); applied on change. */
   terminalTheme: { theme: XtermTheme; fontFamily: string; fontSize: number }
 }
@@ -27,6 +32,8 @@ export default function TerminalPane({
   onActivate,
   onRestart,
   onClose,
+  onOpenEditor,
+  editor,
   terminalTheme
 }: Props): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
@@ -134,6 +141,26 @@ export default function TerminalPane({
             stopMouseDown
           />
         )}
+        <button
+          className={`open-editor ${paneHeaderBtn} disabled:cursor-default disabled:opacity-40 disabled:hover:text-gray-400`}
+          disabled={editor !== null && !editor.available}
+          title={
+            editor && !editor.available
+              ? editor.hint
+              : `Open this folder in ${editor?.command ?? 'your editor'}`
+          }
+          onClick={onOpenEditor}
+          onDoubleClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => {
+            // Same focus discipline as the close button: no focus steal, no
+            // bubbling to the pane root — opening an external editor must
+            // not activate a non-active pane.
+            e.preventDefault()
+            e.stopPropagation()
+          }}
+        >
+          editor
+        </button>
         <button
           className={paneHeaderBtn}
           onClick={() => {

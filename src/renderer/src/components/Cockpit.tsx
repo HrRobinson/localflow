@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { ActivityEntry, Capture, OperatorStatus, Watchpoint } from '../../../shared/operator'
+import {
+  CAPTURE_KINDS,
+  type ActivityEntry,
+  type Capture,
+  type CaptureKind,
+  type OperatorStatus,
+  type Watchpoint
+} from '../../../shared/operator'
 
 interface Props {
   environment: number
@@ -51,6 +58,29 @@ export default function Cockpit({ environment }: Props): React.JSX.Element {
     const iv = setInterval(() => void reloadSub(), 2000)
     return () => clearInterval(iv)
   }, [reloadSub])
+
+  // Watchpoint-register form: workflow + step labels plus the capture kinds.
+  // Registration goes through the same WatchpointRegistry validation as the
+  // control API's POST /watchpoints (malformed fields come back null).
+  const [wpWorkflow, setWpWorkflow] = useState('')
+  const [wpStep, setWpStep] = useState('')
+  const [wpKinds, setWpKinds] = useState<CaptureKind[]>(['envelope'])
+
+  const toggleKind = (kind: CaptureKind): void =>
+    setWpKinds((cur) => (cur.includes(kind) ? cur.filter((k) => k !== kind) : [...cur, kind]))
+
+  const registerWatchpoint = async (): Promise<void> => {
+    const wp = await window.localflow.registerWatchpoint(
+      environment,
+      wpWorkflow.trim(),
+      wpStep.trim(),
+      wpKinds
+    )
+    if (!wp) return
+    setWpWorkflow('')
+    setWpStep('')
+    await reloadSub()
+  }
 
   const grant = async (): Promise<void> => {
     await window.localflow.grantOperator(environment)
@@ -118,6 +148,42 @@ export default function Cockpit({ environment }: Props): React.JSX.Element {
       </div>
       <div className="watchpoints-list flex-none border-t border-white/[0.07] px-3 py-2 text-[11px]">
         <div className="mb-1 font-semibold text-gray-300">Watchpoints</div>
+        <div className="watchpoint-form mb-1 flex flex-wrap items-center gap-2">
+          <input
+            className="watchpoint-workflow w-28 rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-gray-200 outline-none focus:border-white/40"
+            placeholder="workflow"
+            value={wpWorkflow}
+            onChange={(e) => setWpWorkflow(e.target.value)}
+          />
+          <input
+            className="watchpoint-step w-28 rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-gray-200 outline-none focus:border-white/40"
+            placeholder="step"
+            value={wpStep}
+            onChange={(e) => setWpStep(e.target.value)}
+          />
+          {CAPTURE_KINDS.map((kind) => (
+            <label
+              key={kind}
+              className="watchpoint-kind flex cursor-pointer items-center gap-1 text-gray-400"
+              data-kind={kind}
+            >
+              <input
+                type="checkbox"
+                checked={wpKinds.includes(kind)}
+                onChange={() => toggleKind(kind)}
+              />
+              {kind}
+            </label>
+          ))}
+          <button
+            className="watchpoint-register cursor-pointer rounded border border-white/10 bg-white/[0.07] px-1.5 text-gray-200 hover:bg-white/[0.13] disabled:cursor-default disabled:opacity-40 disabled:hover:bg-white/[0.07]"
+            disabled={wpWorkflow.trim() === '' || wpStep.trim() === '' || wpKinds.length === 0}
+            onClick={() => void registerWatchpoint()}
+            onMouseDown={(e) => e.preventDefault()}
+          >
+            Register
+          </button>
+        </div>
         {watchpoints.length === 0 ? (
           <div className="text-gray-500">No watchpoints registered.</div>
         ) : (

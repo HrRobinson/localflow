@@ -6,6 +6,34 @@ updates:
     commit-message:
       prefix: chore
       include: scope
+    groups:
+      # The vite ecosystem moves in lockstep (shared plugin/peer contracts);
+      # bumping its members one PR at a time regularly leaves the pipeline in
+      # an incompatible intermediate state. vitest is included because it is
+      # vite-coupled (consumes the project's vite as a peer).
+      vite:
+        patterns:
+          - vite
+          - '@vitejs/*'
+          - electron-vite
+          - vitest
+          - '@vitest/*'
+    ignore:
+      # typescript majors >=7 are blocked: typescript-eslint's supported
+      # range pins typescript <6.1.0 upstream.
+      - dependency-name: typescript
+        versions: ['>=7']
+      # vite 8 (and the vite-8-only plugin-react 6) are blocked until
+      # electron-vite ships a stable release with vite ^8 peer support —
+      # then bump vite + plugin-react + electron-vite together manually.
+      - dependency-name: vite
+        versions: ['>=8']
+      - dependency-name: '@vitejs/plugin-react'
+        versions: ['>=6']
+      # @types/node is pinned to the Node major bundled by our Electron
+      # (24.x for Electron 43) — do not chase newer Node typings.
+      - dependency-name: '@types/node'
+        versions: ['>=25']
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: weekly }

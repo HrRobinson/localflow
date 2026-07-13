@@ -22,6 +22,7 @@ const LABELS: Record<KeyAction, string> = {
   'add-pane': 'Add companion pane',
   'group-pane': 'Group pane into session',
   'ungroup-pane': 'Ungroup pane',
+  'open-editor': 'Open in editor',
   'new-session': 'New session',
   'go-up': 'Back / shrink',
   'toggle-sidebar': 'Toggle sidebar',
@@ -62,7 +63,8 @@ const GROUPS: { title: string; actions: KeyAction[] }[] = [
       'close-pane',
       'add-pane',
       'group-pane',
-      'ungroup-pane'
+      'ungroup-pane',
+      'open-editor'
     ]
   },
   {

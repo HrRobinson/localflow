@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { mkdtempSync } from 'node:fs'
+import { existsSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -146,6 +146,22 @@ describe('SessionManager', () => {
     expect(spawnCalls[0].cwd).toBe('/some/project')
     expect(spawnCalls[0].args[0]).toBe('--settings')
     expect(spawnCalls[0].args[1]).toContain(`localflow-hooks-${info.id}.json`)
+  })
+
+  it('deleteSession removes the per-session hook-settings file', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'localflow-sm-'))
+    const mgrD = new SessionManager({
+      settingsDir: dir,
+      port: 9999,
+      token: 'tok',
+      spawnFn: () => new FakePty()
+    })
+    const info = mgrD.create('/p', claudeSpec, 1)
+    const file = join(dir, `localflow-hooks-${info.id}.json`)
+    expect(existsSync(file)).toBe(true)
+    mgrD.deleteSession(info.id)
+    expect(existsSync(file)).toBe(false)
+    expect(mgrD.list()).toEqual([])
   })
 
   it('create defaults name to the cwd basename', () => {
@@ -606,6 +622,45 @@ describe('SessionManager', () => {
       m.restart('ov-1') // resume path: resumeArgs then extraArgs
       expect(calls[0].args.slice(-4)).toEqual(['--resume', 'latest', '--foo', 'a b'])
       expect(calls[0].env.OLLAMA_HOST).toBe('http://127.0.0.1')
+    })
+
+    it('updateSpecEnv refreshes the env the next restart spawns with', () => {
+      const calls: { env: NodeJS.ProcessEnv }[] = []
+      const spawnFn: SpawnFn = (_bin, _args, opts) => {
+        calls.push({ env: opts.env })
+        return new FakePty()
+      }
+      const m = new SessionManager({
+        settingsDir: mkdtempSync(join(tmpdir(), 'localflow-se-')),
+        port: 1,
+        token: 't',
+        spawnFn
+      })
+      const spec: SpawnSpec = {
+        agentId: 'openclaw',
+        command: 'fake-openclaw',
+        resumeArgs: [],
+        hookAdapter: 'none',
+        env: { LOCALFLOW_ENDPOINT: 'http://127.0.0.1:1', LOCALFLOW_TOKEN: 'stale' }
+      }
+      m.restore('oc-1', '/tmp', spec, 'oc', 1)
+      // A live pty keeps its env; the merge only shapes the NEXT spawn.
+      m.updateSpecEnv('oc-1', { LOCALFLOW_TOKEN: 'fresh' })
+      m.restart('oc-1')
+      expect(calls[0].env.LOCALFLOW_TOKEN).toBe('fresh')
+      expect(calls[0].env.LOCALFLOW_ENDPOINT).toBe('http://127.0.0.1:1')
+    })
+
+    it('updateSpecEnv ignores unknown ids and browser panes', () => {
+      const m = new SessionManager({
+        settingsDir: mkdtempSync(join(tmpdir(), 'localflow-se2-')),
+        port: 1,
+        token: 't',
+        spawnFn: () => new FakePty()
+      })
+      m.updateSpecEnv('nope', { A: 'b' }) // must not throw
+      const b = m.createBrowser('http://localhost:3000', 1)
+      m.updateSpecEnv(b.id, { A: 'b' }) // must not throw either
     })
   })
 

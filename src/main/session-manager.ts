@@ -15,7 +15,7 @@ import { clampEnvironment } from '../shared/environment'
 import { normalizeHttpUrl } from '../shared/urls'
 import { transition } from './state-machine'
 import { hasHookAdapter, type HookAdapterKind } from '../shared/agents'
-import { buildHookInjection } from './hook-adapter'
+import { buildHookInjection, removeHookInjectionFiles } from './hook-adapter'
 import { ANSI_RE, extractPeekLines } from './peek'
 
 export interface PtyLike {
@@ -240,6 +240,18 @@ export class SessionManager {
     return { ...rec.info }
   }
 
+  /**
+   * Merges env overrides into a terminal session's stored spawn spec, taking
+   * effect on its next (re)spawn. Used to refresh injected credentials (e.g.
+   * a relaunched OpenClaw session's re-granted operator token) — a live pty
+   * keeps the env it was spawned with.
+   */
+  updateSpecEnv(id: string, env: Record<string, string>): void {
+    const rec = this.sessions.get(id)
+    if (!rec || rec.info.kind !== 'terminal') return
+    rec.spec = { ...rec.spec, env: { ...rec.spec.env, ...env } }
+  }
+
   /** Relaunch a dead session. `fresh` skips the agent's resume args. */
   restart(id: string, fresh = false): SessionInfo {
     const rec = this.sessions.get(id)
@@ -431,6 +443,9 @@ export class SessionManager {
     // A group that just lost its last member is gone too — there is no UI
     // for an empty "session" and nothing else references it by id.
     this.reapIfEmpty(rec.info.groupId)
+    // The session is gone for good — its per-session hook-settings files
+    // (written at spawn) have no further reader; remove them (best-effort).
+    removeHookInjectionFiles(this.opts.settingsDir, id)
     this.changedCbs.forEach((cb) => cb())
   }
 

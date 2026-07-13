@@ -18,15 +18,21 @@ its output, and record a watchpoint checkpoint.
 1. In localflow, grant operator access to an environment. This mints an
    endpoint (`LOCALFLOW_ENDPOINT`, the loopback control-API base URL) and a
    bearer token (`LOCALFLOW_TOKEN`) scoped to that one environment.
-2. Make both available to the OpenClaw agent process (v1 is manual): copy the
-   endpoint and token from the grant and set `LOCALFLOW_ENDPOINT` /
-   `LOCALFLOW_TOKEN` yourself, either as process env or under
-   `skills.entries.localflow.env` in `~/.openclaw/openclaw.json` (the config
-   block documented for per-skill env at docs.openclaw.ai).
+2. Make both available to the OpenClaw agent process. If
+   `~/.openclaw/openclaw.json` already exists, localflow does this for you: on
+   grant it writes the credentials into `skills.entries.localflow.env` (the
+   config block documented for per-skill env at docs.openclaw.ai), and on
+   revoke it removes exactly that entry again. It never creates the file and
+   never touches any other key; if the write fails (e.g. malformed JSON) the
+   grant still succeeds and the cockpit's action log notes the failure.
 
-   > Planned (not in v1): when localflow launches a managed OpenClaw session it
-   > will auto-write that `skills.entries.localflow.env` block for you and show
-   > exactly what it wrote. Until then, use the manual step above.
+   Sessions launched from localflow's own OpenClaw agent preset additionally
+   get `LOCALFLOW_ENDPOINT` / `LOCALFLOW_TOKEN` injected as process env.
+
+   Manual fallback (no config file, or you prefer to wire it yourself): copy
+   the endpoint and token from the grant and set `LOCALFLOW_ENDPOINT` /
+   `LOCALFLOW_TOKEN` yourself, either as process env or under that same
+   `skills.entries.localflow.env` block.
 
 3. The skill declares both env vars as required in `SKILL.md`'s
    `metadata.openclaw.requires.env`, and `node` in `requires.bins`.

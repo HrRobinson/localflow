@@ -35,7 +35,8 @@ a raw operator-agent preset); those are rejected with `invalid pane request`.
 `screenshot` returns a `{path}` on the target project's disk — reference that
 path in a following `prompt` to hand the image to a coding-agent terminal.
 
-<!-- Wiring (v1, manual): set LOCALFLOW_ENDPOINT + LOCALFLOW_TOKEN from the grant
-     as process env or under skills.entries.localflow.env in
-     ~/.openclaw/openclaw.json. Auto-writing that block from a managed OpenClaw
-     session is planned, not shipped in v1 — see README.md. -->
+<!-- Wiring: when ~/.openclaw/openclaw.json exists, localflow auto-writes the
+     grant's credentials into skills.entries.localflow.env on grant and removes
+     exactly that entry on revoke (it never creates the file or touches other
+     keys). Manual fallback: set LOCALFLOW_ENDPOINT + LOCALFLOW_TOKEN yourself,
+     as process env or under that same block — see README.md. -->

@@ -239,6 +239,7 @@ describe('DEFAULT_BINDINGS', () => {
       'swap-right',
       'enlarge-toggle',
       'close-pane',
+      'open-editor',
       'new-session',
       'go-up',
       'toggle-sidebar'
@@ -267,6 +268,16 @@ describe('DEFAULT_BINDINGS', () => {
     expect(DEFAULT_BINDINGS['new-session']).toBe('cmd+enter')
     expect(DEFAULT_BINDINGS['go-up']).toBe('cmd+escape')
     expect(DEFAULT_BINDINGS['toggle-sidebar']).toBe('cmd+b')
+  })
+
+  it('binds open-editor to cmd+e', () => {
+    expect(DEFAULT_BINDINGS['open-editor']).toBe('cmd+e')
+  })
+
+  it('has no duplicate combos among defaults', () => {
+    for (const [action, binding] of Object.entries(DEFAULT_BINDINGS)) {
+      expect(findConflicts(DEFAULT_BINDINGS, action as KeyAction, binding)).toEqual([])
+    }
   })
 })
 

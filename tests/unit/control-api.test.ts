@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { request } from 'node:http'
 import {
   handleRequest,
@@ -94,8 +94,44 @@ function deps(): { deps: ControlDeps; grants: OperatorGrantStore; writes: string
 describe('control-api router', () => {
   it('rejects a missing/invalid token with 403', async () => {
     const { deps: d } = deps()
-    const r = await handleRequest(d, 'GET', '/panes', 'nope', '')
-    expect(r.status).toBe(403)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const r = await handleRequest(d, 'GET', '/panes', 'nope', '')
+      expect(r.status).toBe(403)
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('warns on rejected auth with route and reason but never the token', async () => {
+    const { deps: d } = deps()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      await handleRequest(d, 'GET', '/panes', 'sekret-token-value', '')
+      expect(warn).toHaveBeenCalledTimes(1)
+      const rejected = warn.mock.calls[0].join(' ')
+      expect(rejected).toContain('GET /panes')
+      expect(rejected).toContain('unknown token')
+      expect(rejected).not.toContain('sekret')
+
+      warn.mockClear()
+      await handleRequest(d, 'POST', '/panes/a-term/prompt', '', '')
+      expect(warn.mock.calls[0].join(' ')).toContain('missing bearer token')
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('does not warn on an authorized request', async () => {
+    const { deps: d, grants } = deps()
+    const token = grants.grant(1)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      await handleRequest(d, 'GET', '/panes', token, '')
+      expect(warn).not.toHaveBeenCalled()
+    } finally {
+      warn.mockRestore()
+    }
   })
 
   it('lists only the granted environment’s panes', async () => {

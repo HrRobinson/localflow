@@ -724,6 +724,13 @@ export default function App(): React.JSX.Element {
               {groupedOrder(order, envSessions).map((run) => {
                 // Solo pane: render exactly as before grouping existed — same
                 // element, same position, zero DOM change.
+                // Known remount: grouping/ungrouping a SOLO pane flips it
+                // between this branch and the wrapped `group-enlarge-wrapper`
+                // branch below, changing its DOM ancestry — React unmounts
+                // and remounts its TerminalPane (xterm scrollback resets;
+                // the pty itself survives in main). Unlike the enlarge-level
+                // switch below (which is remount-safe by design), this
+                // transition is not — don't assume solo→grouped is seamless.
                 if (run.group === null) {
                   const s = envSessions.find((p) => p.id === run.ids[0])
                   return s ? renderPane(s) : null

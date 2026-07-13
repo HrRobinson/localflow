@@ -826,6 +826,11 @@ describe('SessionManager', () => {
       expect(mgr.list()[0].groupId).toBeUndefined()
     })
 
+    it('createGroup trims a padded name, like renameGroup', () => {
+      const group = mgr.createGroup('  Padded Name  ', 1)
+      expect(group.name).toBe('Padded Name')
+    })
+
     it('assignToGroup rejects cross-environment assignment', () => {
       const info = mgr.create('/p', claudeSpec, 1)
       const group = mgr.createGroup('g', 2)

@@ -484,7 +484,7 @@ export class SessionManager {
   createGroup(name: string, environment: number): SessionGroup {
     const group: SessionGroup = {
       id: randomUUID(),
-      name,
+      name: name.trim(),
       environment: clampEnvironment(environment)
     }
     this.groups.set(group.id, group)

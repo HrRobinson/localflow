@@ -849,6 +849,30 @@ describe('SessionManager', () => {
       expect(mgr.list().find((s) => s.id === b.id)?.groupId).toBe(group.id)
     })
 
+    it('reassigning the last member of a group to another group reaps the old one', () => {
+      const info = mgr.create('/p', claudeSpec, 1)
+      const groupA = mgr.createGroup('A', 1)
+      const groupB = mgr.createGroup('B', 1)
+      mgr.assignToGroup(info.id, groupA.id)
+      mgr.assignToGroup(info.id, groupB.id)
+      expect(mgr.listGroups()).toEqual([groupB])
+      expect(mgr.list().find((s) => s.id === info.id)?.groupId).toBe(groupB.id)
+    })
+
+    it('reassigning one of two members to another group keeps both groups', () => {
+      const a = mgr.create('/p1', claudeSpec, 1)
+      const b = mgr.create('/p2', claudeSpec, 1)
+      const groupA = mgr.createGroup('A', 1)
+      const groupB = mgr.createGroup('B', 1)
+      mgr.assignToGroup(a.id, groupA.id)
+      mgr.assignToGroup(b.id, groupA.id)
+      mgr.assignToGroup(a.id, groupB.id)
+      expect(mgr.listGroups()).toHaveLength(2)
+      expect(mgr.listGroups()).toEqual(expect.arrayContaining([groupA, groupB]))
+      expect(mgr.list().find((s) => s.id === a.id)?.groupId).toBe(groupB.id)
+      expect(mgr.list().find((s) => s.id === b.id)?.groupId).toBe(groupA.id)
+    })
+
     it('closeTerminal never touches groups', () => {
       const info = mgr.create('/p', claudeSpec, 1)
       const group = mgr.createGroup('g', 1)

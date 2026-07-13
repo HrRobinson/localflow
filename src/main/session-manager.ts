@@ -426,11 +426,17 @@ export class SessionManager {
     this.sessions.delete(id)
     // A group that just lost its last member is gone too — there is no UI
     // for an empty "session" and nothing else references it by id.
-    const groupId = rec.info.groupId
+    this.reapIfEmpty(rec.info.groupId)
+    this.changedCbs.forEach((cb) => cb())
+  }
+
+  /** Deletes a group once nothing references it any more — mirrors
+   * deleteSession's reap so ungrouping/reassigning can't strand an empty
+   * group. No-op when `groupId` is unset or the group still has members. */
+  private reapIfEmpty(groupId: string | undefined): void {
     if (groupId && ![...this.sessions.values()].some((r) => r.info.groupId === groupId)) {
       this.groups.delete(groupId)
     }
-    this.changedCbs.forEach((cb) => cb())
   }
 
   rename(id: string, name: string): SessionInfo | null {
@@ -504,15 +510,17 @@ export class SessionManager {
     if (groupId === null) {
       const oldGroupId = rec.info.groupId
       delete rec.info.groupId
-      // A group that just lost its last member is gone too — mirror
-      // deleteSession's reap so ungrouping can't strand an empty group.
-      if (oldGroupId && ![...this.sessions.values()].some((r) => r.info.groupId === oldGroupId)) {
-        this.groups.delete(oldGroupId)
-      }
+      this.reapIfEmpty(oldGroupId)
     } else {
       const group = this.groups.get(groupId)
       if (!group || group.environment !== rec.info.environment) return null
+      const oldGroupId = rec.info.groupId
       rec.info.groupId = groupId
+      // Moving a pane out of its old group can strand that group empty —
+      // reap it the same way ungrouping and deleteSession do.
+      if (oldGroupId && oldGroupId !== groupId) {
+        this.reapIfEmpty(oldGroupId)
+      }
     }
     this.recordActivity(paneId, 'moved')
     this.changedCbs.forEach((cb) => cb())

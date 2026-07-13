@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import TerminalPane from './components/TerminalPane'
 import BrowserPane from './components/BrowserPane'
 import GroupBox from './components/GroupBox'
+import Breadcrumb from './components/Breadcrumb'
 import Landing from './components/Landing'
 import Settings from './components/Settings'
 import Activity from './components/Activity'
@@ -47,7 +48,9 @@ export default function App(): React.JSX.Element {
   // Groups ("sessions" in UI copy) a pane can belong to; polled alongside
   // sessions in refresh() so the grid's grouping stays in sync.
   const [groups, setGroups] = useState<SessionGroup[]>([])
-  const [enlarged, setEnlarged] = useState<string | null>(null)
+  // `id` is always a PANE id, even at the 'session' level ("show every pane
+  // of id's group side by side") — the staircase never needs a bare groupId.
+  const [enlarged, setEnlarged] = useState<{ id: string; level: 'pane' | 'session' } | null>(null)
   // cmd+b hides the sidebar for a fullscreen-style focus mode.
   const [sidebarVisible, setSidebarVisible] = useState(true)
   // Which pane has keyboard focus, and the display order panes render in.
@@ -75,6 +78,19 @@ export default function App(): React.JSX.Element {
   const [themeNotice, setThemeNotice] = useState<string | null>(null)
   // Which environments currently have an operator, for the sidebar indicator.
   const [grantedEnvs, setGrantedEnvs] = useState<Set<number>>(new Set())
+  // Custom environment display names, keyed by environment number as a
+  // string — same source and format Sidebar uses for its own environment
+  // rows, reused here so the enlarge breadcrumb's envName matches exactly.
+  const [envNames, setEnvNames] = useState<Record<string, string>>({})
+  useEffect(() => {
+    let cancelled = false
+    void window.localflow.getEnvironmentNames().then((names) => {
+      if (!cancelled) setEnvNames(names)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
   useEffect(() => {
     let cancelled = false
     const tick = async (): Promise<void> => {
@@ -174,7 +190,7 @@ export default function App(): React.JSX.Element {
   // (deleteSession) or just went dead-but-still-listed (closeTerminal), it
   // can no longer hold keyboard focus or stay enlarged.
   const afterPaneGone = async (id: string): Promise<void> => {
-    setEnlarged((cur) => (cur === id ? null : cur))
+    setEnlarged((cur) => (cur?.id === id ? null : cur))
     setActiveId((cur) => {
       if (cur !== id) return cur
       const scoped = sessions.filter((s) => s.environment === environment)
@@ -189,7 +205,7 @@ export default function App(): React.JSX.Element {
     const target = sessions.find((s) => s.id === id)
     if (target) setEnvironment(target.environment)
     setView('environment')
-    setEnlarged(sessions.length > 1 ? id : null)
+    setEnlarged(sessions.length > 1 ? { id, level: 'pane' } : null)
     setActiveId(id)
   }
   // Entering the environment view without naming a session (sidebar nav item,
@@ -254,7 +270,7 @@ export default function App(): React.JSX.Element {
         : firstVisible
     )
     setEnlarged((cur) =>
-      cur !== null && sessions.find((s) => s.id === cur)?.environment === target ? cur : null
+      cur !== null && sessions.find((s) => s.id === cur.id)?.environment === target ? cur : null
     )
   }
   const moveToEnvironment = async (id: string, n: number): Promise<void> => {
@@ -272,7 +288,7 @@ export default function App(): React.JSX.Element {
     // focus from the list refresh() just fetched (not the `sessions` state,
     // which won't reflect this refresh until the next render) — by the time
     // we scope it to this environment, every moved sibling is correctly gone.
-    setEnlarged((cur) => (cur === id ? null : cur))
+    setEnlarged((cur) => (cur?.id === id ? null : cur))
     const list = await refresh()
     setActiveId((cur) => {
       if (cur !== id) return cur
@@ -338,14 +354,19 @@ export default function App(): React.JSX.Element {
     // Unmatched events are left completely untouched, falling through to
     // whichever terminal has focus.
     const runAction = (action: KeyAction): void => {
-      // go-up is available everywhere: shrink an enlarged pane, else leave
-      // the environment view entirely. Same shrink-else-home semantics as
-      // before this became a bound action.
+      // go-up is available everywhere: walk the enlarge staircase down one
+      // step at a time ('session' -> 'pane' -> null), and only once nothing
+      // is enlarged does it fall through to leaving the environment view
+      // entirely — the same go-home semantics as before this became a bound
+      // action, preserved verbatim for the already-shrunk case.
       if (action === 'go-up') {
         setEnlarged((cur) => {
-          if (cur !== null) return null
-          setView('home')
-          return cur
+          if (cur === null) {
+            setView('home')
+            return cur
+          }
+          if (cur.level === 'session') return { id: cur.id, level: 'pane' }
+          return null
         })
         return
       }
@@ -388,8 +409,16 @@ export default function App(): React.JSX.Element {
         void live.moveToEnvironment(activeId, Number(action.slice('move-to-environment-'.length)))
         return
       }
+      // Cycle: null -> {active, 'pane'} -> (grouped ? 'session' : null) ->
+      // null. A solo pane (no groupId) skips the session level entirely, so
+      // two toggles always return it to the plain grid.
       if (action === 'enlarge-toggle') {
-        setEnlarged((cur) => (cur === activeId ? null : activeId))
+        setEnlarged((cur) => {
+          if (cur === null) return { id: activeId, level: 'pane' }
+          if (cur.level === 'session') return null
+          const pane = live.sessions.find((s) => s.id === cur.id)
+          return pane?.groupId ? { id: cur.id, level: 'session' } : null
+        })
         return
       }
       if (action === 'close-pane') {
@@ -454,6 +483,31 @@ export default function App(): React.JSX.Element {
   const showEnvironment =
     view === 'environment' && sessions.some((s) => s.environment === environment)
   const envSessions = sessions.filter((s) => s.environment === environment)
+  // Environment label, same "N" / "N · customName" convention as Sidebar's
+  // own environment rows (fed by the same getEnvironmentNames map) — reused
+  // here for the enlarge breadcrumb's envName.
+  const envLabel = (n: number): string =>
+    `${n}${envNames[String(n)] ? ` · ${envNames[String(n)]}` : ''}`
+  // The pane/group the enlarge staircase currently shows, if any — derived
+  // once so the breadcrumb, sibling strip and the --enlarge-top chrome
+  // offset all read the same truth. enlarged.id is always a pane id, even at
+  // the 'session' level.
+  const enlargedPane = enlarged ? (sessions.find((s) => s.id === enlarged.id) ?? null) : null
+  const enlargedGroup =
+    enlargedPane?.groupId != null
+      ? (groups.find((g) => g.id === enlargedPane.groupId) ?? null)
+      : null
+  const enlargedGroupMembers = enlargedGroup
+    ? order
+        .map((id) => envSessions.find((s) => s.id === id))
+        .filter((s): s is SessionInfo => s != null && s.groupId === enlargedGroup.id)
+    : []
+  const showSiblingStrip = enlarged?.level === 'pane' && enlargedGroup !== null
+  // .enlarge-topbar and .sibling-strip are both a fixed 30px tall with an
+  // 8px gap to whatever comes next (see styles.css) — reserved here, in px,
+  // as --enlarge-top so .pane.enlarged / .group-enlarge-wrapper.enlarged
+  // never render underneath the chrome bar(s) sitting on top of them.
+  const enlargeTop = enlarged ? 12 + 38 + (showSiblingStrip ? 38 : 0) : 12
   // Shared by both the solo and grouped render paths below so a pane's
   // element is identical either way — grouping must not change a solo
   // pane's DOM (existing e2e selectors depend on that).
@@ -462,9 +516,13 @@ export default function App(): React.JSX.Element {
       <BrowserPane
         key={s.id}
         session={s}
-        enlarged={enlarged === s.id}
+        enlarged={enlarged?.level === 'pane' && enlarged.id === s.id}
         active={activeId === s.id}
-        onToggleEnlarge={() => setEnlarged((cur) => (cur === s.id ? null : s.id))}
+        onToggleEnlarge={() =>
+          setEnlarged((cur) =>
+            cur?.level === 'pane' && cur.id === s.id ? null : { id: s.id, level: 'pane' }
+          )
+        }
         onActivate={() => setActiveId(s.id)}
         onReopen={() => void restart(s.id, false)}
         onClose={() => void closeTerminal(s.id)}
@@ -473,9 +531,13 @@ export default function App(): React.JSX.Element {
       <TerminalPane
         key={s.id}
         session={s}
-        enlarged={enlarged === s.id}
+        enlarged={enlarged?.level === 'pane' && enlarged.id === s.id}
         active={activeId === s.id}
-        onToggleEnlarge={() => setEnlarged((cur) => (cur === s.id ? null : s.id))}
+        onToggleEnlarge={() =>
+          setEnlarged((cur) =>
+            cur?.level === 'pane' && cur.id === s.id ? null : { id: s.id, level: 'pane' }
+          )
+        }
         onActivate={() => setActiveId(s.id)}
         onRestart={(fresh) => void restart(s.id, fresh)}
         onClose={() => void closeTerminal(s.id)}
@@ -530,39 +592,106 @@ export default function App(): React.JSX.Element {
       )}
       {/* No content header: the sidebar IS the navigation (user decision
           2026-07-07); cmd+esc / nav items cover the old header buttons.
-          relative: positioning context for .pane.enlarged (absolute, inset
-          12px) so an enlarged pane fills only the content area and never
-          covers the sidebar. */}
-      <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+          relative: positioning context for .pane.enlarged and
+          .group-enlarge-wrapper.enlarged (absolute, inset 12px on every side
+          but top, which reserves --enlarge-top for the breadcrumb/sibling-
+          strip chrome above them) so an enlarge fills only the content area
+          and never covers the sidebar. */}
+      <main
+        className="relative flex min-h-0 min-w-0 flex-1 flex-col"
+        style={{ '--enlarge-top': `${enlargeTop}px` } as React.CSSProperties}
+      >
         {showEnvironment ? (
-          <div className="grid flex-1 auto-rows-[minmax(300px,1fr)] grid-cols-[repeat(auto-fit,minmax(460px,1fr))] gap-2.5 overflow-auto px-3 pt-3 pb-3">
-            {groupedOrder(order, envSessions).map((run) => {
-              // Solo pane: render exactly as before grouping existed — same
-              // element, same position, zero DOM change.
-              if (run.group === null) {
-                const s = envSessions.find((p) => p.id === run.ids[0])
-                return s ? renderPane(s) : null
-              }
-              const members = run.ids
-                .map((id) => envSessions.find((p) => p.id === id))
-                .filter((p): p is SessionInfo => p != null)
-              const group = groups.find((g) => g.id === run.group)
-              // Race guard: a group record not yet loaded (or emptied out)
-              // must not drop its panes — fall back to rendering them solo.
-              if (!group || members.length === 0) return members.map((s) => renderPane(s))
-              return (
-                <GroupBox
-                  key={group.id}
-                  group={group}
-                  status={worstStatus(members.map((m) => m.status))}
-                  onAddPane={() => {}}
-                  onEnlargeSession={() => {}}
-                >
-                  {members.map((s) => renderPane(s))}
-                </GroupBox>
-              )
-            })}
-          </div>
+          <>
+            <div className="grid flex-1 auto-rows-[minmax(300px,1fr)] grid-cols-[repeat(auto-fit,minmax(460px,1fr))] gap-2.5 overflow-auto px-3 pt-3 pb-3">
+              {groupedOrder(order, envSessions).map((run) => {
+                // Solo pane: render exactly as before grouping existed — same
+                // element, same position, zero DOM change.
+                if (run.group === null) {
+                  const s = envSessions.find((p) => p.id === run.ids[0])
+                  return s ? renderPane(s) : null
+                }
+                const members = run.ids
+                  .map((id) => envSessions.find((p) => p.id === id))
+                  .filter((p): p is SessionInfo => p != null)
+                const group = groups.find((g) => g.id === run.group)
+                // Race guard: a group record not yet loaded (or emptied out)
+                // must not drop its panes — fall back to rendering them solo.
+                if (!group || members.length === 0) return members.map((s) => renderPane(s))
+                // Always wrapped, regardless of enlarge state — the wrapper
+                // is `display: contents` (a no-op in the grid) until this
+                // group is session-enlarged, at which point CSS alone turns
+                // it into the absolutely-positioned surface. The member
+                // panes below never change tree position, so they never
+                // unmount/remount (xterm + pty state survives) switching in
+                // or out of the session level.
+                const isSessionEnlarged =
+                  enlarged?.level === 'session' && enlargedGroup?.id === group.id
+                return (
+                  <div
+                    key={group.id}
+                    className={'group-enlarge-wrapper' + (isSessionEnlarged ? ' enlarged' : '')}
+                  >
+                    <GroupBox
+                      group={group}
+                      status={worstStatus(members.map((m) => m.status))}
+                      onAddPane={() => {}}
+                      onEnlargeSession={() => {
+                        setEnlarged({ id: members[0].id, level: 'session' })
+                        setActiveId(members[0].id)
+                      }}
+                    >
+                      {members.map((s) => renderPane(s))}
+                    </GroupBox>
+                  </div>
+                )
+              })}
+            </div>
+            {enlarged && (
+              <div className="enlarge-chrome">
+                <div className="enlarge-topbar pane-header flex h-[30px] items-center gap-2 bg-white/[0.04] px-2.5 text-xs select-none">
+                  <Breadcrumb
+                    envName={envLabel(environment)}
+                    groupName={enlargedGroup?.name}
+                    paneName={enlarged.level === 'pane' ? enlargedPane?.name : undefined}
+                  />
+                  <button
+                    className="spin-up-pane cursor-pointer border-0 bg-transparent text-xs text-gray-400 hover:text-white"
+                    onClick={() => {}}
+                    onMouseDown={(e) => e.preventDefault()}
+                  >
+                    spin up a pane here
+                  </button>
+                </div>
+                {showSiblingStrip && (
+                  <div className="sibling-strip flex h-[30px] items-center gap-1 overflow-x-auto bg-white/[0.04] px-2.5">
+                    {enlargedGroupMembers.map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        data-pane-id={m.id}
+                        className={
+                          'sibling-tab flex cursor-pointer items-center gap-1.5 rounded border-0 bg-transparent px-2 py-1 text-xs text-gray-400 hover:text-white' +
+                          (m.id === enlarged.id ? ' active text-white' : '')
+                        }
+                        onClick={() => {
+                          setEnlarged({ id: m.id, level: 'pane' })
+                          setActiveId(m.id)
+                        }}
+                        onMouseDown={(e) => e.preventDefault()}
+                      >
+                        <span
+                          className="dot h-2 w-2 flex-none rounded-full"
+                          data-status={m.status}
+                        />
+                        {m.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
         ) : view === 'changes' ? (
           <Changes
             sessions={sessions}

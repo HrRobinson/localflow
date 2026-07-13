@@ -110,6 +110,13 @@ export interface SessionInfo {
    */
   needsYouSince?: number
   message?: string
+  /**
+   * True when the most recent spawn was a resume attempt (restart with
+   * fresh=false) and its pty instant-exited — the resumed conversation is
+   * likely gone. In-memory only (never persisted, like needsYouSince):
+   * cleared the moment any later restart actually spawns.
+   */
+  resumeFailed?: boolean
   /** Group ("session") this pane belongs to; absent = solo pane. */
   groupId?: string
 }

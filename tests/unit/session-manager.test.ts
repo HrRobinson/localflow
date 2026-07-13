@@ -203,6 +203,39 @@ describe('SessionManager', () => {
     expect(spawnCalls[1].args).toEqual([])
   })
 
+  it('instant exit after a resume restart sets resumeFailed', () => {
+    const info = mgr.create('/p', claudeSpec, 1)
+    ptys[0].exitCb?.()
+    mgr.restart(info.id)
+    ptys[1].exitCb?.()
+    expect(mgr.list().find((s) => s.id === info.id)?.resumeFailed).toBe(true)
+  })
+
+  it('instant exit of a fresh (first) launch does not set resumeFailed', () => {
+    const info = mgr.create('/p', claudeSpec, 1)
+    ptys[0].exitCb?.()
+    expect(mgr.list().find((s) => s.id === info.id)?.resumeFailed).toBeUndefined()
+  })
+
+  it('instant exit after a fresh restart does not set resumeFailed', () => {
+    const info = mgr.create('/p', claudeSpec, 1)
+    ptys[0].exitCb?.()
+    mgr.restart(info.id, true)
+    ptys[1].exitCb?.()
+    expect(mgr.list().find((s) => s.id === info.id)?.resumeFailed).toBeUndefined()
+  })
+
+  it('a later restart clears resumeFailed at spawn time', () => {
+    const info = mgr.create('/p', claudeSpec, 1)
+    ptys[0].exitCb?.()
+    mgr.restart(info.id)
+    ptys[1].exitCb?.()
+    expect(mgr.list().find((s) => s.id === info.id)?.resumeFailed).toBe(true)
+    const restarted = mgr.restart(info.id, true)
+    expect(restarted.resumeFailed).toBeUndefined()
+    expect(mgr.list().find((s) => s.id === info.id)?.resumeFailed).toBeUndefined()
+  })
+
   it('restore registers an exited placeholder without spawning', () => {
     const info = mgr.restore('saved-id', '/old/project', claudeSpec)
     expect(info).toEqual({

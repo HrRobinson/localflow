@@ -357,6 +357,10 @@ export class SessionManager {
         rec.info.message = tail
           ? `Exited right away — last output: \u201c${tail}\u201d`
           : 'Exited right away with no output.'
+        // Only a resume attempt that died instantly implicates the resumed
+        // conversation itself — a fresh start's instant exit is some other
+        // launch failure and must not steer the user away from resuming.
+        if (resume) rec.info.resumeFailed = true
       }
       this.setStatus(id, transition(this.status(id), 'pty-exit'))
       this.recordActivity(id, 'exited')

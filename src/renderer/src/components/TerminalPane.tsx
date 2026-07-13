@@ -168,6 +168,36 @@ export default function TerminalPane({
       </div>
       {alive ? (
         <div className="term-host min-h-0 flex-1 p-1" ref={hostRef} />
+      ) : session.resumeFailed ? (
+        // A resume attempt that instant-exited likely means the saved
+        // conversation is gone — lead with "Start fresh" (primary) and
+        // demote "Resume conversation" instead of presenting both as equals.
+        <div className="restart-overlay flex flex-1 flex-col items-center justify-center gap-3">
+          {session.message && (
+            <p className="m-0 max-w-[80%] px-4 text-center text-[13px] text-gray-400">
+              {session.message}
+            </p>
+          )}
+          <p className="m-0 max-w-[80%] px-4 text-center text-[13px] text-gray-400">
+            Resume failed instantly — this conversation may be gone.
+          </p>
+          <div className="flex gap-2.5">
+            <button
+              className="cursor-pointer rounded-md border-0 bg-gray-700 px-4 py-2 text-white"
+              onClick={() => onRestart(true)}
+              onMouseDown={(e) => e.preventDefault()}
+            >
+              Start fresh
+            </button>
+            <button
+              className="cursor-pointer rounded-md border border-white/20 bg-transparent px-4 py-2 text-gray-300"
+              onClick={() => onRestart(false)}
+              onMouseDown={(e) => e.preventDefault()}
+            >
+              Resume conversation
+            </button>
+          </div>
+        </div>
       ) : (
         <div className="restart-overlay flex flex-1 flex-col items-center justify-center gap-3">
           {session.message && (

@@ -1,5 +1,6 @@
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
+import { applyLoopbackTimeouts } from './server-timeouts'
 import type { PaneRegistry } from './pane-registry'
 import type { OperatorGrantStore } from './operator-grant'
 import type { SessionManager } from './session-manager'
@@ -55,7 +56,14 @@ export async function handleRequest(
   if (Buffer.byteLength(body) > CONTROL_MAX_BODY_BYTES)
     return json(400, { error: 'body too large' })
   const environment = deps.grants.environmentForToken(token)
-  if (environment === null) return json(403, { error: 'no grant' })
+  if (environment === null) {
+    // Auth rejections are worth a trace (a misconfigured or revoked operator
+    // otherwise fails silently), but NEVER log token material — not even a
+    // prefix or hash. Route + reason only.
+    const reason = token.length === 0 ? 'missing bearer token' : 'unknown token'
+    console.warn(`control-api: 403 ${method} ${url} — ${reason}`)
+    return json(403, { error: 'no grant' })
+  }
   deps.grants.markConnected(environment)
 
   const parsed = new URL(url, 'http://127.0.0.1')
@@ -205,6 +213,7 @@ export function startControlServer(deps: ControlDeps): Promise<ControlEndpoint> 
       })
     })
   })
+  applyLoopbackTimeouts(server)
   return new Promise((resolve) => {
     server.listen(0, '127.0.0.1', () => {
       const { port } = server.address() as AddressInfo

@@ -1,8 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { mkdtempSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { buildHookSettings, writeHookSettings } from '../../src/main/hook-settings'
+import {
+  buildHookSettings,
+  removeHookSettings,
+  writeHookSettings
+} from '../../src/main/hook-settings'
 
 describe('buildHookSettings', () => {
   it('creates a curl hook for each of the three events', () => {
@@ -38,6 +42,24 @@ describe('writeHookSettings', () => {
   it('throws when paneId attempts path traversal', () => {
     const dir = mkdtempSync(join(tmpdir(), 'localflow-test-'))
     expect(() => writeHookSettings(dir, '../escape', 1234, 'tok2')).toThrow()
+  })
+})
+
+describe('removeHookSettings', () => {
+  it('removes a previously written settings file', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'localflow-test-'))
+    const file = writeHookSettings(dir, 'p4', 1234, 'tok4')
+    removeHookSettings(dir, 'p4')
+    expect(existsSync(file)).toBe(false)
+  })
+
+  it('never throws: missing file and unsafe paneId are no-ops', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'localflow-test-'))
+    expect(() => removeHookSettings(dir, 'never-written')).not.toThrow()
+    // A traversal-shaped id was never writable, so removal must not touch it.
+    const outside = writeHookSettings(dir, 'p5', 1234, 'tok5')
+    expect(() => removeHookSettings(join(dir, 'sub'), '../escape')).not.toThrow()
+    expect(existsSync(outside)).toBe(true)
   })
 })
 

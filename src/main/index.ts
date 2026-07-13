@@ -192,7 +192,12 @@ app.whenReady().then(async () => {
       sendToWindow('operator:activity', env, entry)
     }
   })
-  app.on('before-quit', () => control.close())
+  app.on('before-quit', () => {
+    control.close()
+    // The scratch dir only holds handoff assets for live sessions; nothing in
+    // it is meaningful across a restart (captures themselves are in-memory).
+    captureStore.clear()
+  })
   const launchTracker = new OperatorLaunchTracker()
 
   ipcMain.on('browser:register', (_e, handle: string, webContentsId: number) => {

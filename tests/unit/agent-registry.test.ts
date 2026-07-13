@@ -165,6 +165,14 @@ describe('AgentRegistry', () => {
     expect(reg.hookAdapter('custom')).toBe('none')
   })
 
+  it('shell resolves the user SHELL, falling back to /bin/zsh, and carries no hook adapter', () => {
+    const reg = new AgentRegistry(tmpConfig(), async () => null)
+    const command = reg.commandFor('shell')
+    expect(command.length).toBeGreaterThan(0)
+    expect(command).toBe(process.env['SHELL'] || '/bin/zsh')
+    expect(reg.hookAdapter('shell')).toBe('none')
+  })
+
   it('resume args are agent-specific', () => {
     const reg = new AgentRegistry(tmpConfig(), async () => null)
     expect(reg.argsFor('claude', true)).toEqual(['--continue'])
@@ -178,7 +186,7 @@ describe('AgentRegistry', () => {
     const file = tmpConfig()
     const reg = new AgentRegistry(file, async (bin) => (bin === 'claude' ? '/found/claude' : null))
     const agents = await reg.list()
-    expect(agents.map((a) => a.id)).toEqual(['claude', 'codex', 'gemini', 'openclaw'])
+    expect(agents.map((a) => a.id)).toEqual(['claude', 'codex', 'gemini', 'openclaw', 'shell'])
     expect(agents.find((a) => a.id === 'claude')?.resolvedPath).toBe('/found/claude')
     expect(agents.find((a) => a.id === 'codex')?.resolvedPath).toBeNull()
     expect(agents.find((a) => a.id === 'claude')?.hasStatusFeed).toBe(true)
@@ -190,6 +198,11 @@ describe('AgentRegistry', () => {
     expect(agents.find((a) => a.id === 'codex')?.statusFidelity).toBe('done-only')
     expect(agents.find((a) => a.id === 'gemini')?.statusFidelity).toBe('full')
     expect(agents.find((a) => a.id === 'openclaw')?.statusFidelity).toBe('none')
+    expect(agents.find((a) => a.id === 'shell')?.statusFidelity).toBe('none')
+    // The shell command resolves to an absolute path (SHELL env or the
+    // /bin/zsh fallback) at construction time, so it's launchable without
+    // going through the injected which fn (which this test forces to null).
+    expect(agents.find((a) => a.id === 'shell')?.resolvedPath).not.toBeNull()
 
     reg.setPath('codex', '/somewhere/codex')
     expect(loadAgentConfig(file).agentPaths.codex).toBe('/somewhere/codex')

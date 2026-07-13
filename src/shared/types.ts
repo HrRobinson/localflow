@@ -7,7 +7,7 @@ export interface HookEvent {
   event: HookEventName
 }
 
-export type AgentId = 'claude' | 'codex' | 'gemini' | 'openclaw' | 'custom'
+export type AgentId = 'claude' | 'codex' | 'gemini' | 'openclaw' | 'shell' | 'custom'
 
 export type SessionKind = 'terminal' | 'browser'
 

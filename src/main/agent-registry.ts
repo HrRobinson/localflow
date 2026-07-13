@@ -43,7 +43,7 @@ function parseLastAgent(raw: unknown): LastAgent | null {
   return { agentId: agentId as AgentId }
 }
 
-const KNOWN_AGENT_IDS: AgentId[] = ['claude', 'codex', 'gemini', 'openclaw', 'custom']
+const KNOWN_AGENT_IDS: AgentId[] = ['claude', 'codex', 'gemini', 'openclaw', 'shell', 'custom']
 
 function parseAgentOverride(raw: unknown): AgentOverride | null {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null
@@ -180,6 +180,13 @@ export class AgentRegistry {
     if (agentId === 'custom') return customCommand ?? ''
     if (agentId === 'claude' && this.claudeBinOverride) return this.claudeBinOverride
     if (agentId === 'openclaw' && this.openclawBinOverride) return this.openclawBinOverride
+    // Shell has no fixed binary name to resolve via PATH — it's always the
+    // user's own login shell. Resolve it here (main-side) rather than in the
+    // preset table, which src/shared/agents.ts keeps env-free because the
+    // renderer imports it too.
+    if (agentId === 'shell') {
+      return this.config.agentPaths[agentId] ?? process.env['SHELL'] ?? '/bin/zsh'
+    }
     return this.config.agentPaths[agentId] ?? presetFor(agentId)?.bin ?? ''
   }
 

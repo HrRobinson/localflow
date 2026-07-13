@@ -38,7 +38,7 @@ if (process.env['LOCALFLOW_USER_DATA']) {
   app.setPath('userData', process.env['LOCALFLOW_USER_DATA'])
 }
 
-const VALID_AGENTS: AgentId[] = ['claude', 'codex', 'gemini', 'openclaw', 'custom']
+const VALID_AGENTS: AgentId[] = ['claude', 'codex', 'gemini', 'openclaw', 'shell', 'custom']
 
 let win: BrowserWindow | null = null
 let managerRef: SessionManager | null = null

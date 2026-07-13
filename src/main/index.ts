@@ -310,7 +310,9 @@ app.whenReady().then(async () => {
     manager.setEnvironment(id, environment)
   )
   ipcMain.handle('group:create', (_e, name: string, environment: number) =>
-    manager.createGroup(typeof name === 'string' ? name : '', environment)
+    typeof name === 'string' && name.trim().length > 0
+      ? manager.createGroup(name, environment)
+      : null
   )
   ipcMain.handle('group:rename', (_e, id: string, name: string) =>
     typeof id === 'string' && typeof name === 'string' ? manager.renameGroup(id, name) : null

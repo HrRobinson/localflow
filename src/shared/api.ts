@@ -43,8 +43,8 @@ export interface LocalflowApi {
   renameSession(id: string, name: string): Promise<SessionInfo | null>
   /** Moves a session to environment 1-9 (clamped). Null if the id is unknown. */
   setEnvironment(id: string, environment: number): Promise<SessionInfo | null>
-  /** Creates a group ("session") on the given environment. */
-  createGroup(name: string, environment: number): Promise<SessionGroup>
+  /** Creates a group ("session") on the given environment. Null if name is empty/whitespace-only. */
+  createGroup(name: string, environment: number): Promise<SessionGroup | null>
   /** Renames a group; empty/whitespace name is a no-op. Null if the id is unknown. */
   renameGroup(id: string, name: string): Promise<SessionGroup | null>
   /** Sets or clears (`groupId: null`) a pane's group. Null if the pane or group is unknown, or their environments differ. */

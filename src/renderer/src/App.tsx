@@ -91,7 +91,11 @@ export default function App(): React.JSX.Element {
     }
   }, [sessions])
 
-  const refresh = useCallback(async () => {
+  // Returns the freshly fetched session list so callers that need
+  // post-refresh truth (e.g. moveToEnvironment) don't have to read it back
+  // out of the `sessions` state closure, which won't reflect this refresh
+  // until the next render.
+  const refresh = useCallback(async (): Promise<SessionInfo[]> => {
     const [list, groupList] = await Promise.all([
       window.localflow.listSessions(),
       window.localflow.listGroups()
@@ -104,6 +108,7 @@ export default function App(): React.JSX.Element {
         list.map((s) => s.id)
       )
     )
+    return list
   }, [])
 
   useEffect(() => {
@@ -254,10 +259,26 @@ export default function App(): React.JSX.Element {
   }
   const moveToEnvironment = async (id: string, n: number): Promise<void> => {
     await window.localflow.setEnvironment(id, n)
-    // The pane leaves the visible grid (spec: focus stays behind): re-scope
-    // focus/enlarge exactly like a closed pane. afterPaneGone ends with its
-    // own refresh(), so no separate refresh is needed here.
-    await afterPaneGone(id)
+    // The pane leaves the visible grid (spec: focus stays behind), but unlike
+    // close/delete it's still a live session — just on another environment.
+    // For a grouped pane, the whole group moved with it (session-manager
+    // setEnvironment drags every member along synchronously). afterPaneGone
+    // can't be reused as-is here: it computes next-focus from the pre-refresh
+    // `sessions` closure, which for delete/close still holds the pane being
+    // removed (needed to recover its groupId) but here would still show the
+    // moved siblings as belonging to this environment (stale), so
+    // nextFocusAfterClose's sibling-preference would land focus on a pane
+    // that has actually left the grid. So: refresh FIRST, and compute next
+    // focus from the list refresh() just fetched (not the `sessions` state,
+    // which won't reflect this refresh until the next render) — by the time
+    // we scope it to this environment, every moved sibling is correctly gone.
+    setEnlarged((cur) => (cur === id ? null : cur))
+    const list = await refresh()
+    setActiveId((cur) => {
+      if (cur !== id) return cur
+      const scoped = list.filter((s) => s.environment === environment)
+      return nextFocusAfterClose(id, order, scoped)
+    })
   }
   // The Overview "waiting Nm" fragment jumps to attention exactly like cmd+u:
   // start from the top of the needs-you ring (activeId null) on the current

@@ -3,6 +3,7 @@ import TerminalPane from './components/TerminalPane'
 import BrowserPane from './components/BrowserPane'
 import GroupBox from './components/GroupBox'
 import Breadcrumb from './components/Breadcrumb'
+import AddPanePicker from './components/AddPanePicker'
 import Landing from './components/Landing'
 import Settings from './components/Settings'
 import Activity from './components/Activity'
@@ -22,7 +23,13 @@ import {
 import { clampEnvironment, worstStatus } from '../../shared/environment'
 import { groupedOrder } from '../../shared/group-order'
 import { nextFocusAfterClose, nextEnlargedAfterGone } from '../../shared/close-focus'
-import type { AgentId, SessionGroup, SessionInfo } from '../../shared/types'
+import type {
+  AddPaneRequest,
+  AgentId,
+  AgentInfo,
+  SessionGroup,
+  SessionInfo
+} from '../../shared/types'
 import {
   DEFAULT_THEME,
   themeToCssVars,
@@ -105,6 +112,22 @@ export default function App(): React.JSX.Element {
       cancelled = true
     }
   }, [])
+  // Agents for the add-pane picker (fetched once; Landing keeps its own copy
+  // for the same list — separate concerns, no shared cache needed here).
+  const [agents, setAgents] = useState<AgentInfo[]>([])
+  useEffect(() => {
+    let cancelled = false
+    void window.localflow.listAgents().then((list) => {
+      if (!cancelled) setAgents(list)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+  // The source pane a companion is being added next to; non-null opens the
+  // AddPanePicker modal. Opened from GroupBox's `+`, the enlarge chrome's
+  // "spin up a pane here", or the add-pane keybinding on the focused pane.
+  const [addPaneFor, setAddPaneFor] = useState<string | null>(null)
   useEffect(() => {
     let cancelled = false
     const tick = async (): Promise<void> => {
@@ -180,6 +203,18 @@ export default function App(): React.JSX.Element {
     if (created) {
       setView('environment')
       setEnlarged(null)
+      setActiveId(created.id)
+      await refresh()
+    }
+  }
+  // Adds a companion pane next to `sourceId` (main derives cwd/environment
+  // from the source's own record — never trusted from here). Closes the
+  // picker regardless of outcome; a null result (unknown source, invalid
+  // request) is simply a no-op beyond that.
+  const addPane = async (sourceId: string, req: AddPaneRequest): Promise<void> => {
+    setAddPaneFor(null)
+    const created = await window.localflow.addPane(sourceId, req)
+    if (created) {
       setActiveId(created.id)
       await refresh()
     }
@@ -446,6 +481,10 @@ export default function App(): React.JSX.Element {
         void live.closeTerminal(activeId)
         return
       }
+      if (action === 'add-pane') {
+        setAddPaneFor(activeId)
+        return
+      }
 
       // Directional focus/swap moves are a no-op while a pane is enlarged —
       // there is nothing else visible to move to.
@@ -659,7 +698,7 @@ export default function App(): React.JSX.Element {
                     <GroupBox
                       group={group}
                       status={worstStatus(members.map((m) => m.status))}
-                      onAddPane={() => {}}
+                      onAddPane={() => setAddPaneFor(members[0].id)}
                       onEnlargeSession={() => {
                         setEnlarged({ id: members[0].id, level: 'session' })
                         setActiveId(members[0].id)
@@ -681,7 +720,7 @@ export default function App(): React.JSX.Element {
                   />
                   <button
                     className="spin-up-pane cursor-pointer border-0 bg-transparent text-xs text-gray-400 hover:text-white"
-                    onClick={() => {}}
+                    onClick={() => setAddPaneFor(enlarged.id)}
                     onMouseDown={(e) => e.preventDefault()}
                   >
                     spin up a pane here
@@ -744,6 +783,13 @@ export default function App(): React.JSX.Element {
           />
         )}
       </main>
+      {addPaneFor && (
+        <AddPanePicker
+          agents={agents}
+          onCancel={() => setAddPaneFor(null)}
+          onPick={(req) => void addPane(addPaneFor, req)}
+        />
+      )}
     </div>
   )
 }

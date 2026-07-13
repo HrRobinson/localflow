@@ -1,5 +1,6 @@
 import type {
   ActivityEntry,
+  AddPaneRequest,
   AgentId,
   AgentInfo,
   AgentOverride,
@@ -51,6 +52,13 @@ export interface LocalflowApi {
   assignToGroup(paneId: string, groupId: string | null): Promise<SessionInfo | null>
   /** All groups. */
   listGroups(): Promise<SessionGroup[]>
+  /**
+   * Adds a companion pane next to `sourcePaneId`: reuses its group, or wraps
+   * a solo source into a fresh group named after it. cwd/environment are
+   * derived from the source pane's own record, never from this call. Null
+   * for an unknown source or malformed request.
+   */
+  addPane(sourcePaneId: string, req: AddPaneRequest): Promise<SessionInfo | null>
   /** Creates a browser pane on the given environment. Null for invalid URLs. */
   createBrowserSession(url: string, environment?: number): Promise<SessionInfo | null>
   /** Persists a browser pane's current URL (follows navigation). */

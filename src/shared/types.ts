@@ -70,6 +70,14 @@ export interface AgentOverride {
   env?: Record<string, string>
 }
 
+/**
+ * Request to spin up a companion pane next to an existing one (M5 Task 8).
+ * Shared (not main-only) because both the IPC boundary (api.ts/preload) and
+ * the renderer's picker need the shape.
+ */
+export type AddPaneRequest =
+  { kind: 'terminal'; agentId: AgentId; customCommand?: string } | { kind: 'browser'; url: string }
+
 /** UI: "session". A parent node owning ≥1 panes in one environment (M5). */
 export interface SessionGroup {
   id: string

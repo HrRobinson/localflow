@@ -18,6 +18,7 @@ import { describeTool, gateBin } from './tools'
 import { loadEditorCommand } from './editor-config'
 import { splitCommandLine } from '../shared/args'
 import { PaneRegistry } from './pane-registry'
+import { addCompanionPane, type AddPaneRequest } from './pane-ops'
 import { OperatorGrantStore } from './operator-grant'
 import { credentialEnv, OperatorLaunchTracker } from './operator-launch'
 import { startControlServer } from './control-api'
@@ -323,6 +324,20 @@ app.whenReady().then(async () => {
       : null
   )
   ipcMain.handle('group:list', () => manager.listGroups())
+  ipcMain.handle('group:addPane', (_e, sourcePaneId: string, req: AddPaneRequest) => {
+    // Boundary-validate the request shape — the renderer is not trusted with
+    // it (same posture as session:create's VALID_AGENTS check).
+    if (typeof sourcePaneId !== 'string' || typeof req !== 'object' || req === null) return null
+    if (req.kind === 'terminal') {
+      if (!VALID_AGENTS.includes(req.agentId)) return null
+      if (req.agentId === 'custom' && !req.customCommand?.trim()) return null
+    } else if (req.kind === 'browser') {
+      if (typeof req.url !== 'string') return null
+    } else {
+      return null
+    }
+    return addCompanionPane(manager, specFor, sourcePaneId, req)
+  })
   ipcMain.handle('session:createBrowser', (_e, url: string, environment?: number) => {
     // Validate at the boundary; manager.createBrowser re-validates (throws),
     // so reject cleanly here instead of surfacing an exception to the bridge.

@@ -1,6 +1,12 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import type { LocalflowApi } from '../shared/api'
-import type { ActivityEntry, AgentId, AgentOverride, SessionStatus } from '../shared/types'
+import type {
+  ActivityEntry,
+  AddPaneRequest,
+  AgentId,
+  AgentOverride,
+  SessionStatus
+} from '../shared/types'
 import type { ActivityEntry as OperatorActivityEntry } from '../shared/operator'
 import type { KeyAction } from '../shared/keybindings'
 import type { Theme } from '../shared/theme'
@@ -20,6 +26,8 @@ const api: LocalflowApi = {
   assignToGroup: (paneId: string, groupId: string | null) =>
     ipcRenderer.invoke('group:assign', paneId, groupId),
   listGroups: () => ipcRenderer.invoke('group:list'),
+  addPane: (sourcePaneId: string, req: AddPaneRequest) =>
+    ipcRenderer.invoke('group:addPane', sourcePaneId, req),
   createBrowserSession: (url: string, environment?: number) =>
     ipcRenderer.invoke('session:createBrowser', url, environment),
   setSessionUrl: (id: string, url: string) => ipcRenderer.invoke('session:setUrl', id, url),

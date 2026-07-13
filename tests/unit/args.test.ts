@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { splitArgs } from '../../src/shared/args'
+import { splitArgs, splitCommandLine } from '../../src/shared/args'
 
 describe('splitArgs', () => {
   it('splits on runs of whitespace', () => {
@@ -30,5 +30,46 @@ describe('splitArgs', () => {
     // the backslash stays a literal character and the quote after it still
     // toggles quoting — so "a\"b" parses as a\b, not a"b.
     expect(splitArgs('--x "a\\"b"')).toEqual(['--x', 'a\\b'])
+  })
+})
+
+describe('splitCommandLine', () => {
+  it('splits plain words on whitespace', () => {
+    expect(splitCommandLine('code')).toEqual(['code'])
+    expect(splitCommandLine('code -n')).toEqual(['code', '-n'])
+    expect(splitCommandLine('code   -n')).toEqual(['code', '-n'])
+  })
+
+  it('keeps double-quoted spans (spaces included) as one token', () => {
+    expect(
+      splitCommandLine('"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" -n')
+    ).toEqual(['/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code', '-n'])
+  })
+
+  it('keeps single-quoted spans as one token', () => {
+    expect(splitCommandLine("'/opt/my editor/bin/edit' --wait")).toEqual([
+      '/opt/my editor/bin/edit',
+      '--wait'
+    ])
+  })
+
+  it('joins quoted spans adjacent to bare text, shell-style', () => {
+    expect(splitCommandLine('pre"fix mid"post')).toEqual(['prefix midpost'])
+    expect(splitArgs('pre"fix mid"post')).toEqual(['prefix midpost'])
+  })
+
+  it('returns null on an unbalanced quote (where splitArgs flushes)', () => {
+    expect(splitCommandLine('code "-n')).toBeNull()
+    expect(splitCommandLine("code '-n")).toBeNull()
+    expect(splitCommandLine('"')).toBeNull()
+  })
+
+  it('returns no tokens for empty input', () => {
+    expect(splitCommandLine('')).toEqual([])
+    expect(splitCommandLine('   ')).toEqual([])
+  })
+
+  it('supports empty quoted arguments, like splitArgs', () => {
+    expect(splitCommandLine('--flag ""')).toEqual(['--flag', ''])
   })
 })

@@ -1,5 +1,5 @@
-import { mkdirSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { isAbsolute, join, relative, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { Capture } from '../shared/operator'
 import type { WatchpointRegistry } from './watchpoints'
@@ -73,7 +73,28 @@ export class CaptureStore {
     const cap = this.byEnv.get(environment)?.get(id)
     if (!cap) return null
     cap.halted = false
+    this.pruneScreenshot(cap)
     return cap.resumeToken ?? null
+  }
+
+  /** Remove the whole scratch dir (every env subdir); called on app quit. */
+  clear(): void {
+    rmSync(this.baseDir, { recursive: true, force: true })
+  }
+
+  /**
+   * Delete a resolved capture's screenshot — the scratch file has served its
+   * purpose once the user has acted on the capture. screenshotPath arrives
+   * from the client (ingest body), so only paths inside this store's own
+   * scratch dir are ever deleted; anything else is left untouched.
+   */
+  private pruneScreenshot(cap: Capture): void {
+    const path = cap.screenshotPath
+    if (!path) return
+    const rel = relative(resolve(this.baseDir), resolve(path))
+    if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) return
+    rmSync(path, { force: true })
+    cap.screenshotPath = undefined
   }
 
   private byEnvList(environment: number): Capture[] {

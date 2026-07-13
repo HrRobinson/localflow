@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { handleRequest, clampLines, type ControlDeps } from '../../src/main/control-api'
+import { request } from 'node:http'
+import {
+  handleRequest,
+  clampLines,
+  startControlServer,
+  type ControlDeps
+} from '../../src/main/control-api'
 import { PaneRegistry } from '../../src/main/pane-registry'
 import { OperatorGrantStore } from '../../src/main/operator-grant'
 import type { SessionInfo } from '../../src/shared/types'
@@ -131,6 +137,58 @@ describe('control-api router', () => {
     expect(Buffer.byteLength(multibyte)).toBeGreaterThan(CONTROL_MAX_BODY_BYTES)
     const r = await handleRequest(d, 'GET', '/panes', token, multibyte)
     expect(r.status).toBe(400)
+  })
+})
+
+describe('control-api streaming server', () => {
+  it('rejects an oversize body with the same 400 JSON shape as the router', async () => {
+    const { deps: d, grants } = deps()
+    const token = grants.grant(1)
+    const endpoint = await startControlServer(d)
+    try {
+      const oversize = Buffer.alloc(CONTROL_MAX_BODY_BYTES + 1, 'x')
+      const response = await new Promise<{ status: number; type: string; body: string }>(
+        (resolve, reject) => {
+          let settled = false
+          const req = request(
+            {
+              host: '127.0.0.1',
+              port: endpoint.port,
+              method: 'POST',
+              path: '/panes/a-term/prompt',
+              headers: { authorization: `Bearer ${token}` }
+            },
+            (res) => {
+              const chunks: Buffer[] = []
+              res.on('data', (c: Buffer) => chunks.push(c))
+              res.on('end', () => {
+                settled = true
+                resolve({
+                  status: res.statusCode ?? 0,
+                  type: String(res.headers['content-type']),
+                  body: Buffer.concat(chunks).toString('utf8')
+                })
+              })
+            }
+          )
+          // The server destroys the request mid-stream once the cap is hit, so
+          // a write-side reset AFTER the response arrives is expected — only an
+          // error before the response completes should fail the test.
+          req.on('error', (err) => {
+            if (!settled) {
+              settled = true
+              reject(err)
+            }
+          })
+          req.end(oversize)
+        }
+      )
+      expect(response.status).toBe(400)
+      expect(response.type).toContain('application/json')
+      expect(JSON.parse(response.body)).toEqual({ error: 'body too large' })
+    } finally {
+      endpoint.close()
+    }
   })
 })
 

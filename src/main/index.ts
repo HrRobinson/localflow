@@ -15,7 +15,8 @@ import { loadEnvironmentNames } from './environment-names'
 import { installWebviewPolicy } from './webview-policy'
 import { gitStatus, gitDiff } from './git'
 import { describeTool, gateBin } from './tools'
-import { loadEditorCommand, splitCommandLine } from './editor-config'
+import { loadEditorCommand } from './editor-config'
+import { splitCommandLine } from '../shared/args'
 import { PaneRegistry } from './pane-registry'
 import { OperatorGrantStore } from './operator-grant'
 import { credentialEnv, OperatorLaunchTracker } from './operator-launch'
@@ -191,7 +192,12 @@ app.whenReady().then(async () => {
       sendToWindow('operator:activity', env, entry)
     }
   })
-  app.on('before-quit', () => control.close())
+  app.on('before-quit', () => {
+    control.close()
+    // The scratch dir only holds handoff assets for live sessions; nothing in
+    // it is meaningful across a restart (captures themselves are in-memory).
+    captureStore.clear()
+  })
   const launchTracker = new OperatorLaunchTracker()
 
   ipcMain.on('browser:register', (_e, handle: string, webContentsId: number) => {

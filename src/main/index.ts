@@ -1,10 +1,11 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
-import { join } from 'node:path'
-import { existsSync, writeFileSync } from 'node:fs'
+import { join, basename } from 'node:path'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { spawn } from 'node:child_process'
 import type { AgentId, AgentOverride, AgentOverrideResult } from '../shared/types'
 import { clampEnvironment } from '../shared/environment'
 import { normalizeHttpUrl, isHttpUrl } from '../shared/urls'
+import { parseSessionTemplates, type SessionTemplate } from '../shared/templates'
 import { startHookServer } from './hook-server'
 import { SessionManager, type SpawnSpec } from './session-manager'
 import { loadSavedState, saveState } from './persistence'
@@ -40,6 +41,24 @@ if (process.env['LOCALFLOW_USER_DATA']) {
 }
 
 const VALID_AGENTS: AgentId[] = ['claude', 'codex', 'gemini', 'openclaw', 'shell', 'custom']
+
+/**
+ * Reads config.json's `sessionTemplates` fresh on every call (same posture
+ * as loadEditorCommand in editor-config.ts) — hand edits apply without a
+ * restart. Never throws: a missing/corrupt file or malformed array is [].
+ */
+function loadSessionTemplates(configFile: string): SessionTemplate[] {
+  try {
+    const data: unknown = JSON.parse(readFileSync(configFile, 'utf8'))
+    const raw =
+      typeof data === 'object' && data !== null
+        ? (data as { sessionTemplates?: unknown }).sessionTemplates
+        : undefined
+    return parseSessionTemplates(raw)
+  } catch {
+    return []
+  }
+}
 
 let win: BrowserWindow | null = null
 let managerRef: SessionManager | null = null
@@ -346,6 +365,55 @@ app.whenReady().then(async () => {
   })
   ipcMain.handle('session:setUrl', (_e, id: string, url: string) =>
     typeof url === 'string' ? manager.setUrl(id, url) : null
+  )
+  ipcMain.handle('templates:list', () => loadSessionTemplates(join(userData, 'config.json')))
+  ipcMain.handle(
+    'templates:create',
+    async (_e, name: string, cwd: string | undefined, environment: number) => {
+      if (typeof name !== 'string') return null
+      const template = loadSessionTemplates(join(userData, 'config.json')).find(
+        (t) => t.name === name
+      )
+      if (!template) return null
+      // Dir-picking logic copied verbatim from session:create — dialog
+      // unless under the e2e harness, which passes an explicit cwd.
+      let dir = process.env['LOCALFLOW_E2E'] === '1' ? cwd : undefined
+      if (!dir) {
+        const result = await dialog.showOpenDialog(win!, {
+          properties: ['openDirectory', 'createDirectory'],
+          title: 'Choose a project folder for the new session'
+        })
+        if (result.canceled || result.filePaths.length === 0) return null
+        dir = result.filePaths[0]
+      }
+      // Skip panes whose agent binary is missing rather than failing the
+      // whole template; 'shell' has no fixed binary to detect, so it's
+      // always considered launchable (mirrors AgentRegistry.commandFor).
+      const agentInfos = await registry.list()
+      const resolvedByAgent = new Map(agentInfos.map((a) => [a.id, a.resolvedPath]))
+      const launchable = template.panes.filter(
+        (pane) =>
+          pane.kind === 'browser' ||
+          pane.agentId === 'shell' ||
+          !!resolvedByAgent.get(pane.agentId ?? 'claude')
+      )
+      if (launchable.length === 0) return null
+      // Panes are created directly (create/createBrowser + assignToGroup)
+      // rather than via addCompanionPane, which derives cwd/environment from
+      // an existing source pane — there isn't one yet for the first pane of
+      // a brand-new template group.
+      const resolvedDir = dir
+      const group = manager.createGroup(basename(resolvedDir), environment)
+      return launchable.map((pane) => {
+        const created =
+          pane.kind === 'terminal'
+            ? manager.create(resolvedDir, specFor(pane.agentId ?? 'claude'), environment)
+            : // parseSessionTemplates only ever emits a browser pane with a
+              // validated url, so this is never actually undefined.
+              manager.createBrowser(pane.url!, environment)
+        return manager.assignToGroup(created.id, group.id) ?? created
+      })
+    }
   )
   ipcMain.handle('git:status', (_e, id: string) => {
     // cwd is resolved from the session record here — NEVER trusted from the

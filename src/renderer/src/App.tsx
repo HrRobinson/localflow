@@ -211,6 +211,18 @@ export default function App(): React.JSX.Element {
       await refresh()
     }
   }
+  // Same landing spot as createSession/createBrowser: jump into the
+  // environment view on the first pane the template produced (main derives
+  // cwd via the folder picker, so there's nothing else to pass through).
+  const createTemplate = async (name: string): Promise<void> => {
+    const created = await window.localflow.createTemplate(name, undefined, environment)
+    if (created && created.length > 0) {
+      setView('environment')
+      setEnlarged(null)
+      setActiveId(created[0].id)
+      await refresh()
+    }
+  }
   // Adds a companion pane next to `sourceId` (main derives cwd/environment
   // from the source's own record — never trusted from here). Closes the
   // picker regardless of outcome; a null result (unknown source, invalid
@@ -815,6 +827,7 @@ export default function App(): React.JSX.Element {
             sessions={sessions}
             onCreate={(agentId, cmd) => void createSession(agentId, cmd)}
             onCreateBrowser={(url) => void createBrowser(url)}
+            onCreateTemplate={(name) => void createTemplate(name)}
             onOpen={openSession}
             onResume={(id, fresh) => void restart(id, fresh)}
             onDelete={(id) => void deleteSession(id)}

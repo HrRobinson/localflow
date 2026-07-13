@@ -30,6 +30,9 @@ const api: LocalflowApi = {
     ipcRenderer.invoke('group:addPane', sourcePaneId, req),
   createBrowserSession: (url: string, environment?: number) =>
     ipcRenderer.invoke('session:createBrowser', url, environment),
+  listTemplates: () => ipcRenderer.invoke('templates:list'),
+  createTemplate: (name: string, cwd: string | undefined, environment: number) =>
+    ipcRenderer.invoke('templates:create', name, cwd, environment),
   setSessionUrl: (id: string, url: string) => ipcRenderer.invoke('session:setUrl', id, url),
   openExternal: (url: string) => ipcRenderer.send('shell:openExternal', url),
   listSessions: () => ipcRenderer.invoke('session:list'),

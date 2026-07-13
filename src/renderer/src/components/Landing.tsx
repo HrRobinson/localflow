@@ -1,15 +1,30 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AgentId, AgentInfo, SessionInfo } from '../../../shared/types'
+import type { SessionTemplate } from '../../../shared/templates'
 import { AGENT_PRESETS } from '../../../shared/agents'
 import { normalizeHttpUrl } from '../../../shared/urls'
 import { deriveOverviewStats } from '../lib/overview-stats'
 import { humanDuration } from '../lib/activity-format'
 import ApproveButton from './ApproveButton'
 
+// Same card look as Settings' agent-card (kept as a local literal — Landing
+// and Settings are independent screens, not worth coupling over one class
+// string).
+const card =
+  'bg-surface-raised flex flex-col gap-2.5 rounded-[10px] border border-white/10 p-3.5 text-left'
+
+/** "claude + browser" — the template card's subtitle. */
+function templateSummary(template: SessionTemplate): string {
+  return template.panes
+    .map((pane) => (pane.kind === 'browser' ? 'browser' : (pane.agentId ?? 'claude')))
+    .join(' + ')
+}
+
 interface Props {
   sessions: SessionInfo[]
   onCreate: (agentId: AgentId, customCommand?: string) => void
   onCreateBrowser: (url: string) => void
+  onCreateTemplate: (name: string) => void
   onOpen: (id: string) => void
   onResume: (id: string, fresh: boolean) => void
   onDelete: (id: string) => void
@@ -47,9 +62,11 @@ export default function Landing({
   onChanges,
   onOpenSettings,
   onCreateBrowser,
+  onCreateTemplate,
   onJumpToAttention
 }: Props): React.JSX.Element {
   const [agents, setAgents] = useState<AgentInfo[] | null>(null)
+  const [templates, setTemplates] = useState<SessionTemplate[] | null>(null)
   const [selectedAgentId, setSelectedAgentId] = useState<AgentId | 'browser'>(AGENT_PRESETS[0].id)
   // Async agent detection resolves a fallback default (below), but it must not
   // clobber a selection the user already made while detection was in flight.
@@ -115,6 +132,19 @@ export default function Landing({
         }
       }
     )
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // Separate from the agents fetch above: templates never touch
+  // selectedAgentId/userPickedAgent, so this effect stays independent of
+  // that selection state.
+  useEffect(() => {
+    let cancelled = false
+    void window.localflow.listTemplates().then((list) => {
+      if (!cancelled) setTemplates(list)
+    })
     return () => {
       cancelled = true
     }
@@ -368,6 +398,21 @@ export default function Landing({
       )}
       <section className="flex w-full flex-col items-stretch gap-3">
         <h3 className="m-0 text-[15px] font-semibold tracking-[-0.01em]">New session</h3>
+        {templates !== null && templates.length > 0 && (
+          <div className="templates flex flex-wrap gap-2.5">
+            {templates.map((t) => (
+              <button
+                key={t.name}
+                className={`template-card ${card} cursor-pointer gap-1 p-2.5 hover:bg-white/[0.03]`}
+                onClick={() => onCreateTemplate(t.name)}
+                onMouseDown={(e) => e.preventDefault()}
+              >
+                <span className="text-sm font-semibold">{t.name}</span>
+                <span className="font-mono text-[11px] text-gray-500">{templateSummary(t)}</span>
+              </button>
+            ))}
+          </div>
+        )}
         <div className="flex flex-col gap-2.5">
           <div className="flex gap-2.5">
             <select

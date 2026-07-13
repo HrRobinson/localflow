@@ -10,6 +10,7 @@ import type {
   SessionInfo,
   SessionStatus
 } from './types'
+import type { SessionTemplate } from './templates'
 import type { BindingChangeResult, KeyAction } from './keybindings'
 import type { Theme } from './theme'
 import type { GitStatus, DiffResult, Capabilities } from './git'
@@ -61,6 +62,20 @@ export interface LocalflowApi {
   addPane(sourcePaneId: string, req: AddPaneRequest): Promise<SessionInfo | null>
   /** Creates a browser pane on the given environment. Null for invalid URLs. */
   createBrowserSession(url: string, environment?: number): Promise<SessionInfo | null>
+  /** Session templates from config.json's `sessionTemplates` key (read fresh each call). */
+  listTemplates(): Promise<SessionTemplate[]>
+  /**
+   * Creates a new group ("session") from a named template: one pane per
+   * template entry, skipping any whose agent binary isn't found. `cwd` is
+   * honored only under LOCALFLOW_E2E=1 — production always opens the folder
+   * picker (same posture as createSession). Null for an unknown template, a
+   * canceled picker, or a template where every pane's agent is missing.
+   */
+  createTemplate(
+    name: string,
+    cwd: string | undefined,
+    environment: number
+  ): Promise<SessionInfo[] | null>
   /** Persists a browser pane's current URL (follows navigation). */
   setSessionUrl(id: string, url: string): Promise<SessionInfo | null>
   /** Opens an http(s) URL in the system browser. Non-http(s) is dropped in main. */

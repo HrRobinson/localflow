@@ -13,6 +13,12 @@ export default {
       const header = message.split('\n')[0]
       const stripped = header.replace(/ \(#\d+\)$/, '')
       return stripped !== header && stripped.length <= 50
-    }
+    },
+    // Dependabot subjects ("chore(deps-dev): bump X from 1.2.3 to 1.2.4")
+    // are machine-generated and routinely exceed the 50-char budget. CI
+    // already skips dependabot-actored PR runs, but the squash commit lands
+    // on main under the merger's identity, so exempt the well-known subject
+    // shape here too. Hand-written commits never match it.
+    (message) => /^chore\(deps(-dev)?\): bump /.test(message.split('\n')[0])
   ]
 }

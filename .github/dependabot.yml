@@ -6,6 +6,23 @@ updates:
     commit-message:
       prefix: chore
       include: scope
+    groups:
+      # The vite ecosystem moves in lockstep (shared plugin/peer contracts);
+      # bumping its members one PR at a time regularly leaves the pipeline in
+      # an incompatible intermediate state. vitest is included because it is
+      # vite-coupled (consumes the project's vite as a peer).
+      vite:
+        patterns:
+          - vite
+          - '@vitejs/*'
+          - electron-vite
+          - vitest
+          - '@vitest/*'
+    ignore:
+      # typescript majors >=7 are blocked: typescript-eslint's supported
+      # range pins typescript <6.1.0 upstream.
+      - dependency-name: typescript
+        versions: ['>=7']
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: weekly }

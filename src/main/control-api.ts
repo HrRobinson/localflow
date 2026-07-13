@@ -186,8 +186,10 @@ export function startControlServer(deps: ControlDeps): Promise<ControlEndpoint> 
       bytes += chunk.length
       if (bytes > CONTROL_MAX_BODY_BYTES) {
         responded = true
-        res.writeHead(400)
-        res.end()
+        // Same response shape as the router's own oversize check, so clients
+        // see one contract regardless of which layer rejects the body.
+        res.writeHead(400, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ error: 'body too large' }))
         req.destroy()
         return
       }

@@ -14,6 +14,12 @@ const api: LocalflowApi = {
   renameSession: (id: string, name: string) => ipcRenderer.invoke('session:rename', id, name),
   setEnvironment: (id: string, environment: number) =>
     ipcRenderer.invoke('session:setEnvironment', id, environment),
+  createGroup: (name: string, environment: number) =>
+    ipcRenderer.invoke('group:create', name, environment),
+  renameGroup: (id: string, name: string) => ipcRenderer.invoke('group:rename', id, name),
+  assignToGroup: (paneId: string, groupId: string | null) =>
+    ipcRenderer.invoke('group:assign', paneId, groupId),
+  listGroups: () => ipcRenderer.invoke('group:list'),
   createBrowserSession: (url: string, environment?: number) =>
     ipcRenderer.invoke('session:createBrowser', url, environment),
   setSessionUrl: (id: string, url: string) => ipcRenderer.invoke('session:setUrl', id, url),

@@ -2,12 +2,11 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync, writeFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import {
-  loadSavedSessions,
-  saveSessions,
-  loadSavedState,
-  saveState
-} from '../../src/main/persistence'
+import { loadSavedState, saveState, type SavedSession } from '../../src/main/persistence'
+
+const loadSavedSessions = (file: string): SavedSession[] => loadSavedState(file).sessions
+const saveSessions = (file: string, sessions: SavedSession[]): void =>
+  saveState(file, { sessions, groups: [] })
 
 describe('persistence', () => {
   it('round-trips sessions and tolerates a missing file', () => {
@@ -55,6 +54,20 @@ describe('persistence', () => {
     const loaded = loadSavedSessions(file)
     expect(loaded[0]?.kind).toBe('browser')
     expect(loaded[0]?.url).toBe('https://example.com/')
+  })
+  it('round-trips groupId through the save-shape mapper used at startup', () => {
+    const file = join(mkdtempSync(join(tmpdir(), 'localflow-p-')), 'sessions.json')
+    saveState(file, {
+      sessions: [
+        { id: 'a', cwd: '/x', groupId: 'g1' },
+        { id: 'b', cwd: '/y' }
+      ],
+      groups: [{ id: 'g1', name: 'checkout', environment: 2 }]
+    })
+    const state = loadSavedState(file)
+    expect(state.sessions.find((s) => s.id === 'a')?.groupId).toBe('g1')
+    expect(state.sessions.find((s) => s.id === 'b')?.groupId).toBeUndefined()
+    expect(state.groups).toEqual([{ id: 'g1', name: 'checkout', environment: 2 }])
   })
 })
 

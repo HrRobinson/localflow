@@ -7,7 +7,7 @@ import { clampEnvironment } from '../shared/environment'
 import { normalizeHttpUrl, isHttpUrl } from '../shared/urls'
 import { startHookServer } from './hook-server'
 import { SessionManager, type SpawnSpec } from './session-manager'
-import { loadSavedSessions, saveSessions } from './persistence'
+import { loadSavedState, saveState } from './persistence'
 import { AgentRegistry, whichViaLoginShell } from './agent-registry'
 import { ensureThemesSeeded, listThemeNames, resolveTheme } from './theme-store'
 import { loadOrCreateKeybindings, writeKeybindings } from './keybindings-file'
@@ -225,26 +225,37 @@ app.whenReady().then(async () => {
         if (env !== null) grants.revoke(env)
       }
     }
-    saveSessions(
-      sessionsFile,
-      manager.list().map(({ id, cwd, agentId, command, name, environment, kind, url }) => ({
-        id,
-        cwd,
-        agentId,
-        command,
-        name,
-        environment,
-        kind,
-        url
-      }))
-    )
+    saveState(sessionsFile, {
+      sessions: manager
+        .list()
+        .map(({ id, cwd, agentId, command, name, environment, kind, url, groupId }) => ({
+          id,
+          cwd,
+          agentId,
+          command,
+          name,
+          environment,
+          kind,
+          url,
+          groupId
+        })),
+      groups: manager.listGroups()
+    })
   })
 
-  for (const saved of loadSavedSessions(sessionsFile)) {
+  const savedState = loadSavedState(sessionsFile)
+  manager.restoreGroups(savedState.groups)
+  for (const saved of savedState.sessions) {
     if (saved.kind === 'browser') {
       // restoreBrowser validates the stored URL; a hand-corrupted entry is
       // dropped rather than restored as an unloadable pane.
-      manager.restoreBrowser(saved.id, saved.url ?? '', saved.name, saved.environment)
+      manager.restoreBrowser(
+        saved.id,
+        saved.url ?? '',
+        saved.name,
+        saved.environment,
+        saved.groupId
+      )
       continue
     }
     const agentId = VALID_AGENTS.includes(saved.agentId as AgentId)
@@ -252,7 +263,7 @@ app.whenReady().then(async () => {
       : 'claude'
     // A saved custom session keeps its stored command verbatim.
     const spec = agentId === 'custom' ? specFor(agentId, saved.command ?? '') : specFor(agentId)
-    manager.restore(saved.id, saved.cwd, spec, saved.name, saved.environment)
+    manager.restore(saved.id, saved.cwd, spec, saved.name, saved.environment, saved.groupId)
   }
 
   ipcMain.handle(
@@ -298,6 +309,18 @@ app.whenReady().then(async () => {
   ipcMain.handle('session:setEnvironment', (_e, id: string, environment: number) =>
     manager.setEnvironment(id, environment)
   )
+  ipcMain.handle('group:create', (_e, name: string, environment: number) =>
+    manager.createGroup(typeof name === 'string' ? name : '', environment)
+  )
+  ipcMain.handle('group:rename', (_e, id: string, name: string) =>
+    typeof id === 'string' && typeof name === 'string' ? manager.renameGroup(id, name) : null
+  )
+  ipcMain.handle('group:assign', (_e, paneId: string, groupId: string | null) =>
+    typeof paneId === 'string' && (groupId === null || typeof groupId === 'string')
+      ? manager.assignToGroup(paneId, groupId)
+      : null
+  )
+  ipcMain.handle('group:list', () => manager.listGroups())
   ipcMain.handle('session:createBrowser', (_e, url: string, environment?: number) => {
     // Validate at the boundary; manager.createBrowser re-validates (throws),
     // so reject cleanly here instead of surfacing an exception to the bridge.

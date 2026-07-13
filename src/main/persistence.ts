@@ -64,11 +64,3 @@ export function saveState(file: string, state: SavedState): void {
   writeFileSync(tmp, JSON.stringify(state, null, 2))
   renameSync(tmp, file)
 }
-
-export function loadSavedSessions(file: string): SavedSession[] {
-  return loadSavedState(file).sessions
-}
-
-export function saveSessions(file: string, sessions: SavedSession[]): void {
-  saveState(file, { sessions, groups: [] })
-}

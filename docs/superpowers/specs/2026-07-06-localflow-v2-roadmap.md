@@ -226,6 +226,8 @@ provider secrets.**
 
 ## M5 — Session layers (nested sessions + breadcrumbs)
 
+**Superseded by docs/superpowers/specs/2026-07-13-m5-session-layers-design.md.**
+
 - **Sessions are parents (user refinement, 2026-07-07):** a session is the
   parent node; terminals (and later sub-sessions) are its children going
   down the staircase — one session, multiple children. Keyboard shortcuts

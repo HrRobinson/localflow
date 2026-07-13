@@ -12,6 +12,7 @@ import type { BindingChangeResult, KeyAction } from './keybindings'
 import type { Theme } from './theme'
 import type { GitStatus, DiffResult, Capabilities } from './git'
 import type {
+  CaptureKind,
   GrantInfo,
   OperatorStatus,
   ActivityEntry as OperatorActivityEntry,
@@ -99,6 +100,13 @@ export interface LocalflowApi {
   listCaptures(environment: number): Promise<Capture[]>
   /** Registered watchpoints for an environment. */
   listWatchpoints(environment: number): Promise<Watchpoint[]>
+  /** Registers a watchpoint on an environment. Null when a field is malformed. */
+  registerWatchpoint(
+    environment: number,
+    workflow: string,
+    step: string,
+    capture: CaptureKind[]
+  ): Promise<Watchpoint | null>
   /** Resolve a halted capture (approve = continue, false = stop); returns whether a token was cleared. */
   resumeCapture(environment: number, captureId: string, approve: boolean): Promise<boolean>
   /** Live control-API action-log entries, per environment. */

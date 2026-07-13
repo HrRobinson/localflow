@@ -499,6 +499,13 @@ app.whenReady().then(async () => {
     watchpoints.list(clampEnvironment(environment))
   )
   ipcMain.handle(
+    'operator:registerWatchpoint',
+    (_e, environment: number, workflow: string, step: string, capture: string[]) =>
+      // Same validation path as the control API's POST /watchpoints: the
+      // registry rejects malformed fields (returns null) at the boundary.
+      watchpoints.register(clampEnvironment(environment), { workflow, step, capture })
+  )
+  ipcMain.handle(
     'operator:resume',
     (_e, environment: number, captureId: string, approve: boolean) => {
       const env = clampEnvironment(environment)

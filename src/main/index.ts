@@ -15,7 +15,7 @@ import { loadEnvironmentNames } from './environment-names'
 import { installWebviewPolicy } from './webview-policy'
 import { gitStatus, gitDiff } from './git'
 import { describeTool, gateBin } from './tools'
-import { loadEditorCommand } from './editor-config'
+import { editorLaunch, loadEditorCommand } from './editor-config'
 import { splitCommandLine } from '../shared/args'
 import { PaneRegistry } from './pane-registry'
 import { OperatorGrantStore } from './operator-grant'
@@ -379,16 +379,15 @@ app.whenReady().then(async () => {
   ipcMain.handle('git:openEditor', async (_e, id: string) => {
     const s = manager.get(id)
     if (!s || s.kind !== 'terminal' || !s.cwd) return false
-    const parts = splitCommandLine(loadEditorCommand(join(userData, 'config.json')))
-    const bin = parts?.[0]
-    if (!parts || !bin) return false
-    const resolved = await resolveTool(bin, process.env['LOCALFLOW_EDITOR_BIN'])
+    const launch = editorLaunch(loadEditorCommand(join(userData, 'config.json')), s.cwd)
+    if (!launch) return false
+    const resolved = await resolveTool(launch.bin, process.env['LOCALFLOW_EDITOR_BIN'])
     if (!resolved) return false
     try {
       // External, detached, fire-and-forget process — never a pane. stdio
       // ignored + unref so it can neither hold quit nor be killed by our pipe
       // lifetime; async spawn failures get a log line instead of vanishing.
-      const child = spawn(resolved, [...parts.slice(1), s.cwd], {
+      const child = spawn(resolved, launch.args, {
         cwd: s.cwd,
         detached: true,
         stdio: 'ignore'

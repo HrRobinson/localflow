@@ -20,6 +20,8 @@ const LABELS: Record<KeyAction, string> = {
   'enlarge-toggle': 'Enlarge / shrink pane',
   'close-pane': 'Close pane',
   'add-pane': 'Add companion pane',
+  'group-pane': 'Group pane into session',
+  'ungroup-pane': 'Ungroup pane',
   'new-session': 'New session',
   'go-up': 'Back / shrink',
   'toggle-sidebar': 'Toggle sidebar',
@@ -58,7 +60,9 @@ const GROUPS: { title: string; actions: KeyAction[] }[] = [
       'swap-right',
       'enlarge-toggle',
       'close-pane',
-      'add-pane'
+      'add-pane',
+      'group-pane',
+      'ungroup-pane'
     ]
   },
   {

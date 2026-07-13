@@ -4,6 +4,7 @@ import BrowserPane from './components/BrowserPane'
 import GroupBox from './components/GroupBox'
 import Breadcrumb from './components/Breadcrumb'
 import AddPanePicker from './components/AddPanePicker'
+import GroupPicker from './components/GroupPicker'
 import Landing from './components/Landing'
 import Settings from './components/Settings'
 import Activity from './components/Activity'
@@ -128,6 +129,9 @@ export default function App(): React.JSX.Element {
   // AddPanePicker modal. Opened from GroupBox's `+`, the enlarge chrome's
   // "spin up a pane here", or the add-pane keybinding on the focused pane.
   const [addPaneFor, setAddPaneFor] = useState<string | null>(null)
+  // The pane being (re)grouped; non-null opens the GroupPicker modal, opened
+  // by the group-pane keybinding on the focused pane.
+  const [groupPaneFor, setGroupPaneFor] = useState<string | null>(null)
   useEffect(() => {
     let cancelled = false
     const tick = async (): Promise<void> => {
@@ -218,6 +222,34 @@ export default function App(): React.JSX.Element {
       setActiveId(created.id)
       await refresh()
     }
+  }
+  // Moves `paneId` into an existing group, or a brand-new one named after
+  // the pane ('new'). Closes the picker regardless of outcome; a null
+  // createGroup (pane name somehow empty) is a no-op beyond that, same as
+  // addPane's unknown-source handling.
+  const assignPaneToGroup = async (paneId: string, target: string | 'new'): Promise<void> => {
+    setGroupPaneFor(null)
+    let groupId: string | null
+    if (target === 'new') {
+      const pane = sessions.find((s) => s.id === paneId)
+      if (!pane) return
+      const created = await window.localflow.createGroup(pane.name, pane.environment)
+      if (!created) return
+      groupId = created.id
+    } else {
+      groupId = target
+    }
+    const updated = await window.localflow.assignToGroup(paneId, groupId)
+    if (updated) await refresh()
+  }
+  // No-op on an already-ungrouped pane — assignToGroup always records a
+  // 'moved' activity entry, so calling it unconditionally would spam the
+  // log for a keybinding that did nothing.
+  const ungroupPane = async (paneId: string): Promise<void> => {
+    const pane = sessions.find((s) => s.id === paneId)
+    if (!pane?.groupId) return
+    const updated = await window.localflow.assignToGroup(paneId, null)
+    if (updated) await refresh()
   }
   const restart = async (id: string, fresh: boolean): Promise<void> => {
     await window.localflow.restartSession(id, fresh)
@@ -373,7 +405,8 @@ export default function App(): React.JSX.Element {
     closeTerminal,
     openSession,
     switchEnvironment,
-    moveToEnvironment
+    moveToEnvironment,
+    ungroupPane
   })
   useEffect(() => {
     liveRef.current = {
@@ -386,7 +419,8 @@ export default function App(): React.JSX.Element {
       closeTerminal,
       openSession,
       switchEnvironment,
-      moveToEnvironment
+      moveToEnvironment,
+      ungroupPane
     }
   })
 
@@ -483,6 +517,14 @@ export default function App(): React.JSX.Element {
       }
       if (action === 'add-pane') {
         setAddPaneFor(activeId)
+        return
+      }
+      if (action === 'group-pane') {
+        setGroupPaneFor(activeId)
+        return
+      }
+      if (action === 'ungroup-pane') {
+        void live.ungroupPane(activeId)
         return
       }
 
@@ -790,6 +832,20 @@ export default function App(): React.JSX.Element {
           onPick={(req) => void addPane(addPaneFor, req)}
         />
       )}
+      {groupPaneFor &&
+        (() => {
+          const pane = sessions.find((s) => s.id === groupPaneFor)
+          const candidates = groups.filter(
+            (g) => g.environment === pane?.environment && g.id !== pane?.groupId
+          )
+          return (
+            <GroupPicker
+              groups={candidates}
+              onCancel={() => setGroupPaneFor(null)}
+              onPick={(target) => void assignPaneToGroup(groupPaneFor, target)}
+            />
+          )
+        })()}
     </div>
   )
 }

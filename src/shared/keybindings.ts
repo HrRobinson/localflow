@@ -10,6 +10,8 @@ export type KeyAction =
   | 'enlarge-toggle'
   | 'close-pane'
   | 'add-pane'
+  | 'group-pane'
+  | 'ungroup-pane'
   | 'new-session'
   | 'go-up'
   | 'toggle-sidebar'
@@ -45,6 +47,8 @@ export const DEFAULT_BINDINGS: Record<KeyAction, string> = {
   'enlarge-toggle': 'cmd+m',
   'close-pane': 'cmd+w',
   'add-pane': 'cmd+t',
+  'group-pane': 'cmd+g',
+  'ungroup-pane': 'cmd+shift+g',
   'new-session': 'cmd+enter',
   'go-up': 'cmd+escape',
   'toggle-sidebar': 'cmd+b',

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { nextFocusAfterClose } from '../../src/shared/close-focus'
+import { nextFocusAfterClose, nextEnlargedAfterGone } from '../../src/shared/close-focus'
 import type { SessionInfo } from '../../src/shared/types'
 
 // Minimal pane fixture: nextFocusAfterClose only reads `id` and `groupId`.
@@ -74,5 +74,43 @@ describe('nextFocusAfterClose — delete case regression guard', () => {
   it("still prefers a same-group sibling when the closed pane's pre-refresh record is present", () => {
     const panes = [pane('a', 'g1'), pane('b'), pane('c', 'g1')]
     expect(nextFocusAfterClose('a', ['a', 'b', 'c'], panes)).toBe('c')
+  })
+})
+
+// M5 Task 6 review fix: `enlarged = { id, level: 'session' }` anchors the
+// staircase on one member of a whole group. Losing that anchor member must
+// not collapse the group view to the grid as long as a sibling survives.
+describe('nextEnlargedAfterGone', () => {
+  it('reassigns a session-level anchor to a surviving sibling, keeping the level', () => {
+    const panes = [pane('a', 'g1'), pane('b'), pane('c', 'g1')]
+    expect(nextEnlargedAfterGone({ id: 'a', level: 'session' }, 'a', panes)).toEqual({
+      id: 'c',
+      level: 'session'
+    })
+  })
+
+  it('collapses to null when the last group member is gone', () => {
+    const panes = [pane('b')]
+    expect(nextEnlargedAfterGone({ id: 'a', level: 'session' }, 'a', panes)).toBeNull()
+  })
+
+  it('collapses to null when the anchor was solo (no group)', () => {
+    const panes = [pane('a'), pane('b')]
+    expect(nextEnlargedAfterGone({ id: 'a', level: 'session' }, 'a', panes)).toBeNull()
+  })
+
+  it('collapses to null at pane level even when a sibling survives', () => {
+    const panes = [pane('a', 'g1'), pane('c', 'g1')]
+    expect(nextEnlargedAfterGone({ id: 'a', level: 'pane' }, 'a', panes)).toBeNull()
+  })
+
+  it('leaves an unrelated enlarge untouched when a different pane is gone', () => {
+    const panes = [pane('a', 'g1'), pane('c', 'g1')]
+    const cur = { id: 'x', level: 'session' as const }
+    expect(nextEnlargedAfterGone(cur, 'a', panes)).toBe(cur)
+  })
+
+  it('passes null through unchanged', () => {
+    expect(nextEnlargedAfterGone(null, 'a', [])).toBeNull()
   })
 })

@@ -21,7 +21,7 @@ import {
 } from '../../shared/keybindings'
 import { clampEnvironment, worstStatus } from '../../shared/environment'
 import { groupedOrder } from '../../shared/group-order'
-import { nextFocusAfterClose } from '../../shared/close-focus'
+import { nextFocusAfterClose, nextEnlargedAfterGone } from '../../shared/close-focus'
 import type { AgentId, SessionGroup, SessionInfo } from '../../shared/types'
 import {
   DEFAULT_THEME,
@@ -188,9 +188,13 @@ export default function App(): React.JSX.Element {
   }
   // Shared post-action cleanup: whether the pane vanished entirely
   // (deleteSession) or just went dead-but-still-listed (closeTerminal), it
-  // can no longer hold keyboard focus or stay enlarged.
+  // can no longer hold keyboard focus. A session-level enlarge survives if a
+  // group sibling is still standing (nextEnlargedAfterGone reassigns the
+  // anchor to it); otherwise it collapses to the grid same as a pane-level
+  // enlarge always does. Uses the pre-refresh `sessions` snapshot, which
+  // still holds `id`'s own record — needed to recover its groupId.
   const afterPaneGone = async (id: string): Promise<void> => {
-    setEnlarged((cur) => (cur?.id === id ? null : cur))
+    setEnlarged((cur) => nextEnlargedAfterGone(cur, id, sessions))
     setActiveId((cur) => {
       if (cur !== id) return cur
       const scoped = sessions.filter((s) => s.environment === environment)
@@ -285,14 +289,17 @@ export default function App(): React.JSX.Element {
     // moved siblings as belonging to this environment (stale), so
     // nextFocusAfterClose's sibling-preference would land focus on a pane
     // that has actually left the grid. So: refresh FIRST, and compute next
-    // focus from the list refresh() just fetched (not the `sessions` state,
-    // which won't reflect this refresh until the next render) — by the time
-    // we scope it to this environment, every moved sibling is correctly gone.
-    setEnlarged((cur) => (cur?.id === id ? null : cur))
+    // focus (and next enlarge anchor) from the list refresh() just fetched
+    // (not the `sessions` state, which won't reflect this refresh until the
+    // next render), scoped to this environment — by then every moved
+    // sibling is correctly gone, so a session-level enlarge on the moved
+    // group naturally collapses (nextEnlargedAfterGone finds no sibling to
+    // reassign to) rather than following the group off-screen.
     const list = await refresh()
+    const scoped = list.filter((s) => s.environment === environment)
+    setEnlarged((cur) => nextEnlargedAfterGone(cur, id, scoped))
     setActiveId((cur) => {
       if (cur !== id) return cur
-      const scoped = list.filter((s) => s.environment === environment)
       return nextFocusAfterClose(id, order, scoped)
     })
   }

@@ -1,7 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { CaptureKind, Watchpoint } from '../shared/operator'
-
-const KINDS: readonly CaptureKind[] = ['envelope', 'screenshot', 'output', 'memory']
+import { CAPTURE_KINDS, type CaptureKind, type Watchpoint } from '../shared/operator'
 
 /**
  * In-memory registry of workflow watchpoints. The user writes a watch against a
@@ -19,7 +17,8 @@ export class WatchpointRegistry {
     if (typeof workflow !== 'string' || workflow.length === 0) return null
     if (typeof step !== 'string' || step.length === 0) return null
     if (!Array.isArray(capture) || capture.length === 0) return null
-    if (!capture.every((k) => (KINDS as readonly string[]).includes(k as string))) return null
+    if (!capture.every((k) => (CAPTURE_KINDS as readonly string[]).includes(k as string)))
+      return null
     const paneHandle =
       typeof body['paneHandle'] === 'string' ? (body['paneHandle'] as string) : undefined
     const wp: Watchpoint = {

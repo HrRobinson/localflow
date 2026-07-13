@@ -14,6 +14,9 @@ export interface PaneView {
 
 export type CaptureKind = 'envelope' | 'screenshot' | 'output' | 'memory'
 
+/** Everything a watchpoint may capture — the registry's validation allowlist. */
+export const CAPTURE_KINDS: readonly CaptureKind[] = ['envelope', 'screenshot', 'output', 'memory']
+
 export interface Watchpoint {
   id: string
   environment: number

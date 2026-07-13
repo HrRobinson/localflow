@@ -43,6 +43,32 @@ export class OperatorLaunchTracker {
     return null
   }
 
+  /**
+   * A tracked session's pty exited or was closed (the durable session itself
+   * remains). Only acts when `revokeOnExit` (the opt-in config.json flag) is
+   * on: returns the environment to revoke when it is launch-owned and no
+   * other tracked session in it is still live per `isLive` — or null.
+   * Ownership is consumed on revoke (like onClose), so a later manual grant
+   * is never torn down by this session's eventual deletion.
+   */
+  onPtyExit(
+    sessionId: string,
+    isLive: (id: string) => boolean,
+    revokeOnExit: boolean
+  ): number | null {
+    if (!revokeOnExit) return null
+    for (const [env, set] of this.live) {
+      if (!set.has(sessionId)) continue
+      if (!this.launchOwned.has(env)) return null
+      for (const id of set) {
+        if (id !== sessionId && isLive(id)) return null
+      }
+      this.launchOwned.delete(env)
+      return env
+    }
+    return null
+  }
+
   /** All currently-tracked launched session ids. */
   trackedIds(): string[] {
     return [...this.live.values()].flatMap((s) => [...s])

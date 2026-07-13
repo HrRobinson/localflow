@@ -33,6 +33,17 @@ describe('parseTheme', () => {
     const bad = { ...DEFAULT_THEME, font: { ...DEFAULT_THEME.font, size: '12' } }
     expect(parseTheme(bad)).toBeNull()
   })
+  it('defaults app.border to the built-in default when absent (pre-border user themes)', () => {
+    const legacy = { ...DEFAULT_THEME, app: { ...DEFAULT_THEME.app } } as Record<string, unknown>
+    delete (legacy.app as Record<string, unknown>).border
+    const parsed = parseTheme(legacy)
+    expect(parsed).not.toBeNull()
+    expect(parsed!.app.border).toBe(DEFAULT_THEME.app.border)
+  })
+  it('keeps an explicit app.border from a hand-written theme', () => {
+    const custom = { ...DEFAULT_THEME, app: { ...DEFAULT_THEME.app, border: '#ff00ff' } }
+    expect(parseTheme(custom)!.app.border).toBe('#ff00ff')
+  })
 })
 
 describe('themeToCssVars', () => {
@@ -45,12 +56,18 @@ describe('themeToCssVars', () => {
     expect(vars['--color-working']).toBe(DEFAULT_THEME.app.working)
     expect(vars['--working']).toBe(DEFAULT_THEME.app.working)
     expect(vars['--text']).toBe(DEFAULT_THEME.app.text)
+    expect(vars['--border']).toBe(DEFAULT_THEME.app.border)
   })
   it('a different theme produces a different surface probe var', () => {
     const light = PRESET_THEMES.find((t) => t.name === 'light')!
     expect(themeToCssVars(light)['--color-surface']).not.toBe(
       themeToCssVars(DEFAULT_THEME)['--color-surface']
     )
+  })
+  it('emits a different --border for the light preset than the dark default', () => {
+    const light = PRESET_THEMES.find((t) => t.name === 'light')!
+    expect(themeToCssVars(light)['--border']).toBe(light.app.border)
+    expect(themeToCssVars(light)['--border']).not.toBe(themeToCssVars(DEFAULT_THEME)['--border'])
   })
 })
 

@@ -24,7 +24,9 @@
   --pane-bg: #1a1b1e;
   --running: #8b5cf6;
   --text: #e5e7eb;
-  --border: rgba(255, 255, 255, 0.12);
+  /* --border is set by the theme system (theme.ts themeToCssVars) at
+     runtime; no static fallback here so it can't drift from the active
+     theme. App.tsx applies it before first paint. */
 }
 * {
   box-sizing: border-box;

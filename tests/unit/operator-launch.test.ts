@@ -36,3 +36,42 @@ describe('OperatorLaunchTracker', () => {
     expect(new OperatorLaunchTracker().onClose('nope')).toBeNull()
   })
 })
+
+describe('OperatorLaunchTracker.onPtyExit', () => {
+  const dead = (): boolean => false
+
+  it('flag OFF: never revokes on pty exit (default behavior)', () => {
+    const t = new OperatorLaunchTracker()
+    t.onLaunch(1, 's1', false)
+    expect(t.onPtyExit('s1', dead, false)).toBeNull()
+    // Ownership is untouched — deletion still revokes as before.
+    expect(t.onClose('s1')).toBe(1)
+  })
+
+  it('flag ON: revokes a launch-owned env when its last live pty exits', () => {
+    const t = new OperatorLaunchTracker()
+    t.onLaunch(1, 's1', false)
+    expect(t.onPtyExit('s1', dead, true)).toBe(1)
+    // Ownership was consumed: the later deletion must not revoke again (a
+    // grant made manually in the meantime belongs to the user).
+    expect(t.onClose('s1')).toBeNull()
+  })
+
+  it('flag ON: does not revoke while another launched session is live', () => {
+    const t = new OperatorLaunchTracker()
+    t.onLaunch(1, 's1', false)
+    t.onLaunch(1, 's2', true)
+    expect(t.onPtyExit('s1', (id) => id === 's2', true)).toBeNull()
+    expect(t.onPtyExit('s2', dead, true)).toBe(1)
+  })
+
+  it('flag ON: never revokes a grant the launch did not create', () => {
+    const t = new OperatorLaunchTracker()
+    t.onLaunch(2, 's1', true) // env 2 was already granted
+    expect(t.onPtyExit('s1', dead, true)).toBeNull()
+  })
+
+  it('flag ON: unknown sessions are ignored', () => {
+    expect(new OperatorLaunchTracker().onPtyExit('nope', dead, true)).toBeNull()
+  })
+})

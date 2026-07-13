@@ -16,6 +16,7 @@ import { installWebviewPolicy } from './webview-policy'
 import { gitStatus, gitDiff } from './git'
 import { describeTool, gateBin } from './tools'
 import { loadEditorCommand } from './editor-config'
+import { loadOperatorRevokeOnExit } from './operator-config'
 import { splitCommandLine } from '../shared/args'
 import { PaneRegistry } from './pane-registry'
 import { OperatorGrantStore } from './operator-grant'
@@ -215,7 +216,21 @@ app.whenReady().then(async () => {
   })
 
   manager.onData((id, data) => sendToWindow('session:data', id, data))
-  manager.onStatus((id, status) => sendToWindow('session:status', id, status))
+  manager.onStatus((id, status) => {
+    sendToWindow('session:status', id, status)
+    // Opt-in early teardown (operatorRevokeOnExit in config.json, read fresh
+    // like editorCommand): when the last live pty of a launch-owned
+    // environment exits or is closed, revoke right away instead of waiting
+    // for the session's deletion. Default OFF keeps close→restart working.
+    if (status === 'exited') {
+      const env = launchTracker.onPtyExit(
+        id,
+        (sid) => manager.get(sid)?.status !== 'exited',
+        loadOperatorRevokeOnExit(join(userData, 'config.json'))
+      )
+      if (env !== null) grants.revoke(env)
+    }
+  })
   manager.onActivity((id, entry) => sendToWindow('activity:event', id, entry))
   manager.onSessionsChanged(() => {
     const currentIds = new Set(manager.list().map((s) => s.id))

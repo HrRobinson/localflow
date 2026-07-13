@@ -9,6 +9,10 @@ export interface HookEvent {
 
 export type AgentId = 'claude' | 'codex' | 'gemini' | 'openclaw' | 'shell' | 'custom'
 
+/** Every `AgentId`, for validating untrusted input (IPC bodies, control-API
+ *  request bodies) at the boundary before it's cast to the narrower type. */
+export const VALID_AGENTS: AgentId[] = ['claude', 'codex', 'gemini', 'openclaw', 'shell', 'custom']
+
 export type SessionKind = 'terminal' | 'browser'
 
 /**

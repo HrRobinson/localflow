@@ -34,4 +34,31 @@ describe('buildRequest', () => {
       body: { watchpointId: 'wp1', halted: true }
     })
   })
+  it('maps create-pane browser to POST /panes with a url body', () => {
+    const r = buildRequest(base, ['create-pane', 'browser', 'http://localhost:3000'])
+    expect(r).toMatchObject({
+      method: 'POST',
+      path: '/panes',
+      body: { kind: 'browser', url: 'http://localhost:3000' }
+    })
+  })
+  it('maps create-pane browser with a groupId to POST /panes with a groupId body', () => {
+    const r = buildRequest(base, ['create-pane', 'browser', 'http://localhost:3000', 'g1'])
+    expect(r).toMatchObject({
+      method: 'POST',
+      path: '/panes',
+      body: { kind: 'browser', url: 'http://localhost:3000', groupId: 'g1' }
+    })
+  })
+  it('maps create-pane terminal to POST /panes with an agentId + groupId body', () => {
+    const r = buildRequest(base, ['create-pane', 'terminal', 'claude', 'g1'])
+    expect(r).toMatchObject({
+      method: 'POST',
+      path: '/panes',
+      body: { kind: 'terminal', agentId: 'claude', groupId: 'g1' }
+    })
+  })
+  it('throws on an unknown create-pane kind', () => {
+    expect(() => buildRequest(base, ['create-pane', 'x'])).toThrow('unknown pane kind: x')
+  })
 })

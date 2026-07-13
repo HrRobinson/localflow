@@ -1,22 +1,73 @@
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import type { PaneRegistry } from './pane-registry'
+import { PaneRegistry, toPaneView } from './pane-registry'
 import type { OperatorGrantStore } from './operator-grant'
 import type { SessionManager } from './session-manager'
 import type { BrowserControl } from './browser-control'
 import type { CaptureStore } from './capture-store'
 import type { WatchpointRegistry } from './watchpoints'
 import { CONTROL_MAX_BODY_BYTES, type ActivityEntry } from '../shared/operator'
+import { VALID_AGENTS, type AgentId, type SessionInfo } from '../shared/types'
+import { normalizeHttpUrl } from '../shared/urls'
 
 export interface ControlDeps {
   registry: PaneRegistry
   grants: OperatorGrantStore
-  manager: Pick<SessionManager, 'write' | 'peek'>
+  manager: Pick<SessionManager, 'write' | 'peek' | 'getGroup'>
+  /** Operator-initiated pane creation (POST /panes) — see `OperatorPaneRequest`. */
+  panes: {
+    /** Create a pane inside `environment`. A set `groupId` is guaranteed by
+     *  the caller (the route) to already belong to `environment` before this
+     *  runs. Returns null if the request can't be satisfied (e.g. a terminal
+     *  request whose group has no member with a usable cwd). */
+    create(environment: number, req: OperatorPaneRequest): SessionInfo | null
+  }
   onActivity?: (environment: number, entry: ActivityEntry) => void
   // Wired in Layers 2 & 4; absent routes return 404 until then.
   browser?: BrowserControl
   captures?: CaptureStore
   watchpoints?: WatchpointRegistry
+}
+
+/**
+ * Operator-facing pane-creation request body (POST /panes). Deliberately has
+ * NO cwd field for the terminal case — cwd is always derived server-side
+ * from the target group's members, never trusted from the caller.
+ */
+export type OperatorPaneRequest =
+  | { kind: 'browser'; url: string; groupId?: string }
+  | { kind: 'terminal'; agentId: AgentId; groupId: string }
+
+/**
+ * Validates a raw POST /panes body into an `OperatorPaneRequest`, or null if
+ * the shape is invalid — bad/missing `kind`, a non-string/empty `groupId`, a
+ * browser pane without a `normalizeHttpUrl`-valid `url`, or a terminal pane
+ * missing `groupId`/a recognized non-'custom' `agentId` ('custom' has no
+ * field on this request to carry a command line).
+ */
+function parseOperatorPaneRequest(b: Record<string, unknown>): OperatorPaneRequest | null {
+  const rawGroupId = b['groupId']
+  if (rawGroupId !== undefined && (typeof rawGroupId !== 'string' || rawGroupId.length === 0)) {
+    return null
+  }
+  const groupId = rawGroupId as string | undefined
+
+  if (b['kind'] === 'browser') {
+    if (typeof b['url'] !== 'string') return null
+    const url = normalizeHttpUrl(b['url'])
+    if (!url) return null
+    return groupId === undefined ? { kind: 'browser', url } : { kind: 'browser', url, groupId }
+  }
+
+  if (b['kind'] === 'terminal') {
+    if (groupId === undefined) return null
+    const agentId = b['agentId']
+    if (typeof agentId !== 'string' || !VALID_AGENTS.includes(agentId as AgentId)) return null
+    if (agentId === 'custom') return null
+    return { kind: 'terminal', agentId: agentId as AgentId, groupId }
+  }
+
+  return null
 }
 
 export interface ControlEndpoint {
@@ -77,6 +128,26 @@ export async function handleRequest(
   if (method === 'GET' && path === '/panes') {
     record('GET /panes')
     return json(200, { panes: deps.registry.list(environment) })
+  }
+
+  // POST /panes — operator-initiated pane creation. Checked as an exact-path
+  // match so it can never collide with the /panes/:handle/:verb regex below
+  // (a bare POST /panes has no handle segment) or with GET /panes above.
+  if (method === 'POST' && path === '/panes') {
+    const req = parseOperatorPaneRequest(readBody())
+    if (!req) return json(400, { error: 'invalid pane request' })
+    if (req.groupId !== undefined) {
+      const group = deps.manager.getGroup(req.groupId)
+      // Identical wording whether the group doesn't exist at all or belongs
+      // to a different environment — never leak a foreign group's existence.
+      if (!group || group.environment !== environment) {
+        return json(400, { error: 'unknown group' })
+      }
+    }
+    const created = deps.panes.create(environment, req)
+    if (!created) return json(400, { error: 'invalid pane request' })
+    record('POST /panes', created.id, req.kind)
+    return json(200, { pane: toPaneView(created) })
   }
 
   // Watchpoint + capture routes (Layer 4) — server-scoped, not per-pane.

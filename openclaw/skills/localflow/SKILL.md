@@ -21,7 +21,13 @@ Run the wrapped CLI:
 Verbs: `panes`, `navigate <handle> <url>`, `screenshot <handle>`,
 `cookies <handle>`, `network <handle>`, `act <handle> <selector> <click|type> [text]`,
 `prompt <handle> <text...>`, `output <handle> [maxLines]`,
-`checkpoint <watchpointId> [--halt]`.
+`checkpoint <watchpointId> [--halt]`,
+`create-pane browser <url> [groupId]`, `create-pane terminal <agentId> <groupId>`.
+
+`create-pane` adds a pane to THIS environment. A browser pane's `groupId` is
+optional (omit it for a standalone pane); a terminal pane's `groupId` is
+required — its cwd is derived from an existing member of that group, never
+supplied by the caller. An unknown/foreign-environment `groupId` is rejected.
 
 `screenshot` returns a `{path}` on the target project's disk — reference that
 path in a following `prompt` to hand the image to a coding-agent terminal.

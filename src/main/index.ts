@@ -2,7 +2,13 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
 import { join, basename } from 'node:path'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { spawn } from 'node:child_process'
-import type { AgentId, AgentOverride, AgentOverrideResult } from '../shared/types'
+import {
+  VALID_AGENTS,
+  type AgentId,
+  type AgentOverride,
+  type AgentOverrideResult,
+  type SessionInfo
+} from '../shared/types'
 import { clampEnvironment } from '../shared/environment'
 import { normalizeHttpUrl, isHttpUrl } from '../shared/urls'
 import { parseSessionTemplates, type SessionTemplate } from '../shared/templates'
@@ -22,7 +28,7 @@ import { PaneRegistry } from './pane-registry'
 import { addCompanionPane, type AddPaneRequest } from './pane-ops'
 import { OperatorGrantStore } from './operator-grant'
 import { credentialEnv, OperatorLaunchTracker } from './operator-launch'
-import { startControlServer } from './control-api'
+import { startControlServer, type OperatorPaneRequest } from './control-api'
 import { BrowserBridge } from './browser-bridge'
 import { WebviewBrowserControl } from './browser-control'
 import { CaptureStore } from './capture-store'
@@ -39,8 +45,6 @@ import {
 if (process.env['LOCALFLOW_USER_DATA']) {
   app.setPath('userData', process.env['LOCALFLOW_USER_DATA'])
 }
-
-const VALID_AGENTS: AgentId[] = ['claude', 'codex', 'gemini', 'openclaw', 'shell', 'custom']
 
 /**
  * Reads config.json's `sessionTemplates` fresh on every call (same posture
@@ -197,10 +201,36 @@ app.whenReady().then(async () => {
   const browserControl = new WebviewBrowserControl(browserBridge, captureStore)
   const watchpoints = new WatchpointRegistry()
 
+  /**
+   * Operator pane creation (control API `POST /panes`): the same primitives
+   * IPC uses (manager.create/createBrowser + assignToGroup + specFor) — not
+   * a new code path. A terminal pane's cwd is NEVER caller-supplied (there
+   * is no cwd field on `OperatorPaneRequest`): it comes from the first
+   * member of `req.groupId` — already verified by the control-api route to
+   * belong to `environment` — that has a non-empty cwd; none found → null.
+   */
+  const operatorCreatePane = (
+    environment: number,
+    req: OperatorPaneRequest
+  ): SessionInfo | null => {
+    if (req.kind === 'browser') {
+      const created = manager.createBrowser(req.url, environment)
+      if (!req.groupId) return created
+      return manager.assignToGroup(created.id, req.groupId) ?? created
+    }
+    const cwd = manager
+      .list()
+      .find((s) => s.groupId === req.groupId && s.environment === environment && s.cwd)?.cwd
+    if (!cwd) return null
+    const created = manager.create(cwd, specFor(req.agentId), environment)
+    return manager.assignToGroup(created.id, req.groupId) ?? created
+  }
+
   const control = await startControlServer({
     registry: paneRegistry,
     grants,
     manager,
+    panes: { create: operatorCreatePane },
     browser: browserControl,
     captures: captureStore,
     watchpoints,

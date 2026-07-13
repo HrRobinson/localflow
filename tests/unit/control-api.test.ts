@@ -4,11 +4,12 @@ import {
   handleRequest,
   clampLines,
   startControlServer,
-  type ControlDeps
+  type ControlDeps,
+  type OperatorPaneRequest
 } from '../../src/main/control-api'
 import { PaneRegistry } from '../../src/main/pane-registry'
 import { OperatorGrantStore } from '../../src/main/operator-grant'
-import type { SessionInfo } from '../../src/shared/types'
+import type { SessionGroup, SessionInfo } from '../../src/shared/types'
 import { CONTROL_MAX_BODY_BYTES } from '../../src/shared/operator'
 
 function session(over: Partial<SessionInfo>): SessionInfo {
@@ -29,18 +30,62 @@ function deps(): { deps: ControlDeps; grants: OperatorGrantStore; writes: string
   const sessions = [
     session({ id: 'a-term', environment: 1, name: 'termA' }),
     session({ id: 'b-term', environment: 2, name: 'termB' }),
-    session({ id: 'dead-term', environment: 1, name: 'termDead', status: 'exited' })
+    session({ id: 'dead-term', environment: 1, name: 'termDead', status: 'exited' }),
+    // g1: environment 1, one memberless-cwd pane then one with a real cwd —
+    // exercises "first member WITH a non-empty cwd", not just "first member".
+    session({ id: 'g1-a', environment: 1, name: 'g1a', groupId: 'g1', cwd: '' }),
+    session({ id: 'g1-b', environment: 1, name: 'g1b', groupId: 'g1', cwd: '/proj/g1' }),
+    // g2: environment 2 — used to prove a foreign-env groupId is rejected.
+    session({ id: 'g2-a', environment: 2, name: 'g2a', groupId: 'g2', cwd: '/proj/g2' }),
+    // g3: environment 1, but every member has an empty cwd.
+    session({ id: 'g3-a', environment: 1, name: 'g3a', groupId: 'g3', cwd: '' })
+  ]
+  const groups: SessionGroup[] = [
+    { id: 'g1', name: 'Group 1', environment: 1 },
+    { id: 'g2', name: 'Group 2', environment: 2 },
+    { id: 'g3', name: 'Group 3', environment: 1 }
   ]
   const grants = new OperatorGrantStore()
   const writes: string[] = []
+  let nextId = 0
   const manager = {
     list: () => sessions,
     get: (id: string) => sessions.find((s) => s.id === id) ?? null,
     write: (_id: string, data: string) => writes.push(data),
-    peek: (_id: string, n = 5) => ['line1', 'line2'].slice(0, n)
+    peek: (_id: string, n = 5) => ['line1', 'line2'].slice(0, n),
+    getGroup: (id: string) => groups.find((g) => g.id === id) ?? null
+  }
+  // Fakes the same contract `index.ts`'s real `operatorCreatePane` upholds:
+  // cwd for a terminal pane is derived from the group's members, never from
+  // the caller (there is no cwd field on OperatorPaneRequest).
+  const panes = {
+    create: (environment: number, req: OperatorPaneRequest): SessionInfo | null => {
+      if (req.kind === 'browser') {
+        return session({
+          id: `new-${nextId++}`,
+          kind: 'browser',
+          environment,
+          cwd: '',
+          url: req.url,
+          groupId: req.groupId
+        })
+      }
+      const cwd = sessions.find(
+        (s) => s.groupId === req.groupId && s.environment === environment && s.cwd
+      )?.cwd
+      if (!cwd) return null
+      return session({
+        id: `new-${nextId++}`,
+        environment,
+        agentId: req.agentId,
+        command: req.agentId,
+        cwd,
+        groupId: req.groupId
+      })
+    }
   }
   return {
-    deps: { registry: new PaneRegistry(manager), grants, manager },
+    deps: { registry: new PaneRegistry(manager), grants, manager, panes },
     grants,
     writes
   }
@@ -60,7 +105,10 @@ describe('control-api router', () => {
     expect(r.status).toBe(200)
     expect((r.json as { panes: { handle: string }[] }).panes.map((p) => p.handle)).toEqual([
       'a-term',
-      'dead-term'
+      'dead-term',
+      'g1-a',
+      'g1-b',
+      'g3-a'
     ])
   })
 
@@ -137,6 +185,143 @@ describe('control-api router', () => {
     expect(Buffer.byteLength(multibyte)).toBeGreaterThan(CONTROL_MAX_BODY_BYTES)
     const r = await handleRequest(d, 'GET', '/panes', token, multibyte)
     expect(r.status).toBe(400)
+  })
+})
+
+describe('POST /panes (operator pane creation)', () => {
+  it('rejects a missing/invalid token with 403', async () => {
+    const { deps: d } = deps()
+    const r = await handleRequest(
+      d,
+      'POST',
+      '/panes',
+      'nope',
+      JSON.stringify({ kind: 'browser', url: 'http://x.test' })
+    )
+    expect(r.status).toBe(403)
+  })
+
+  it('creates a browser pane in the caller’s environment with no groupId', async () => {
+    const { deps: d, grants } = deps()
+    const token = grants.grant(1)
+    const r = await handleRequest(
+      d,
+      'POST',
+      '/panes',
+      token,
+      JSON.stringify({ kind: 'browser', url: 'http://x.test' })
+    )
+    expect(r.status).toBe(200)
+    expect((r.json as { pane: { kind: string; url?: string } }).pane).toMatchObject({
+      kind: 'browser',
+      url: 'http://x.test/'
+    })
+  })
+
+  it('creates a browser pane in an existing group of the caller’s environment', async () => {
+    const { deps: d, grants } = deps()
+    const token = grants.grant(1)
+    const r = await handleRequest(
+      d,
+      'POST',
+      '/panes',
+      token,
+      JSON.stringify({ kind: 'browser', url: 'http://x.test', groupId: 'g1' })
+    )
+    expect(r.status).toBe(200)
+    expect((r.json as { pane: { kind: string } }).pane.kind).toBe('browser')
+  })
+
+  it('creates a terminal pane, pulling cwd from the group’s first non-empty-cwd member', async () => {
+    const { deps: d, grants } = deps()
+    const token = grants.grant(1)
+    const r = await handleRequest(
+      d,
+      'POST',
+      '/panes',
+      token,
+      JSON.stringify({ kind: 'terminal', agentId: 'claude', groupId: 'g1' })
+    )
+    expect(r.status).toBe(200)
+    expect((r.json as { pane: { cwd: string } }).pane.cwd).toBe('/proj/g1')
+  })
+
+  it('rejects a terminal pane whose group members all have an empty cwd', async () => {
+    const { deps: d, grants } = deps()
+    const token = grants.grant(1)
+    const r = await handleRequest(
+      d,
+      'POST',
+      '/panes',
+      token,
+      JSON.stringify({ kind: 'terminal', agentId: 'claude', groupId: 'g3' })
+    )
+    expect(r.status).toBe(400)
+    expect(r.json).toEqual({ error: 'invalid pane request' })
+  })
+
+  it('rejects a groupId belonging to another environment with "unknown group"', async () => {
+    const { deps: d, grants } = deps()
+    const token = grants.grant(1)
+    const r = await handleRequest(
+      d,
+      'POST',
+      '/panes',
+      token,
+      JSON.stringify({ kind: 'terminal', agentId: 'claude', groupId: 'g2' })
+    )
+    expect(r.status).toBe(400)
+    expect(r.json).toEqual({ error: 'unknown group' })
+  })
+
+  it('rejects a nonexistent groupId with the same "unknown group" wording (no existence leak)', async () => {
+    const { deps: d, grants } = deps()
+    const token = grants.grant(1)
+    const r = await handleRequest(
+      d,
+      'POST',
+      '/panes',
+      token,
+      JSON.stringify({ kind: 'browser', url: 'http://x.test', groupId: 'does-not-exist' })
+    )
+    expect(r.status).toBe(400)
+    expect(r.json).toEqual({ error: 'unknown group' })
+  })
+
+  it('rejects an unknown kind with "invalid pane request"', async () => {
+    const { deps: d, grants } = deps()
+    const token = grants.grant(1)
+    const r = await handleRequest(d, 'POST', '/panes', token, JSON.stringify({ kind: 'x' }))
+    expect(r.status).toBe(400)
+    expect(r.json).toEqual({ error: 'invalid pane request' })
+  })
+
+  it('rejects a terminal request missing the required groupId', async () => {
+    const { deps: d, grants } = deps()
+    const token = grants.grant(1)
+    const r = await handleRequest(
+      d,
+      'POST',
+      '/panes',
+      token,
+      JSON.stringify({ kind: 'terminal', agentId: 'claude' })
+    )
+    expect(r.status).toBe(400)
+    expect(r.json).toEqual({ error: 'invalid pane request' })
+  })
+
+  it('rejects a browser request with an invalid url', async () => {
+    const { deps: d, grants } = deps()
+    const token = grants.grant(1)
+    const r = await handleRequest(
+      d,
+      'POST',
+      '/panes',
+      token,
+      JSON.stringify({ kind: 'browser', url: 'javascript:alert(1)' })
+    )
+    expect(r.status).toBe(400)
+    expect(r.json).toEqual({ error: 'invalid pane request' })
   })
 })
 

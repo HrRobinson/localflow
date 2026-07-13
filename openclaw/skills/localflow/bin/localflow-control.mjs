@@ -35,6 +35,19 @@ export function buildRequest(base, argv) {
       }
     case 'output':
       return { method: 'GET', path: `/panes/${rest[0]}/output?maxLines=${rest[1] ?? 5}` }
+    case 'create-pane': {
+      const [kind, ...paneArgs] = rest
+      if (kind === 'browser') {
+        const [url, groupId] = paneArgs
+        const body = groupId ? { kind, url, groupId } : { kind, url }
+        return { method: 'POST', path: '/panes', body }
+      }
+      if (kind === 'terminal') {
+        const [agentId, groupId] = paneArgs
+        return { method: 'POST', path: '/panes', body: { kind, agentId, groupId } }
+      }
+      throw new Error(`unknown pane kind: ${kind}`)
+    }
     case 'checkpoint': {
       const halted = rest.includes('--halt')
       return { method: 'POST', path: '/captures', body: { watchpointId: rest[0], halted } }

@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/HrRobinson/localflow/compare/v1.3.0...v1.3.1) (2026-07-11)
+
+
+### Bug Fixes
+
+* keep chosen agent when detection resolves ([#44](https://github.com/HrRobinson/localflow/issues/44)) ([045715b](https://github.com/HrRobinson/localflow/commit/045715b952e5beda6ee9c0da09a7883fb6fb6551))
+
 ## [1.3.0](https://github.com/HrRobinson/localflow/compare/v1.2.0...v1.3.0) (2026-07-11)
 
 

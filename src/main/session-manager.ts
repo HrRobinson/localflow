@@ -502,7 +502,13 @@ export class SessionManager {
     const rec = this.sessions.get(paneId)
     if (!rec) return null
     if (groupId === null) {
+      const oldGroupId = rec.info.groupId
       delete rec.info.groupId
+      // A group that just lost its last member is gone too — mirror
+      // deleteSession's reap so ungrouping can't strand an empty group.
+      if (oldGroupId && ![...this.sessions.values()].some((r) => r.info.groupId === oldGroupId)) {
+        this.groups.delete(oldGroupId)
+      }
     } else {
       const group = this.groups.get(groupId)
       if (!group || group.environment !== rec.info.environment) return null

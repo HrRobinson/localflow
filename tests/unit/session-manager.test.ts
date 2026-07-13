@@ -830,6 +830,25 @@ describe('SessionManager', () => {
       expect(mgr.list().find((s) => s.id === b.id)?.groupId).toBe(group.id)
     })
 
+    it('ungrouping the last member deletes the group', () => {
+      const info = mgr.create('/p', claudeSpec, 1)
+      const group = mgr.createGroup('g', 1)
+      mgr.assignToGroup(info.id, group.id)
+      mgr.assignToGroup(info.id, null)
+      expect(mgr.listGroups()).toEqual([])
+    })
+
+    it('ungrouping one of two members keeps the group', () => {
+      const a = mgr.create('/p1', claudeSpec, 1)
+      const b = mgr.create('/p2', claudeSpec, 1)
+      const group = mgr.createGroup('g', 1)
+      mgr.assignToGroup(a.id, group.id)
+      mgr.assignToGroup(b.id, group.id)
+      mgr.assignToGroup(a.id, null)
+      expect(mgr.listGroups()).toEqual([group])
+      expect(mgr.list().find((s) => s.id === b.id)?.groupId).toBe(group.id)
+    })
+
     it('closeTerminal never touches groups', () => {
       const info = mgr.create('/p', claudeSpec, 1)
       const group = mgr.createGroup('g', 1)

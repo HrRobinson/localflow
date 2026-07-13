@@ -27,6 +27,9 @@ function launchApp(userData: string): Promise<ElectronApplication> {
       LOCALFLOW_E2E: '1',
       LOCALFLOW_USER_DATA: userData,
       LOCALFLOW_CLAUDE_BIN: join(here, '../fixtures/fake-claude.sh'),
+      // Keep the skill-env auto-writer away from any real ~/.openclaw config;
+      // this path never exists, so the writer no-ops.
+      LOCALFLOW_OPENCLAW_CONFIG: join(userData, 'openclaw.json'),
       LOCALFLOW_LAZYGIT_BIN: '/nonexistent/lazygit',
       LOCALFLOW_EDITOR_BIN: '/nonexistent/code',
       LOCALFLOW_E2E_GO: join(userData, 'e2e-go')

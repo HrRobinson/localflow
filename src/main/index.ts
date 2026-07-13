@@ -17,6 +17,12 @@ import { gitStatus, gitDiff } from './git'
 import { describeTool, gateBin } from './tools'
 import { loadEditorCommand } from './editor-config'
 import { loadOperatorRevokeOnExit } from './operator-config'
+import {
+  defaultOpenclawConfig,
+  removeSkillEnv,
+  writeSkillEnv,
+  type SkillEnvResult
+} from './openclaw-config'
 import { splitCommandLine } from '../shared/args'
 import { PaneRegistry } from './pane-registry'
 import { OperatorGrantStore } from './operator-grant'
@@ -173,6 +179,15 @@ app.whenReady().then(async () => {
   // the feed is deliberately not persisted across restarts (spec "Out of scope").
   const activity = new Map<number, ActivityEntry[]>()
 
+  // One append path for the per-environment action log: cap, store, push live.
+  const pushActivity = (env: number, entry: ActivityEntry): void => {
+    const log = activity.get(env) ?? []
+    log.push(entry)
+    if (log.length > 200) log.splice(0, log.length - 200)
+    activity.set(env, log)
+    sendToWindow('operator:activity', env, entry)
+  }
+
   const browserBridge = new BrowserBridge()
   const captureStore = new CaptureStore(join(userData, 'captures'))
   const browserControl = new WebviewBrowserControl(browserBridge, captureStore)
@@ -185,13 +200,7 @@ app.whenReady().then(async () => {
     browser: browserControl,
     captures: captureStore,
     watchpoints,
-    onActivity: (env, entry) => {
-      const log = activity.get(env) ?? []
-      log.push(entry)
-      if (log.length > 200) log.splice(0, log.length - 200)
-      activity.set(env, log)
-      sendToWindow('operator:activity', env, entry)
-    }
+    onActivity: pushActivity
   })
   app.on('before-quit', () => {
     control.close()
@@ -200,6 +209,36 @@ app.whenReady().then(async () => {
     captureStore.clear()
   })
   const launchTracker = new OperatorLaunchTracker()
+
+  // Grant/revoke mirrored into an EXISTING OpenClaw config (the block the
+  // manual setup documents): grant writes skills.entries.localflow.env,
+  // revoke removes exactly that entry. Missing file → no-op (never created);
+  // any failure is NON-FATAL — the grant/revoke itself always proceeds, with
+  // a console warning + an operator:activity entry. Token values are never
+  // logged. The env override keeps e2e runs away from a real ~/.openclaw.
+  const openclawConfig = process.env['LOCALFLOW_OPENCLAW_CONFIG'] ?? defaultOpenclawConfig()
+  const reportSkillEnv = (env: number, verb: 'write' | 'remove', result: SkillEnvResult): void => {
+    if (result.ok) return
+    console.warn(`openclaw config skill-env ${verb} failed: ${result.reason} (${openclawConfig})`)
+    pushActivity(env, {
+      at: Date.now(),
+      route: 'openclaw:config',
+      detail: `skill env ${verb} failed: ${result.reason}`
+    })
+  }
+  const grantOperator = (env: number): string => {
+    const token = grants.grant(env)
+    reportSkillEnv(
+      env,
+      'write',
+      writeSkillEnv(openclawConfig, `http://127.0.0.1:${control.port}`, token)
+    )
+    return token
+  }
+  const revokeOperator = (env: number): void => {
+    grants.revoke(env)
+    reportSkillEnv(env, 'remove', removeSkillEnv(openclawConfig))
+  }
 
   ipcMain.on('browser:register', (_e, handle: string, webContentsId: number) => {
     if (typeof handle === 'string' && Number.isInteger(webContentsId)) {
@@ -228,7 +267,7 @@ app.whenReady().then(async () => {
         (sid) => manager.get(sid)?.status !== 'exited',
         loadOperatorRevokeOnExit(join(userData, 'config.json'))
       )
-      if (env !== null) grants.revoke(env)
+      if (env !== null) revokeOperator(env)
     }
   })
   manager.onActivity((id, entry) => sendToWindow('activity:event', id, entry))
@@ -237,7 +276,7 @@ app.whenReady().then(async () => {
     for (const id of launchTracker.trackedIds()) {
       if (!currentIds.has(id)) {
         const env = launchTracker.onClose(id)
-        if (env !== null) grants.revoke(env)
+        if (env !== null) revokeOperator(env)
       }
     }
     saveSessions(
@@ -289,7 +328,7 @@ app.whenReady().then(async () => {
       if (agentId === 'openclaw') {
         const env = clampEnvironment(environment)
         const wasGranted = grants.isGranted(env)
-        const token = grants.grant(env)
+        const token = grantOperator(env)
         spec = {
           ...spec,
           env: { ...spec.env, ...credentialEnv(`http://127.0.0.1:${control.port}`, token) }
@@ -320,7 +359,7 @@ app.whenReady().then(async () => {
       !grants.isGranted(s.environment)
     ) {
       const wasGranted = grants.isGranted(s.environment)
-      const token = grants.grant(s.environment)
+      const token = grantOperator(s.environment)
       manager.updateSpecEnv(id, credentialEnv(`http://127.0.0.1:${control.port}`, token))
       launchTracker.onLaunch(s.environment, id, wasGranted)
     }
@@ -498,7 +537,7 @@ app.whenReady().then(async () => {
   })
   ipcMain.handle('operator:grant', (_e, environment: number): GrantInfo => {
     const env = clampEnvironment(environment)
-    const token = grants.grant(env)
+    const token = grantOperator(env)
     const info: GrantInfo = {
       environment: env,
       endpoint: `http://127.0.0.1:${control.port}`,
@@ -514,7 +553,7 @@ app.whenReady().then(async () => {
     return info
   })
   ipcMain.handle('operator:revoke', (_e, environment: number) => {
-    grants.revoke(clampEnvironment(environment))
+    revokeOperator(clampEnvironment(environment))
   })
   ipcMain.handle('operator:status', (_e, environment: number): OperatorStatus => {
     const env = clampEnvironment(environment)
@@ -544,15 +583,11 @@ app.whenReady().then(async () => {
     (_e, environment: number, captureId: string, approve: boolean) => {
       const env = clampEnvironment(environment)
       const token = captureStore.resolve(env, captureId)
-      const log = activity.get(env) ?? []
-      log.push({
+      pushActivity(env, {
         at: Date.now(),
         route: 'operator:resume',
         detail: `${captureId} ${approve ? 'approve' : 'stop'}`
       })
-      if (log.length > 200) log.splice(0, log.length - 200)
-      activity.set(env, log)
-      sendToWindow('operator:activity', env, log[log.length - 1])
       return token !== null
     }
   )

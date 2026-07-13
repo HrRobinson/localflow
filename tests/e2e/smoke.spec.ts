@@ -46,6 +46,9 @@ function launchApp(
       LOCALFLOW_E2E: '1',
       LOCALFLOW_USER_DATA: userData,
       LOCALFLOW_CLAUDE_BIN: join(here, '../fixtures/fake-claude.sh'),
+      // Keep the skill-env auto-writer away from any real ~/.openclaw config;
+      // this path never exists, so the writer no-ops.
+      LOCALFLOW_OPENCLAW_CONFIG: join(userData, 'openclaw.json'),
       // Escape-hatch tools resolve to "unavailable" without a login-shell spawn
       // (the M6 hatches are gated by capabilities; real binaries aren't needed
       // headless — unit tests cover the gating logic).

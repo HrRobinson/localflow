@@ -1,7 +1,7 @@
 import type { HookAdapterKind } from '../shared/agents'
-import { writeHookSettings } from './hook-settings'
+import { removeHookSettings, writeHookSettings } from './hook-settings'
 import { buildCodexHookArgs } from './codex-hooks'
-import { writeGeminiHookSettings } from './gemini-hooks'
+import { removeGeminiHookSettings, writeGeminiHookSettings } from './gemini-hooks'
 
 export interface HookInjection {
   args: string[]
@@ -45,4 +45,17 @@ export function buildHookInjection(
     case 'none':
       return { args: [], env: {} }
   }
+}
+
+/**
+ * Best-effort inverse of buildHookInjection's on-disk side effects: removes
+ * the per-session settings files a spawn may have written. Called when a
+ * session is deleted for good; adapters that never write files (Codex's
+ * inline CLI args, 'none') simply have nothing to remove. Removal is keyed
+ * on paneId alone rather than adapter kind — a session's agent can change
+ * across restores, and deleting a file that was never written is a no-op.
+ */
+export function removeHookInjectionFiles(dir: string, paneId: string): void {
+  removeHookSettings(dir, paneId)
+  removeGeminiHookSettings(dir, paneId)
 }

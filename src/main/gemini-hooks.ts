@@ -1,4 +1,4 @@
-import { writeFileSync } from 'node:fs'
+import { rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { HookEventName } from '../shared/types'
 
@@ -77,4 +77,18 @@ export function writeGeminiHookSettings(
     mode: 0o600
   })
   return file
+}
+
+/**
+ * Deletes the per-session settings file written above. Same best-effort
+ * contract as removeHookSettings (hook-settings.ts): never throws, and an
+ * unsafe paneId never had a file written for it in the first place.
+ */
+export function removeGeminiHookSettings(dir: string, paneId: string): void {
+  if (!SAFE_TOKEN_RE.test(paneId)) return
+  try {
+    rmSync(join(dir, `localflow-gemini-hooks-${paneId}.json`), { force: true })
+  } catch {
+    /* best-effort */
+  }
 }

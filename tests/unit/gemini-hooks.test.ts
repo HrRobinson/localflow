@@ -1,9 +1,13 @@
 import { describe, it, expect } from 'vitest'
-import { mkdtempSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, statSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { buildGeminiHookSettings, writeGeminiHookSettings } from '../../src/main/gemini-hooks'
+import {
+  buildGeminiHookSettings,
+  removeGeminiHookSettings,
+  writeGeminiHookSettings
+} from '../../src/main/gemini-hooks'
 
 /**
  * The Notification command is itself wrapped in an outer `sh -c '...'`
@@ -94,5 +98,16 @@ describe('writeGeminiHookSettings', () => {
   it('throws when paneId attempts path traversal', () => {
     const dir = mkdtempSync(join(tmpdir(), 'localflow-test-'))
     expect(() => writeGeminiHookSettings(dir, '../escape', 1234, 'tok2')).toThrow()
+  })
+})
+
+describe('removeGeminiHookSettings', () => {
+  it('removes a previously written settings file and never throws', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'localflow-test-'))
+    const file = writeGeminiHookSettings(dir, 'p3', 1234, 'tok3')
+    removeGeminiHookSettings(dir, 'p3')
+    expect(existsSync(file)).toBe(false)
+    expect(() => removeGeminiHookSettings(dir, 'never-written')).not.toThrow()
+    expect(() => removeGeminiHookSettings(dir, '../escape')).not.toThrow()
   })
 })

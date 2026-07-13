@@ -14,7 +14,7 @@ import { clampEnvironment } from '../shared/environment'
 import { normalizeHttpUrl } from '../shared/urls'
 import { transition } from './state-machine'
 import { hasHookAdapter, type HookAdapterKind } from '../shared/agents'
-import { buildHookInjection } from './hook-adapter'
+import { buildHookInjection, removeHookInjectionFiles } from './hook-adapter'
 import { ANSI_RE, extractPeekLines } from './peek'
 
 export interface PtyLike {
@@ -418,6 +418,9 @@ export class SessionManager {
       /* dead pty */
     }
     this.sessions.delete(id)
+    // The session is gone for good — its per-session hook-settings files
+    // (written at spawn) have no further reader; remove them (best-effort).
+    removeHookInjectionFiles(this.opts.settingsDir, id)
     this.changedCbs.forEach((cb) => cb())
   }
 

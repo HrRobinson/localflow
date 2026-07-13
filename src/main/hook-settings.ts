@@ -1,4 +1,4 @@
-import { writeFileSync } from 'node:fs'
+import { rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { HookEventName } from '../shared/types'
 
@@ -45,4 +45,19 @@ export function writeHookSettings(
     mode: 0o600
   })
   return file
+}
+
+/**
+ * Deletes the per-session settings file written above. Deleting a session is
+ * best-effort cleanup: an unsafe paneId (possible via a hand-edited
+ * sessions.json) never had a file written for it, and a missing file is fine
+ * — so this never throws.
+ */
+export function removeHookSettings(dir: string, paneId: string): void {
+  if (!SAFE_TOKEN_RE.test(paneId)) return
+  try {
+    rmSync(join(dir, `localflow-hooks-${paneId}.json`), { force: true })
+  } catch {
+    /* best-effort */
+  }
 }

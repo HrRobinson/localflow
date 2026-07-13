@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { mkdtempSync } from 'node:fs'
+import { existsSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -146,6 +146,22 @@ describe('SessionManager', () => {
     expect(spawnCalls[0].cwd).toBe('/some/project')
     expect(spawnCalls[0].args[0]).toBe('--settings')
     expect(spawnCalls[0].args[1]).toContain(`localflow-hooks-${info.id}.json`)
+  })
+
+  it('deleteSession removes the per-session hook-settings file', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'localflow-sm-'))
+    const mgrD = new SessionManager({
+      settingsDir: dir,
+      port: 9999,
+      token: 'tok',
+      spawnFn: () => new FakePty()
+    })
+    const info = mgrD.create('/p', claudeSpec, 1)
+    const file = join(dir, `localflow-hooks-${info.id}.json`)
+    expect(existsSync(file)).toBe(true)
+    mgrD.deleteSession(info.id)
+    expect(existsSync(file)).toBe(false)
+    expect(mgrD.list()).toEqual([])
   })
 
   it('create defaults name to the cwd basename', () => {

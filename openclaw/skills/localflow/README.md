@@ -1,8 +1,9 @@
 # localflow OpenClaw skill
 
 Lets an OpenClaw agent drive the ONE localflow environment it has been
-granted: list panes, navigate/screenshot/inspect a browser pane, act on it,
-prompt a terminal pane, read its output, and record a watchpoint checkpoint.
+granted: list panes, create a browser or terminal pane, navigate/
+screenshot/inspect a browser pane, act on it, prompt a terminal pane, read
+its output, and record a watchpoint checkpoint.
 
 ## Files
 

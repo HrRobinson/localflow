@@ -1,4 +1,5 @@
-import { readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync, renameSync } from 'node:fs'
+import { SessionGroup } from '../shared/types'
 
 export interface SavedSession {
   id: string
@@ -15,26 +16,51 @@ export interface SavedSession {
   kind?: string
   /** Browser panes only. */
   url?: string
+  /** Group ("session") this pane belongs to; absent = solo pane. */
+  groupId?: string
 }
 
-export function loadSavedSessions(file: string): SavedSession[] {
+export interface SavedState {
+  sessions: SavedSession[]
+  groups: SessionGroup[]
+}
+
+const filterSessions = (data: unknown): SavedSession[] => {
+  if (!Array.isArray(data)) return []
+  return data
+    .filter(
+      (s): s is SavedSession =>
+        typeof s === 'object' && s !== null && typeof s.id === 'string' && typeof s.cwd === 'string'
+    )
+    .map((s) => (typeof s.name === 'string' ? s : { ...s, name: undefined }))
+}
+
+const isGroup = (g: unknown): g is SessionGroup =>
+  typeof g === 'object' &&
+  g !== null &&
+  typeof (g as SessionGroup).id === 'string' &&
+  typeof (g as SessionGroup).name === 'string' &&
+  typeof (g as SessionGroup).environment === 'number'
+
+export function loadSavedState(file: string): SavedState {
   try {
     const data: unknown = JSON.parse(readFileSync(file, 'utf8'))
-    if (!Array.isArray(data)) return []
-    return data
-      .filter(
-        (s): s is SavedSession =>
-          typeof s === 'object' &&
-          s !== null &&
-          typeof s.id === 'string' &&
-          typeof s.cwd === 'string'
-      )
-      .map((s) => (typeof s.name === 'string' ? s : { ...s, name: undefined }))
+    // Legacy shape (pre-M5): a bare array of sessions, no groups.
+    if (Array.isArray(data)) return { sessions: filterSessions(data), groups: [] }
+    if (typeof data !== 'object' || data === null) return { sessions: [], groups: [] }
+    const obj = data as { sessions?: unknown; groups?: unknown }
+    return {
+      sessions: Array.isArray(obj.sessions) ? filterSessions(obj.sessions) : [],
+      groups: Array.isArray(obj.groups) ? obj.groups.filter(isGroup) : []
+    }
   } catch {
-    return []
+    return { sessions: [], groups: [] }
   }
 }
 
-export function saveSessions(file: string, sessions: SavedSession[]): void {
-  writeFileSync(file, JSON.stringify(sessions, null, 2))
+export function saveState(file: string, state: SavedState): void {
+  // Atomic: a crash mid-write must never leave a truncated sessions.json.
+  const tmp = file + '.tmp'
+  writeFileSync(tmp, JSON.stringify(state, null, 2))
+  renameSync(tmp, file)
 }

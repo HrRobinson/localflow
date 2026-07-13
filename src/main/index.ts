@@ -1,13 +1,20 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
-import { join } from 'node:path'
-import { existsSync, writeFileSync } from 'node:fs'
+import { join, basename } from 'node:path'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { spawn } from 'node:child_process'
-import type { AgentId, AgentOverride, AgentOverrideResult } from '../shared/types'
+import {
+  VALID_AGENTS,
+  type AgentId,
+  type AgentOverride,
+  type AgentOverrideResult,
+  type SessionInfo
+} from '../shared/types'
 import { clampEnvironment } from '../shared/environment'
 import { normalizeHttpUrl, isHttpUrl } from '../shared/urls'
+import { parseSessionTemplates, type SessionTemplate } from '../shared/templates'
 import { startHookServer } from './hook-server'
 import { SessionManager, type SpawnSpec } from './session-manager'
-import { loadSavedSessions, saveSessions } from './persistence'
+import { loadSavedState, saveState } from './persistence'
 import { AgentRegistry, whichViaLoginShell } from './agent-registry'
 import { ensureThemesSeeded, listThemeNames, resolveTheme } from './theme-store'
 import { loadOrCreateKeybindings, writeKeybindings } from './keybindings-file'
@@ -25,9 +32,10 @@ import {
 } from './openclaw-config'
 import { splitCommandLine } from '../shared/args'
 import { PaneRegistry } from './pane-registry'
+import { addCompanionPane, operatorCreatePane, type AddPaneRequest } from './pane-ops'
 import { OperatorGrantStore } from './operator-grant'
 import { credentialEnv, OperatorLaunchTracker } from './operator-launch'
-import { startControlServer } from './control-api'
+import { startControlServer, type OperatorPaneRequest } from './control-api'
 import { BrowserBridge } from './browser-bridge'
 import { WebviewBrowserControl } from './browser-control'
 import { CaptureStore } from './capture-store'
@@ -45,7 +53,23 @@ if (process.env['LOCALFLOW_USER_DATA']) {
   app.setPath('userData', process.env['LOCALFLOW_USER_DATA'])
 }
 
-const VALID_AGENTS: AgentId[] = ['claude', 'codex', 'gemini', 'openclaw', 'custom']
+/**
+ * Reads config.json's `sessionTemplates` fresh on every call (same posture
+ * as loadEditorCommand in editor-config.ts) — hand edits apply without a
+ * restart. Never throws: a missing/corrupt file or malformed array is [].
+ */
+function loadSessionTemplates(configFile: string): SessionTemplate[] {
+  try {
+    const data: unknown = JSON.parse(readFileSync(configFile, 'utf8'))
+    const raw =
+      typeof data === 'object' && data !== null
+        ? (data as { sessionTemplates?: unknown }).sessionTemplates
+        : undefined
+    return parseSessionTemplates(raw)
+  } catch {
+    return []
+  }
+}
 
 let win: BrowserWindow | null = null
 let managerRef: SessionManager | null = null
@@ -197,6 +221,13 @@ app.whenReady().then(async () => {
     registry: paneRegistry,
     grants,
     manager,
+    panes: {
+      // Thin binding: the real logic lives in pane-ops.ts as a pure,
+      // dependency-injected function so it's unit-testable without the
+      // control server (same shape as addCompanionPane).
+      create: (environment: number, req: OperatorPaneRequest): SessionInfo | null =>
+        operatorCreatePane(manager, specFor, environment, req)
+    },
     browser: browserControl,
     captures: captureStore,
     watchpoints,
@@ -279,26 +310,37 @@ app.whenReady().then(async () => {
         if (env !== null) revokeOperator(env)
       }
     }
-    saveSessions(
-      sessionsFile,
-      manager.list().map(({ id, cwd, agentId, command, name, environment, kind, url }) => ({
-        id,
-        cwd,
-        agentId,
-        command,
-        name,
-        environment,
-        kind,
-        url
-      }))
-    )
+    saveState(sessionsFile, {
+      sessions: manager
+        .list()
+        .map(({ id, cwd, agentId, command, name, environment, kind, url, groupId }) => ({
+          id,
+          cwd,
+          agentId,
+          command,
+          name,
+          environment,
+          kind,
+          url,
+          groupId
+        })),
+      groups: manager.listGroups()
+    })
   })
 
-  for (const saved of loadSavedSessions(sessionsFile)) {
+  const savedState = loadSavedState(sessionsFile)
+  manager.restoreGroups(savedState.groups)
+  for (const saved of savedState.sessions) {
     if (saved.kind === 'browser') {
       // restoreBrowser validates the stored URL; a hand-corrupted entry is
       // dropped rather than restored as an unloadable pane.
-      manager.restoreBrowser(saved.id, saved.url ?? '', saved.name, saved.environment)
+      manager.restoreBrowser(
+        saved.id,
+        saved.url ?? '',
+        saved.name,
+        saved.environment,
+        saved.groupId
+      )
       continue
     }
     const agentId = VALID_AGENTS.includes(saved.agentId as AgentId)
@@ -306,7 +348,7 @@ app.whenReady().then(async () => {
       : 'claude'
     // A saved custom session keeps its stored command verbatim.
     const spec = agentId === 'custom' ? specFor(agentId, saved.command ?? '') : specFor(agentId)
-    manager.restore(saved.id, saved.cwd, spec, saved.name, saved.environment)
+    manager.restore(saved.id, saved.cwd, spec, saved.name, saved.environment, saved.groupId)
   }
 
   ipcMain.handle(
@@ -371,6 +413,34 @@ app.whenReady().then(async () => {
   ipcMain.handle('session:setEnvironment', (_e, id: string, environment: number) =>
     manager.setEnvironment(id, environment)
   )
+  ipcMain.handle('group:create', (_e, name: string, environment: number) =>
+    typeof name === 'string' && name.trim().length > 0
+      ? manager.createGroup(name, environment)
+      : null
+  )
+  ipcMain.handle('group:rename', (_e, id: string, name: string) =>
+    typeof id === 'string' && typeof name === 'string' ? manager.renameGroup(id, name) : null
+  )
+  ipcMain.handle('group:assign', (_e, paneId: string, groupId: string | null) =>
+    typeof paneId === 'string' && (groupId === null || typeof groupId === 'string')
+      ? manager.assignToGroup(paneId, groupId)
+      : null
+  )
+  ipcMain.handle('group:list', () => manager.listGroups())
+  ipcMain.handle('group:addPane', (_e, sourcePaneId: string, req: AddPaneRequest) => {
+    // Boundary-validate the request shape — the renderer is not trusted with
+    // it (same posture as session:create's VALID_AGENTS check).
+    if (typeof sourcePaneId !== 'string' || typeof req !== 'object' || req === null) return null
+    if (req.kind === 'terminal') {
+      if (!VALID_AGENTS.includes(req.agentId)) return null
+      if (req.agentId === 'custom' && !req.customCommand?.trim()) return null
+    } else if (req.kind === 'browser') {
+      if (typeof req.url !== 'string') return null
+    } else {
+      return null
+    }
+    return addCompanionPane(manager, specFor, sourcePaneId, req)
+  })
   ipcMain.handle('session:createBrowser', (_e, url: string, environment?: number) => {
     // Validate at the boundary; manager.createBrowser re-validates (throws),
     // so reject cleanly here instead of surfacing an exception to the bridge.
@@ -379,6 +449,55 @@ app.whenReady().then(async () => {
   })
   ipcMain.handle('session:setUrl', (_e, id: string, url: string) =>
     typeof url === 'string' ? manager.setUrl(id, url) : null
+  )
+  ipcMain.handle('templates:list', () => loadSessionTemplates(join(userData, 'config.json')))
+  ipcMain.handle(
+    'templates:create',
+    async (_e, name: string, cwd: string | undefined, environment: number) => {
+      if (typeof name !== 'string') return null
+      const template = loadSessionTemplates(join(userData, 'config.json')).find(
+        (t) => t.name === name
+      )
+      if (!template) return null
+      // Dir-picking logic copied verbatim from session:create — dialog
+      // unless under the e2e harness, which passes an explicit cwd.
+      let dir = process.env['LOCALFLOW_E2E'] === '1' ? cwd : undefined
+      if (!dir) {
+        const result = await dialog.showOpenDialog(win!, {
+          properties: ['openDirectory', 'createDirectory'],
+          title: 'Choose a project folder for the new session'
+        })
+        if (result.canceled || result.filePaths.length === 0) return null
+        dir = result.filePaths[0]
+      }
+      // Skip panes whose agent binary is missing rather than failing the
+      // whole template; 'shell' has no fixed binary to detect, so it's
+      // always considered launchable (mirrors AgentRegistry.commandFor).
+      const agentInfos = await registry.list()
+      const resolvedByAgent = new Map(agentInfos.map((a) => [a.id, a.resolvedPath]))
+      const launchable = template.panes.filter(
+        (pane) =>
+          pane.kind === 'browser' ||
+          pane.agentId === 'shell' ||
+          !!resolvedByAgent.get(pane.agentId ?? 'claude')
+      )
+      if (launchable.length === 0) return null
+      // Panes are created directly (create/createBrowser + assignToGroup)
+      // rather than via addCompanionPane, which derives cwd/environment from
+      // an existing source pane — there isn't one yet for the first pane of
+      // a brand-new template group.
+      const resolvedDir = dir
+      const group = manager.createGroup(basename(resolvedDir), environment)
+      return launchable.map((pane) => {
+        const created =
+          pane.kind === 'terminal'
+            ? manager.create(resolvedDir, specFor(pane.agentId ?? 'claude'), environment)
+            : // parseSessionTemplates only ever emits a browser pane with a
+              // validated url, so this is never actually undefined.
+              manager.createBrowser(pane.url!, environment)
+        return manager.assignToGroup(created.id, group.id) ?? created
+      })
+    }
   )
   ipcMain.handle('git:status', (_e, id: string) => {
     // cwd is resolved from the session record here — NEVER trusted from the

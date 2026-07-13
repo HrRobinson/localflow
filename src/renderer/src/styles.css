@@ -24,6 +24,9 @@
   --pane-bg: #1a1b1e;
   --running: #8b5cf6;
   --text: #e5e7eb;
+  /* --border is set by the theme system (theme.ts themeToCssVars) at
+     runtime; no static fallback here so it can't drift from the active
+     theme. App.tsx applies it before first paint. */
 }
 * {
   box-sizing: border-box;
@@ -110,6 +113,31 @@ body {
   background: var(--running);
 }
 
+/* Grouped grid (M5): a group ("session" in UI copy) wraps ≥1 pane elements
+   unchanged — GroupBox only adds this border/header chrome around them. The
+   rollup dot reuses the same var(--working) etc. tokens as .pane/.dot above,
+   just scoped to its own class since it isn't nested in a .pane. */
+.group-box {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+}
+.group-rollup[data-status='working'] {
+  background: var(--working);
+}
+.group-rollup[data-status='needs-you'] {
+  background: var(--needs-you);
+}
+.group-rollup[data-status='idle'] {
+  background: var(--idle);
+}
+.group-rollup[data-status='running'] {
+  background: var(--running);
+}
+.group-rollup[data-status='exited'] {
+  background: var(--exited);
+}
+
 /* Changes / diff review (M6). Diff-level coloring only — reuses status tokens
    for badges and additions; deletions use the conventional diff red (the token
    palette has none). No syntax highlighting. */
@@ -154,12 +182,94 @@ body {
    .pane[data-status='exited'] opacity dimming above.
    position: absolute (not fixed) so the enlarge is scoped to <main> (the
    sidebar's positioned sibling in App.tsx), not the viewport — otherwise it
-   covers the <aside> Sidebar and makes primary nav unclickable by mouse. */
+   covers the <aside> Sidebar and makes primary nav unclickable by mouse.
+   top uses --enlarge-top (set inline on <main> in App.tsx) instead of the
+   uniform 12px the other three sides keep, so the pane never renders
+   underneath the breadcrumb/sibling-strip chrome floating above it. */
 .pane.enlarged {
   position: absolute;
-  inset: 12px;
+  top: var(--enlarge-top, 12px);
+  right: 12px;
+  bottom: 12px;
+  left: 12px;
   z-index: 10;
   opacity: 1;
+}
+
+/* Enlarge staircase chrome (M5 Task 6): the breadcrumb bar (+ spin-up-pane)
+   and, when the enlarged pane is grouped, the sibling strip below it. Both
+   float above .pane.enlarged / .group-enlarge-wrapper.enlarged on the same
+   positioned ancestor (<main>), fixed at 30px tall each (+ 8px gap) so
+   App.tsx's --enlarge-top math stays in sync with what's actually rendered
+   here. Plain CSS can't read App.tsx's constants, so these are hand-kept in
+   sync with ENLARGE_PAD (12) / CHROME_BAR_H (38, = 30 + 8 gap), defined near
+   the top of src/renderer/src/App.tsx — update both sides if either changes.
+   The rest of the grid stays mounted underneath the whole enlarge overlay
+   (that's how panes survive level switches without remounting — see the
+   CRITICAL RENDERING CONSTRAINT note in App.tsx), which means whatever sits
+   at the top-left of the grid would otherwise show through the gap between
+   this chrome and .pane.enlarged's shifted-down top edge. --pane-bg (opaque,
+   same surface TerminalPane itself paints) plus a height that fills the
+   *entire* reserved --enlarge-top gap (not just the bars' own height) seals
+   that gap so nothing behind it bleeds through. */
+.enlarge-chrome {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  height: calc(var(--enlarge-top, 12px) - 12px);
+  z-index: 11;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--pane-bg);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.sibling-strip .dot[data-status='working'] {
+  background: var(--working);
+}
+.sibling-strip .dot[data-status='needs-you'] {
+  background: var(--needs-you);
+}
+.sibling-strip .dot[data-status='idle'] {
+  background: var(--idle);
+}
+.sibling-strip .dot[data-status='running'] {
+  background: var(--running);
+}
+.sibling-strip .dot[data-status='exited'] {
+  background: var(--exited);
+}
+.sibling-tab.active {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Session-level enlarge: the whole group box — not each member pane —
+   becomes the absolutely-positioned surface, so its existing auto-fit grid
+   of member panes (GroupBox's own layout, untouched) lays them out side by
+   side without any individual pane ever leaving the document flow.
+   display: contents makes the wrapper a no-op for CSS Grid when the group
+   isn't enlarged, so unconditionally wrapping every GroupBox in it never
+   changes the member panes' DOM ancestry between renders — reparenting a
+   mounted TerminalPane/BrowserPane would unmount it (xterm + pty state
+   lost), which is exactly what this avoids. */
+.group-enlarge-wrapper {
+  display: contents;
+}
+.group-enlarge-wrapper.enlarged {
+  display: flex;
+  flex-direction: column;
+  position: absolute;
+  top: var(--enlarge-top, 12px);
+  right: 12px;
+  bottom: 12px;
+  left: 12px;
+  z-index: 10;
+}
+.group-enlarge-wrapper.enlarged > .group-box {
+  flex: 1;
+  min-height: 0;
 }
 
 /* Focus ring for the active pane — additive box-shadow, so it composes with

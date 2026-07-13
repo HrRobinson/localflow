@@ -1,13 +1,16 @@
 import type {
   ActivityEntry,
+  AddPaneRequest,
   AgentId,
   AgentInfo,
   AgentOverride,
   AgentOverrideResult,
   LastAgent,
+  SessionGroup,
   SessionInfo,
   SessionStatus
 } from './types'
+import type { SessionTemplate } from './templates'
 import type { BindingChangeResult, KeyAction } from './keybindings'
 import type { Theme } from './theme'
 import type { GitStatus, DiffResult, Capabilities } from './git'
@@ -43,8 +46,37 @@ export interface LocalflowApi {
   renameSession(id: string, name: string): Promise<SessionInfo | null>
   /** Moves a session to environment 1-9 (clamped). Null if the id is unknown. */
   setEnvironment(id: string, environment: number): Promise<SessionInfo | null>
+  /** Creates a group ("session") on the given environment. Null if name is empty/whitespace-only. */
+  createGroup(name: string, environment: number): Promise<SessionGroup | null>
+  /** Renames a group; empty/whitespace name is a no-op. Null if the id is unknown. */
+  renameGroup(id: string, name: string): Promise<SessionGroup | null>
+  /** Sets or clears (`groupId: null`) a pane's group. Null if the pane or group is unknown, or their environments differ. */
+  assignToGroup(paneId: string, groupId: string | null): Promise<SessionInfo | null>
+  /** All groups. */
+  listGroups(): Promise<SessionGroup[]>
+  /**
+   * Adds a companion pane next to `sourcePaneId`: reuses its group, or wraps
+   * a solo source into a fresh group named after it. cwd/environment are
+   * derived from the source pane's own record, never from this call. Null
+   * for an unknown source or malformed request.
+   */
+  addPane(sourcePaneId: string, req: AddPaneRequest): Promise<SessionInfo | null>
   /** Creates a browser pane on the given environment. Null for invalid URLs. */
   createBrowserSession(url: string, environment?: number): Promise<SessionInfo | null>
+  /** Session templates from config.json's `sessionTemplates` key (read fresh each call). */
+  listTemplates(): Promise<SessionTemplate[]>
+  /**
+   * Creates a new group ("session") from a named template: one pane per
+   * template entry, skipping any whose agent binary isn't found. `cwd` is
+   * honored only under LOCALFLOW_E2E=1 — production always opens the folder
+   * picker (same posture as createSession). Null for an unknown template, a
+   * canceled picker, or a template where every pane's agent is missing.
+   */
+  createTemplate(
+    name: string,
+    cwd: string | undefined,
+    environment: number
+  ): Promise<SessionInfo[] | null>
   /** Persists a browser pane's current URL (follows navigation). */
   setSessionUrl(id: string, url: string): Promise<SessionInfo | null>
   /** Opens an http(s) URL in the system browser. Non-http(s) is dropped in main. */

@@ -7,7 +7,11 @@ export interface HookEvent {
   event: HookEventName
 }
 
-export type AgentId = 'claude' | 'codex' | 'gemini' | 'openclaw' | 'custom'
+export type AgentId = 'claude' | 'codex' | 'gemini' | 'openclaw' | 'shell' | 'custom'
+
+/** Every `AgentId`, for validating untrusted input (IPC bodies, control-API
+ *  request bodies) at the boundary before it's cast to the narrower type. */
+export const VALID_AGENTS: AgentId[] = ['claude', 'codex', 'gemini', 'openclaw', 'shell', 'custom']
 
 export type SessionKind = 'terminal' | 'browser'
 
@@ -70,6 +74,21 @@ export interface AgentOverride {
   env?: Record<string, string>
 }
 
+/**
+ * Request to spin up a companion pane next to an existing one (M5 Task 8).
+ * Shared (not main-only) because both the IPC boundary (api.ts/preload) and
+ * the renderer's picker need the shape.
+ */
+export type AddPaneRequest =
+  { kind: 'terminal'; agentId: AgentId; customCommand?: string } | { kind: 'browser'; url: string }
+
+/** UI: "session". A parent node owning ≥1 panes in one environment (M5). */
+export interface SessionGroup {
+  id: string
+  name: string
+  environment: number
+}
+
 export interface SessionInfo {
   id: string
   cwd: string
@@ -91,6 +110,15 @@ export interface SessionInfo {
    */
   needsYouSince?: number
   message?: string
+  /**
+   * True when the most recent spawn was a resume attempt (restart with
+   * fresh=false) and its pty instant-exited — the resumed conversation is
+   * likely gone. In-memory only (never persisted, like needsYouSince):
+   * cleared the moment any later restart actually spawns.
+   */
+  resumeFailed?: boolean
+  /** Group ("session") this pane belongs to; absent = solo pane. */
+  groupId?: string
 }
 
 /** What the renderer needs to render an agent card. */

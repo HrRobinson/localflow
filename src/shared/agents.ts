@@ -51,6 +51,17 @@ export const AGENT_PRESETS: AgentPreset[] = [
     bin: 'openclaw',
     resumeArgs: [],
     hookAdapter: 'none'
+  },
+  {
+    id: 'shell',
+    label: 'Shell',
+    // Unused: the user's login shell always exists, so there's no fixed
+    // binary name to fall back on here. AgentRegistry.commandFor resolves
+    // the real command (process.env.SHELL, falling back to /bin/zsh) —
+    // this stays env-free because src/shared is imported by the renderer.
+    bin: '',
+    resumeArgs: [],
+    hookAdapter: 'none'
   }
 ]
 

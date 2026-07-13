@@ -17,6 +17,7 @@ export interface Theme {
     idle: string
     running: string
     exited: string
+    border: string
   }
   terminal: {
     background: string
@@ -70,7 +71,8 @@ export const DEFAULT_THEME: Theme = {
     needsYou: '#eab308',
     idle: '#22c55e',
     running: '#8b5cf6',
-    exited: '#6b7280'
+    exited: '#6b7280',
+    border: 'rgba(255, 255, 255, 0.12)'
   },
   terminal: {
     background: '#1a1b1e',
@@ -110,7 +112,8 @@ const LIGHT_THEME: Theme = {
     needsYou: '#b45309',
     idle: '#15803d',
     running: '#7c3aed',
-    exited: '#9ca3af'
+    exited: '#9ca3af',
+    border: 'rgba(0, 0, 0, 0.15)'
   },
   terminal: {
     background: '#ffffff',
@@ -227,6 +230,10 @@ export function parseTheme(raw: unknown): Theme | null {
     'exited'
   ] as const
   for (const k of appKeys) if (!isStr(app[k])) return null
+  // `border` was added after ship; user themes hand-edited before that date
+  // won't have it. Default rather than reject so an otherwise-valid
+  // hand-written theme doesn't get discarded wholesale for one missing field.
+  const border = isStr(app.border) ? app.border : DEFAULT_THEME.app.border
   const term = t.terminal as Record<string, unknown> | undefined
   if (typeof term !== 'object' || term === null) return null
   for (const k of ['background', 'foreground', 'cursor', 'selectionBackground'] as const) {
@@ -250,7 +257,8 @@ export function parseTheme(raw: unknown): Theme | null {
       needsYou: app.needsYou as string,
       idle: app.idle as string,
       running: app.running as string,
-      exited: app.exited as string
+      exited: app.exited as string,
+      border
     },
     terminal: {
       background: term.background as string,
@@ -282,7 +290,8 @@ export function themeToCssVars(theme: Theme): Record<string, string> {
     '--color-surface-raised': a.surfaceRaised,
     '--pane-bg': a.surfaceRaised,
     '--color-sidebar': a.sidebar,
-    '--text': a.text
+    '--text': a.text,
+    '--border': a.border
   }
 }
 

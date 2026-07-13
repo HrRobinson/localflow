@@ -114,6 +114,54 @@ renamed inline — double-click the name, or use the pencil icon that
 appears on hover — in both Overview and the sidebar; press Enter to save
 or Escape to cancel.
 
+## Grouped sessions
+
+Panes don't have to stand alone: a **session** in the grid is a group of
+panes (one or more) that share a header and a worst-status rollup dot —
+useful for pairing a terminal with the browser pane previewing its work, or
+running two agents against the same checkout side by side. The naming is
+deliberate: a **session** holds **panes**.
+
+- **Form one** — press `cmd+t` on the active pane, or click a session's `+`
+  in its header, and pick an agent or a browser URL from the picker. A solo
+  pane wraps itself into a fresh session named after it the first time you
+  add a companion; picking from an already-grouped pane's `+` just adds
+  another pane alongside it.
+- **Move a pane between sessions** — `cmd+g` opens a picker of the other
+  sessions on the same environment (plus "New session…"); `cmd+shift+g`
+  pulls the active pane back out on its own.
+- **Closing** a pane in a session moves focus to its nearest sibling first,
+  falling back to the nearest pane overall only once the session is empty.
+- **Enlarge** (`cmd+m`) cycles through a staircase instead of a flat
+  toggle when the active pane is grouped: grid → that one pane full-size →
+  the whole session, every member staircased side by side → back to grid.
+  A solo pane's enlarge has just the one step, same as always. `cmd+escape`
+  walks back down one level at a time (session → pane → grid) instead of
+  jumping straight to Overview.
+- **Templates** — `config.json`'s `sessionTemplates` key defines named
+  presets that launch a whole session in one shot from the New session
+  picker:
+
+  ```json
+  {
+    "sessionTemplates": [
+      {
+        "name": "pair review",
+        "panes": [
+          { "kind": "terminal", "agentId": "claude" },
+          { "kind": "browser", "url": "localhost:5173" }
+        ]
+      }
+    ]
+  }
+  ```
+
+  Each pane is `{ "kind": "terminal", "agentId": "claude" | "codex" |
+"gemini" | "openclaw" | "shell" }` (agentId defaults to `claude`) or
+  `{ "kind": "browser", "url": "..." }`. A template pane whose agent binary
+  isn't found is skipped rather than failing the whole template; if every
+  pane turns out unlaunchable, nothing is created.
+
 ## Changes / diff review
 
 Every session can show what its agent changed — pick **Changes** in the sidebar
@@ -195,12 +243,15 @@ given direction), so they work regardless of grid layout.
 | ------------------------ | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Focus left/down/up/right | `cmd+h` / `cmd+j` / `cmd+k` / `cmd+l`                         | moves the active pane to the nearest neighbor in that direction                                                                                                 |
 | Swap left/down/up/right  | `cmd+shift+h` / `cmd+shift+j` / `cmd+shift+k` / `cmd+shift+l` | swaps the active pane's position with its neighbor, active pane unchanged                                                                                       |
-| Enlarge/shrink           | `cmd+m`                                                       | toggles the active pane full-size                                                                                                                               |
+| Enlarge/shrink           | `cmd+m`                                                       | cycles grid → pane → session (only when the active pane is grouped) → grid; a solo pane just toggles full-size                                                  |
 | Close pane               | `cmd+w`                                                       | closes and removes the session — the agent's own conversation history survives in the project folder (e.g. `claude --continue` there starts where you left off) |
+| Add pane                 | `cmd+t`                                                       | opens the picker to add a companion pane next to the active one, grouping them into a session (see [Grouped sessions](#grouped-sessions))                       |
+| Group pane               | `cmd+g`                                                       | moves the active pane into another session (or a new one) via a picker                                                                                          |
+| Ungroup pane             | `cmd+shift+g`                                                 | pulls the active pane out of its session, back to solo                                                                                                          |
 | Open in editor           | `cmd+e`                                                       | opens the active pane's folder in your configured editor (`config.json`'s `editorCommand`, default `code`) as an external app                                   |
 | New session              | `cmd+enter`                                                   | jumps to Overview                                                                                                                                               |
 | Toggle sidebar           | `cmd+b`                                                       | hides/shows the sidebar (fullscreen-style focus mode)                                                                                                           |
-| Go up                    | `cmd+escape`                                                  | shrinks an enlarged pane, else goes to Overview                                                                                                                 |
+| Go up                    | `cmd+escape`                                                  | walks the enlarge staircase back down one level at a time (session → pane → grid), then goes to Overview                                                        |
 | Jump to attention        | `cmd+u`                                                       | focuses + enlarges the next pane that needs you; press again to cycle through all waiting panes                                                                 |
 | Switch environment       | `cmd+1` … `cmd+9`                                             | shows that environment's grid (environments 1–9 always exist)                                                                                                   |
 | Move pane to environment | `ctrl+1` … `ctrl+9`                                           | sends the active pane to that environment; focus stays behind                                                                                                   |
@@ -230,6 +281,9 @@ The file is a flat JSON object mapping action name to binding string:
   "swap-right": "cmd+shift+l",
   "enlarge-toggle": "cmd+m",
   "close-pane": "cmd+w",
+  "add-pane": "cmd+t",
+  "group-pane": "cmd+g",
+  "ungroup-pane": "cmd+shift+g",
   "open-editor": "cmd+e",
   "new-session": "cmd+enter",
   "go-up": "cmd+escape",

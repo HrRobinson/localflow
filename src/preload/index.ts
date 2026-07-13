@@ -1,6 +1,12 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import type { LocalflowApi } from '../shared/api'
-import type { ActivityEntry, AgentId, AgentOverride, SessionStatus } from '../shared/types'
+import type {
+  ActivityEntry,
+  AddPaneRequest,
+  AgentId,
+  AgentOverride,
+  SessionStatus
+} from '../shared/types'
 import type { ActivityEntry as OperatorActivityEntry, CaptureKind } from '../shared/operator'
 import type { KeyAction } from '../shared/keybindings'
 import type { Theme } from '../shared/theme'
@@ -14,8 +20,19 @@ const api: LocalflowApi = {
   renameSession: (id: string, name: string) => ipcRenderer.invoke('session:rename', id, name),
   setEnvironment: (id: string, environment: number) =>
     ipcRenderer.invoke('session:setEnvironment', id, environment),
+  createGroup: (name: string, environment: number) =>
+    ipcRenderer.invoke('group:create', name, environment),
+  renameGroup: (id: string, name: string) => ipcRenderer.invoke('group:rename', id, name),
+  assignToGroup: (paneId: string, groupId: string | null) =>
+    ipcRenderer.invoke('group:assign', paneId, groupId),
+  listGroups: () => ipcRenderer.invoke('group:list'),
+  addPane: (sourcePaneId: string, req: AddPaneRequest) =>
+    ipcRenderer.invoke('group:addPane', sourcePaneId, req),
   createBrowserSession: (url: string, environment?: number) =>
     ipcRenderer.invoke('session:createBrowser', url, environment),
+  listTemplates: () => ipcRenderer.invoke('templates:list'),
+  createTemplate: (name: string, cwd: string | undefined, environment: number) =>
+    ipcRenderer.invoke('templates:create', name, cwd, environment),
   setSessionUrl: (id: string, url: string) => ipcRenderer.invoke('session:setUrl', id, url),
   openExternal: (url: string) => ipcRenderer.send('shell:openExternal', url),
   listSessions: () => ipcRenderer.invoke('session:list'),

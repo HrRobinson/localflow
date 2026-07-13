@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { splitCommandLine } from '../shared/args'
 
 /** The editor spawned by "Open in editor" when config.json says nothing. */
 export const DEFAULT_EDITOR_COMMAND = 'code'
@@ -25,4 +26,24 @@ export function loadEditorCommand(configFile: string): string {
   } catch {
     return DEFAULT_EDITOR_COMMAND
   }
+}
+
+/** The binary token to resolve plus the argv it gets — never a shell string. */
+export interface EditorLaunch {
+  bin: string
+  args: string[]
+}
+
+/**
+ * Argv for launching the configured editor on a session's cwd: quote-aware
+ * split ("code -n" keeps its flag, quoted paths keep their spaces), cwd
+ * appended last. Null — treat the editor as unavailable — on an unbalanced
+ * quote or an empty command; guessing at the user's intent here would spawn
+ * the wrong thing.
+ */
+export function editorLaunch(command: string, cwd: string): EditorLaunch | null {
+  const parts = splitCommandLine(command)
+  const bin = parts?.[0]
+  if (!parts || !bin) return null
+  return { bin, args: [...parts.slice(1), cwd] }
 }

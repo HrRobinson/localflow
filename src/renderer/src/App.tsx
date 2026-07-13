@@ -19,6 +19,7 @@ import {
 } from '../../shared/keybindings'
 import { clampEnvironment } from '../../shared/environment'
 import type { AgentId, SessionInfo } from '../../shared/types'
+import type { Capabilities } from '../../shared/git'
 import {
   DEFAULT_THEME,
   themeToCssVars,
@@ -67,6 +68,13 @@ export default function App(): React.JSX.Element {
     fontSize: number
   }>(() => themeToXterm(DEFAULT_THEME))
   const [themeNotice, setThemeNotice] = useState<string | null>(null)
+  // Escape-hatch tool availability (probed once and cached in main) — the
+  // pane-header editor button disables itself with a hint, like Changes'.
+  const [caps, setCaps] = useState<Capabilities | null>(null)
+  const [editorNotice, setEditorNotice] = useState<string | null>(null)
+  useEffect(() => {
+    void window.localflow.getCapabilities().then(setCaps)
+  }, [])
   // Which environments currently have an operator, for the sidebar indicator.
   const [grantedEnvs, setGrantedEnvs] = useState<Set<number>>(new Set())
   useEffect(() => {
@@ -228,6 +236,18 @@ export default function App(): React.JSX.Element {
       await refresh()
     }
   }
+  // "Open in editor": main launches the configured editor on the session's
+  // cwd as an external app — no pane, no navigation. A false return means the
+  // editor didn't launch; surface main's availability hint as a notice (the
+  // keybinding path has no disabled button to explain itself).
+  const openEditor = async (sessionId: string): Promise<void> => {
+    if (await window.localflow.openEditor(sessionId)) return
+    const current = await window.localflow.getCapabilities()
+    setCaps(current)
+    setEditorNotice(
+      current.editor.hint ?? `Couldn't open the configured editor (${current.editor.command})`
+    )
+  }
   const enterActivity = (): void => setView('activity')
   const enterCockpit = (): void => setView('cockpit')
   // Switching environments re-scopes focus: the active/enlarged pane must be
@@ -274,6 +294,7 @@ export default function App(): React.JSX.Element {
     environment,
     closeTerminal,
     openSession,
+    openEditor,
     switchEnvironment,
     moveToEnvironment
   })
@@ -287,6 +308,7 @@ export default function App(): React.JSX.Element {
       environment,
       closeTerminal,
       openSession,
+      openEditor,
       switchEnvironment,
       moveToEnvironment
     }
@@ -370,6 +392,13 @@ export default function App(): React.JSX.Element {
         void live.closeTerminal(activeId)
         return
       }
+      // Browser panes have no working tree — the combo is a quiet no-op there
+      // rather than a misleading "couldn't open" notice.
+      if (action === 'open-editor') {
+        const target = live.sessions.find((s) => s.id === activeId)
+        if (target && target.kind !== 'browser') void live.openEditor(activeId)
+        return
+      }
 
       // Directional focus/swap moves are a no-op while a pane is enlarged —
       // there is nothing else visible to move to.
@@ -442,6 +471,18 @@ export default function App(): React.JSX.Element {
           </button>
         </div>
       )}
+      {editorNotice && (
+        <div className="editor-notice fixed top-12 left-1/2 z-50 -translate-x-1/2 rounded-md border border-yellow-500/50 bg-yellow-500/15 px-3 py-1.5 text-[12px] text-yellow-200">
+          {editorNotice}
+          <button
+            className="ml-3 cursor-pointer border-0 bg-transparent text-yellow-200/70 hover:text-white"
+            onClick={() => setEditorNotice(null)}
+            onMouseDown={(e) => e.preventDefault()}
+          >
+            dismiss
+          </button>
+        </div>
+      )}
       {sidebarVisible && (
         <Sidebar
           sessions={sessions}
@@ -506,6 +547,8 @@ export default function App(): React.JSX.Element {
                     onActivate={() => setActiveId(s.id)}
                     onRestart={(fresh) => void restart(s.id, fresh)}
                     onClose={() => void closeTerminal(s.id)}
+                    onOpenEditor={() => void openEditor(s.id)}
+                    editor={caps?.editor ?? null}
                     terminalTheme={terminalTheme}
                   />
                 )

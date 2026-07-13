@@ -21,7 +21,8 @@ const here = dirname(fileURLToPath(import.meta.url))
  */
 function launchApp(
   userData: string,
-  agentPaths: Record<string, string> = {}
+  agentPaths: Record<string, string> = {},
+  extraEnv: Record<string, string> = {}
 ): Promise<ElectronApplication> {
   const configFile = join(userData, 'config.json')
   const existing: { agentPaths?: Record<string, string> } = existsSync(configFile)
@@ -61,7 +62,8 @@ function launchApp(
       // the status order deterministic by construction instead of
       // sleep-raced. Fixtures that never fire hooks (fake-claude.sh)
       // simply ignore it.
-      LOCALFLOW_E2E_GO: join(userData, 'e2e-go')
+      LOCALFLOW_E2E_GO: join(userData, 'e2e-go'),
+      ...extraEnv
     }
   })
 }
@@ -893,6 +895,50 @@ test('browser pane: UI creation, chrome, close/reopen, persistence', async () =>
 
   await app2.close()
   server.close()
+})
+
+test('open in editor: pane button and cmd+e launch the editor with cwd', async () => {
+  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  // Point the editor override at a real fixture so it resolves: the button
+  // enables, and each launch appends its argv to userData/editor-marker.
+  const app = await launchApp(
+    userData,
+    {},
+    { LOCALFLOW_EDITOR_BIN: join(here, '../fixtures/fake-editor.sh') }
+  )
+  const win = await app.firstWindow()
+  await expect(win.locator('.new-session')).toBeVisible()
+
+  const info = await win.evaluate(
+    (cwd) =>
+      (
+        window as unknown as {
+          localflow: { createSession(a: string, c: string): Promise<{ id: string }> }
+        }
+      ).localflow.createSession('claude', cwd),
+    userData
+  )
+  const row = win.locator(`[data-session-id="${info!.id}"]`)
+  await expect(row).toBeVisible()
+  await row.locator('.row-open').click()
+
+  const pane = win.locator(`[data-pane-id="${info!.id}"]`)
+  await expect(pane).toBeVisible()
+
+  // Pane-header button: spawns the "editor" with the session's cwd appended
+  // as the last argv entry (the fixture records exactly what it got).
+  const marker = join(userData, 'editor-marker')
+  const launches = (): string[] =>
+    existsSync(marker) ? readFileSync(marker, 'utf8').trim().split('\n') : []
+  await expect(pane.locator('.open-editor')).toBeEnabled()
+  await pane.locator('.open-editor').click()
+  await expect.poll(launches, { timeout: 5000 }).toEqual([userData])
+
+  // Keybinding: cmd+e acts on the focused pane — a second launch, same argv.
+  await win.keyboard.press('Meta+e')
+  await expect.poll(launches, { timeout: 5000 }).toEqual([userData, userData])
+
+  await app.close()
 })
 
 test('changes: file list, badges, diff coloring, j/k nav, non-repo empty', async () => {

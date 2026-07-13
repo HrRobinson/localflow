@@ -9,6 +9,7 @@ export type KeyAction =
   | 'swap-right'
   | 'enlarge-toggle'
   | 'close-pane'
+  | 'open-editor'
   | 'new-session'
   | 'go-up'
   | 'toggle-sidebar'
@@ -43,6 +44,7 @@ export const DEFAULT_BINDINGS: Record<KeyAction, string> = {
   'swap-right': 'cmd+shift+l',
   'enlarge-toggle': 'cmd+m',
   'close-pane': 'cmd+w',
+  'open-editor': 'cmd+e',
   'new-session': 'cmd+enter',
   'go-up': 'cmd+escape',
   'toggle-sidebar': 'cmd+b',

@@ -129,6 +129,22 @@ folder in your editor (`config.json`'s `editorCommand`, default `code`). Both
 disable themselves with a hint when the tool isn't on your PATH. A session whose
 folder isn't a git repository just shows a plain "not a git repository" note.
 
+## Editors
+
+Two ways to pair an editor with your agents:
+
+- **Open in editor** — every terminal pane's header has an **editor** button
+  (also `cmd+e` for the focused pane, and the Changes view's button) that opens
+  the session's folder in your editor as an external app. The command comes
+  from `config.json`'s `editorCommand` (default `code`) with the folder
+  appended, so `"editorCommand": "subl -n"` runs `subl -n <folder>`. The button
+  disables itself with a hint when the binary isn't on your PATH.
+- **An editor pane beside your agent** — terminal editors are already
+  first-class panes: create a session with the **Custom** command set to
+  `nvim`, `hx`, or `emacs -nw` in the same folder as your agent, and you get an
+  editor living in the grid next to it — focusable, swappable, and enlargeable
+  like any other pane.
+
 ## Settings
 
 Open **Settings** from the sidebar.
@@ -181,6 +197,7 @@ given direction), so they work regardless of grid layout.
 | Swap left/down/up/right  | `cmd+shift+h` / `cmd+shift+j` / `cmd+shift+k` / `cmd+shift+l` | swaps the active pane's position with its neighbor, active pane unchanged                                                                                       |
 | Enlarge/shrink           | `cmd+m`                                                       | toggles the active pane full-size                                                                                                                               |
 | Close pane               | `cmd+w`                                                       | closes and removes the session — the agent's own conversation history survives in the project folder (e.g. `claude --continue` there starts where you left off) |
+| Open in editor           | `cmd+e`                                                       | opens the active pane's folder in your configured editor (`config.json`'s `editorCommand`, default `code`) as an external app                                   |
 | New session              | `cmd+enter`                                                   | jumps to Overview                                                                                                                                               |
 | Toggle sidebar           | `cmd+b`                                                       | hides/shows the sidebar (fullscreen-style focus mode)                                                                                                           |
 | Go up                    | `cmd+escape`                                                  | shrinks an enlarged pane, else goes to Overview                                                                                                                 |
@@ -213,6 +230,7 @@ The file is a flat JSON object mapping action name to binding string:
   "swap-right": "cmd+shift+l",
   "enlarge-toggle": "cmd+m",
   "close-pane": "cmd+w",
+  "open-editor": "cmd+e",
   "new-session": "cmd+enter",
   "go-up": "cmd+escape",
   "toggle-sidebar": "cmd+b",

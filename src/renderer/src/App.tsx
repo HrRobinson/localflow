@@ -31,6 +31,20 @@ import {
   type XtermTheme
 } from '../../shared/theme'
 
+// Enlarge staircase chrome sizing (M5 Task 6), single-sourced here so
+// styles.css and the --enlarge-top math below can't drift apart the way two
+// separately hand-maintained magic numbers eventually do. ENLARGE_PAD is the
+// uniform inset .pane.enlarged / .group-enlarge-wrapper.enlarged keep on
+// every side; CHROME_BAR_H is the fixed height of each chrome bar (the
+// breadcrumb, and — when shown — the sibling strip below it) plus its 8px
+// gap to whatever comes next. Plain CSS has no way to read these JS
+// constants, so styles.css's .pane.enlarged / .enlarge-chrome /
+// .group-enlarge-wrapper.enlarged rules keep their own literal 12px/30px/8px
+// values in sync by hand — if you change the values here, update those too
+// (search styles.css for "ENLARGE_PAD" / "CHROME_BAR_H").
+export const ENLARGE_PAD = 12
+export const CHROME_BAR_H = 38
+
 // Which pane-nav direction each focus-*/swap-* action moves in.
 const ACTION_DIRECTION: Partial<Record<KeyAction, Direction>> = {
   'focus-left': 'left',
@@ -510,11 +524,14 @@ export default function App(): React.JSX.Element {
         .filter((s): s is SessionInfo => s != null && s.groupId === enlargedGroup.id)
     : []
   const showSiblingStrip = enlarged?.level === 'pane' && enlargedGroup !== null
-  // .enlarge-topbar and .sibling-strip are both a fixed 30px tall with an
-  // 8px gap to whatever comes next (see styles.css) — reserved here, in px,
-  // as --enlarge-top so .pane.enlarged / .group-enlarge-wrapper.enlarged
-  // never render underneath the chrome bar(s) sitting on top of them.
-  const enlargeTop = enlarged ? 12 + 38 + (showSiblingStrip ? 38 : 0) : 12
+  // .enlarge-topbar and .sibling-strip are each CHROME_BAR_H tall including
+  // their gap (see styles.css) — reserved here, in px, as --enlarge-top so
+  // .pane.enlarged / .group-enlarge-wrapper.enlarged never render underneath
+  // the chrome bar(s) sitting on top of them. ENLARGE_PAD / CHROME_BAR_H are
+  // defined once near the top of this file.
+  const enlargeTop = enlarged
+    ? ENLARGE_PAD + CHROME_BAR_H + (showSiblingStrip ? CHROME_BAR_H : 0)
+    : ENLARGE_PAD
   // Shared by both the solo and grouped render paths below so a pane's
   // element is identical either way — grouping must not change a solo
   // pane's DOM (existing e2e selectors depend on that).

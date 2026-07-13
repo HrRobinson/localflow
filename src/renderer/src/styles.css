@@ -199,9 +199,11 @@ body {
 /* Enlarge staircase chrome (M5 Task 6): the breadcrumb bar (+ spin-up-pane)
    and, when the enlarged pane is grouped, the sibling strip below it. Both
    float above .pane.enlarged / .group-enlarge-wrapper.enlarged on the same
-   positioned ancestor (<main>), fixed at 30px tall each so App.tsx's
-   --enlarge-top math (12 + 38 [+ 38]) stays in sync with what's actually
-   rendered here.
+   positioned ancestor (<main>), fixed at 30px tall each (+ 8px gap) so
+   App.tsx's --enlarge-top math stays in sync with what's actually rendered
+   here. Plain CSS can't read App.tsx's constants, so these are hand-kept in
+   sync with ENLARGE_PAD (12) / CHROME_BAR_H (38, = 30 + 8 gap), defined near
+   the top of src/renderer/src/App.tsx — update both sides if either changes.
    The rest of the grid stays mounted underneath the whole enlarge overlay
    (that's how panes survive level switches without remounting — see the
    CRITICAL RENDERING CONSTRAINT note in App.tsx), which means whatever sits

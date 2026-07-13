@@ -403,7 +403,7 @@ export default function Landing({
             {templates.map((t) => (
               <button
                 key={t.name}
-                className={`template-card ${card} cursor-pointer gap-1 p-2.5 hover:bg-white/[0.03]`}
+                className={`template-card ${card} cursor-pointer hover:bg-white/[0.03]`}
                 onClick={() => onCreateTemplate(t.name)}
                 onMouseDown={(e) => e.preventDefault()}
               >

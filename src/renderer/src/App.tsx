@@ -20,6 +20,7 @@ import {
 } from '../../shared/keybindings'
 import { clampEnvironment, worstStatus } from '../../shared/environment'
 import { groupedOrder } from '../../shared/group-order'
+import { nextFocusAfterClose } from '../../shared/close-focus'
 import type { AgentId, SessionGroup, SessionInfo } from '../../shared/types'
 import {
   DEFAULT_THEME,
@@ -171,13 +172,8 @@ export default function App(): React.JSX.Element {
     setEnlarged((cur) => (cur === id ? null : cur))
     setActiveId((cur) => {
       if (cur !== id) return cur
-      const visible = order.filter(
-        (oid) => oid !== id && sessions.find((s) => s.id === oid)?.environment === environment
-      )
-      const idx = order.indexOf(id)
-      const after = order.slice(idx + 1).find((oid) => visible.includes(oid))
-      const before = [...order.slice(0, idx)].reverse().find((oid) => visible.includes(oid))
-      return after ?? before ?? null
+      const scoped = sessions.filter((s) => s.environment === environment)
+      return nextFocusAfterClose(id, order, scoped)
     })
     await refresh()
   }

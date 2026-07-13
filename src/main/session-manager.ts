@@ -7,6 +7,7 @@ import {
   type ActivityEventKind,
   type AgentId,
   type HookEvent,
+  type SessionGroup,
   type SessionInfo,
   type SessionStatus
 } from '../shared/types'
@@ -98,6 +99,7 @@ const BROWSER_SPEC: SpawnSpec = {
 
 export class SessionManager {
   private sessions = new Map<string, Record_>()
+  private groups = new Map<string, SessionGroup>()
   /** Set at quit: silences all late pty events (data, exit) app-wide. */
   private disposed = false
   private dataCbs: ((id: string, data: string) => void)[] = []
@@ -138,7 +140,8 @@ export class SessionManager {
     cwd: string,
     spec: SpawnSpec,
     name?: string,
-    environment?: unknown
+    environment?: unknown,
+    groupId?: string
   ): SessionInfo {
     // Defense in depth: a hand-edited sessions.json can hand us a non-string
     // name (e.g. `"name": 123`) — treat that as absent rather than throwing
@@ -155,6 +158,7 @@ export class SessionManager {
       environment: clampEnvironment(environment),
       kind: 'terminal' as const
     }
+    this.reconnectGroup(info, groupId)
     this.sessions.set(id, { info, spec, pty: null, spawnedAt: 0, tail: '', activity: [] })
     this.changedCbs.forEach((cb) => cb())
     return info
@@ -193,7 +197,8 @@ export class SessionManager {
     id: string,
     url: string,
     name?: string,
-    environment?: unknown
+    environment?: unknown,
+    groupId?: string
   ): SessionInfo | null {
     const normalized = normalizeHttpUrl(url)
     if (!normalized) return null
@@ -209,6 +214,7 @@ export class SessionManager {
       kind: 'browser',
       url: normalized
     }
+    this.reconnectGroup(info, groupId)
     this.sessions.set(id, {
       info,
       spec: BROWSER_SPEC,
@@ -418,6 +424,12 @@ export class SessionManager {
       /* dead pty */
     }
     this.sessions.delete(id)
+    // A group that just lost its last member is gone too — there is no UI
+    // for an empty "session" and nothing else references it by id.
+    const groupId = rec.info.groupId
+    if (groupId && ![...this.sessions.values()].some((r) => r.info.groupId === groupId)) {
+      this.groups.delete(groupId)
+    }
     this.changedCbs.forEach((cb) => cb())
   }
 
@@ -432,14 +444,100 @@ export class SessionManager {
     return { ...rec.info }
   }
 
-  /** Moves a session to another environment (1-9, clamped). Null for unknown id. */
+  /**
+   * Moves a session to another environment (1-9, clamped). Null for unknown
+   * id. A grouped pane drags its whole group along — the group ("session")
+   * and every member pane move together, one `moved` activity per pane, a
+   * single changed callback at the end.
+   */
   setEnvironment(id: string, environment: number): SessionInfo | null {
     const rec = this.sessions.get(id)
     if (!rec) return null
-    rec.info.environment = clampEnvironment(environment)
-    this.recordActivity(id, 'moved')
+    const clamped = clampEnvironment(environment)
+    const group = rec.info.groupId ? this.groups.get(rec.info.groupId) : undefined
+    if (group) {
+      group.environment = clamped
+      for (const member of this.sessions.values()) {
+        if (member.info.groupId === group.id) {
+          member.info.environment = clamped
+          this.recordActivity(member.info.id, 'moved')
+        }
+      }
+    } else {
+      rec.info.environment = clamped
+      this.recordActivity(id, 'moved')
+    }
     this.changedCbs.forEach((cb) => cb())
     return { ...rec.info }
+  }
+
+  createGroup(name: string, environment: number): SessionGroup {
+    const group: SessionGroup = {
+      id: randomUUID(),
+      name,
+      environment: clampEnvironment(environment)
+    }
+    this.groups.set(group.id, group)
+    this.changedCbs.forEach((cb) => cb())
+    return { ...group }
+  }
+
+  renameGroup(id: string, name: string): SessionGroup | null {
+    const group = this.groups.get(id)
+    if (!group) return null
+    const trimmed = name.trim()
+    if (trimmed.length > 0) {
+      group.name = trimmed
+      this.changedCbs.forEach((cb) => cb())
+    }
+    return { ...group }
+  }
+
+  /**
+   * Sets or clears (`groupId: null`) a pane's group. Rejects (returns null)
+   * when the pane is unknown, the group is unknown, or the pane's and
+   * group's environments differ — a group only ever spans one environment.
+   */
+  assignToGroup(paneId: string, groupId: string | null): SessionInfo | null {
+    const rec = this.sessions.get(paneId)
+    if (!rec) return null
+    if (groupId === null) {
+      delete rec.info.groupId
+    } else {
+      const group = this.groups.get(groupId)
+      if (!group || group.environment !== rec.info.environment) return null
+      rec.info.groupId = groupId
+    }
+    this.recordActivity(paneId, 'moved')
+    this.changedCbs.forEach((cb) => cb())
+    return { ...rec.info }
+  }
+
+  listGroups(): SessionGroup[] {
+    return [...this.groups.values()].map((g) => ({ ...g }))
+  }
+
+  getGroup(id: string): SessionGroup | null {
+    const group = this.groups.get(id)
+    return group ? { ...group } : null
+  }
+
+  /** Bulk-loads groups at startup, before session restore. Trusts its input
+   * — persistence already validated the shape when it read sessions.json. */
+  restoreGroups(groups: SessionGroup[]): void {
+    for (const group of groups) {
+      this.groups.set(group.id, { ...group })
+    }
+  }
+
+  /** Reconnects a restored pane to its saved group, only when the group
+   * exists and its environment still matches the pane's. */
+  private reconnectGroup(info: SessionInfo, groupId?: string): void {
+    if (!groupId) return
+    const group = this.groups.get(groupId)
+    if (group && group.environment === info.environment) {
+      info.groupId = groupId
+    }
   }
 
   /**

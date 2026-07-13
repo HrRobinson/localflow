@@ -778,4 +778,133 @@ describe('SessionManager', () => {
       expect(mgr.getActivity(info.id)[1].count).toBe(2)
     })
   })
+
+  describe('groups', () => {
+    it('createGroup + assignToGroup sets groupId; ungroup clears it', () => {
+      const info = mgr.create('/p', claudeSpec, 1)
+      const group = mgr.createGroup('g', 1)
+      expect(group.name).toBe('g')
+      expect(group.environment).toBe(1)
+      const assigned = mgr.assignToGroup(info.id, group.id)
+      expect(assigned?.groupId).toBe(group.id)
+      expect(mgr.list()[0].groupId).toBe(group.id)
+      const ungrouped = mgr.assignToGroup(info.id, null)
+      expect(ungrouped?.groupId).toBeUndefined()
+      expect(mgr.list()[0].groupId).toBeUndefined()
+    })
+
+    it('assignToGroup rejects cross-environment assignment', () => {
+      const info = mgr.create('/p', claudeSpec, 1)
+      const group = mgr.createGroup('g', 2)
+      const result = mgr.assignToGroup(info.id, group.id)
+      expect(result).toBeNull()
+      expect(mgr.list()[0].groupId).toBeUndefined()
+    })
+
+    it('assignToGroup rejects an unknown group id', () => {
+      const info = mgr.create('/p', claudeSpec, 1)
+      expect(mgr.assignToGroup(info.id, 'no-such-group')).toBeNull()
+    })
+
+    it('assignToGroup returns null for an unknown pane id', () => {
+      const group = mgr.createGroup('g', 1)
+      expect(mgr.assignToGroup('no-such-pane', group.id)).toBeNull()
+    })
+
+    it('deleting the last member deletes the group', () => {
+      const info = mgr.create('/p', claudeSpec, 1)
+      const group = mgr.createGroup('g', 1)
+      mgr.assignToGroup(info.id, group.id)
+      mgr.deleteSession(info.id)
+      expect(mgr.listGroups()).toEqual([])
+    })
+
+    it('deleting a non-last member keeps the group', () => {
+      const a = mgr.create('/p1', claudeSpec, 1)
+      const b = mgr.create('/p2', claudeSpec, 1)
+      const group = mgr.createGroup('g', 1)
+      mgr.assignToGroup(a.id, group.id)
+      mgr.assignToGroup(b.id, group.id)
+      mgr.deleteSession(a.id)
+      expect(mgr.listGroups()).toEqual([group])
+      expect(mgr.list().find((s) => s.id === b.id)?.groupId).toBe(group.id)
+    })
+
+    it('closeTerminal never touches groups', () => {
+      const info = mgr.create('/p', claudeSpec, 1)
+      const group = mgr.createGroup('g', 1)
+      mgr.assignToGroup(info.id, group.id)
+      mgr.closeTerminal(info.id)
+      expect(mgr.list()[0].groupId).toBe(group.id)
+      expect(mgr.listGroups()).toEqual([group])
+    })
+
+    it('setEnvironment on a grouped pane moves the whole group', () => {
+      const a = mgr.create('/p1', claudeSpec, 1)
+      const b = mgr.create('/p2', claudeSpec, 1)
+      const solo = mgr.create('/p3', claudeSpec, 1)
+      const group = mgr.createGroup('g', 1)
+      mgr.assignToGroup(a.id, group.id)
+      mgr.assignToGroup(b.id, group.id)
+      const updated = mgr.setEnvironment(a.id, 3)
+      expect(updated?.environment).toBe(3)
+      expect(mgr.getGroup(group.id)?.environment).toBe(3)
+      expect(mgr.list().find((s) => s.id === a.id)?.environment).toBe(3)
+      expect(mgr.list().find((s) => s.id === b.id)?.environment).toBe(3)
+      expect(mgr.list().find((s) => s.id === solo.id)?.environment).toBe(1)
+    })
+
+    it('renameGroup trims and ignores empty, like session rename', () => {
+      const group = mgr.createGroup('g', 1)
+      const renamed = mgr.renameGroup(group.id, '  New Name  ')
+      expect(renamed?.name).toBe('New Name')
+      const renamedEmpty = mgr.renameGroup(group.id, '')
+      expect(renamedEmpty?.name).toBe('New Name')
+      const renamedBlank = mgr.renameGroup(group.id, '   ')
+      expect(renamedBlank?.name).toBe('New Name')
+      expect(mgr.renameGroup('missing-id', 'x')).toBeNull()
+    })
+
+    it('restoreGroups then restore() members reconnects groupId', () => {
+      const group = { id: 'grp-1', name: 'Saved', environment: 2 }
+      mgr.restoreGroups([group])
+      expect(mgr.listGroups()).toEqual([group])
+      const restored = mgr.restore('saved-id', '/old/project', claudeSpec, 'kept', 2, 'grp-1')
+      expect(restored.groupId).toBe('grp-1')
+      expect(mgr.list().find((s) => s.id === 'saved-id')?.groupId).toBe('grp-1')
+    })
+
+    it('restore ignores a groupId when environments differ', () => {
+      mgr.restoreGroups([{ id: 'grp-1', name: 'Saved', environment: 2 }])
+      const restored = mgr.restore('saved-id', '/old/project', claudeSpec, 'kept', 5, 'grp-1')
+      expect(restored.groupId).toBeUndefined()
+    })
+
+    it('restore ignores an unknown groupId', () => {
+      const restored = mgr.restore(
+        'saved-id',
+        '/old/project',
+        claudeSpec,
+        'kept',
+        1,
+        'no-such-group'
+      )
+      expect(restored.groupId).toBeUndefined()
+    })
+
+    it('restoreBrowser also reconnects groupId when environments match', () => {
+      mgr.restoreGroups([{ id: 'grp-1', name: 'Saved', environment: 2 }])
+      const restored = mgr.restoreBrowser('rb-1', 'https://example.com/', 'docs', 2, 'grp-1')
+      expect(restored?.groupId).toBe('grp-1')
+    })
+
+    it('createGroup fires onSessionsChanged', () => {
+      let fired = false
+      mgr.onSessionsChanged(() => {
+        fired = true
+      })
+      mgr.createGroup('g', 1)
+      expect(fired).toBe(true)
+    })
+  })
 })

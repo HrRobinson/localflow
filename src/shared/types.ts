@@ -70,6 +70,13 @@ export interface AgentOverride {
   env?: Record<string, string>
 }
 
+/** UI: "session". A parent node owning ≥1 panes in one environment (M5). */
+export interface SessionGroup {
+  id: string
+  name: string
+  environment: number
+}
+
 export interface SessionInfo {
   id: string
   cwd: string
@@ -91,6 +98,8 @@ export interface SessionInfo {
    */
   needsYouSince?: number
   message?: string
+  /** Group ("session") this pane belongs to; absent = solo pane. */
+  groupId?: string
 }
 
 /** What the renderer needs to render an agent card. */

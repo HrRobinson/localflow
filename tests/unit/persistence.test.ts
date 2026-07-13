@@ -1,8 +1,13 @@
-import { describe, it, expect } from 'vitest'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { loadSavedSessions, saveSessions } from '../../src/main/persistence'
+import {
+  loadSavedSessions,
+  saveSessions,
+  loadSavedState,
+  saveState
+} from '../../src/main/persistence'
 
 describe('persistence', () => {
   it('round-trips sessions and tolerates a missing file', () => {
@@ -50,5 +55,50 @@ describe('persistence', () => {
     const loaded = loadSavedSessions(file)
     expect(loaded[0]?.kind).toBe('browser')
     expect(loaded[0]?.url).toBe('https://example.com/')
+  })
+})
+
+describe('persistence v2', () => {
+  let dir: string
+  let file: string
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'lf-persist-'))
+    file = join(dir, 'sessions.json')
+  })
+  afterEach(() => rmSync(dir, { recursive: true, force: true }))
+
+  it('loads a legacy bare-array file as all-solo state', () => {
+    writeFileSync(file, JSON.stringify([{ id: 'a', cwd: '/x' }]))
+    const state = loadSavedState(file)
+    expect(state.sessions).toEqual([{ id: 'a', cwd: '/x' }])
+    expect(state.groups).toEqual([])
+  })
+
+  it('round-trips the v2 object shape atomically', () => {
+    saveState(file, {
+      sessions: [{ id: 'a', cwd: '/x', groupId: 'g1' }],
+      groups: [{ id: 'g1', name: 'checkout', environment: 2 }]
+    })
+    expect(existsSync(file + '.tmp')).toBe(false)
+    const state = loadSavedState(file)
+    expect(state.sessions[0].groupId).toBe('g1')
+    expect(state.groups).toEqual([{ id: 'g1', name: 'checkout', environment: 2 }])
+  })
+
+  it('drops malformed group entries, keeps valid ones', () => {
+    writeFileSync(
+      file,
+      JSON.stringify({
+        sessions: [],
+        groups: [{ id: 'g1', name: 'ok', environment: 1 }, { id: 7 }, 'junk', null]
+      })
+    )
+    expect(loadSavedState(file).groups).toEqual([{ id: 'g1', name: 'ok', environment: 1 }])
+  })
+
+  it('returns empty state for a missing or corrupt file', () => {
+    expect(loadSavedState(join(dir, 'nope.json'))).toEqual({ sessions: [], groups: [] })
+    writeFileSync(file, '{{{')
+    expect(loadSavedState(file)).toEqual({ sessions: [], groups: [] })
   })
 })

@@ -68,6 +68,15 @@ function goMarker(userData: string): void {
   writeFileSync(join(userData, 'e2e-go'), '')
 }
 
+/**
+ * Read and parse sessions.json, tolerating both the legacy bare-array shape
+ * and the versioned `{ sessions, groups }` shape (see src/main/persistence.ts).
+ */
+function readSavedSessions(userData: string): Array<Record<string, unknown>> {
+  const data = JSON.parse(readFileSync(join(userData, 'sessions.json'), 'utf8'))
+  return Array.isArray(data) ? data : (data.sessions ?? [])
+}
+
 test('panes render and hook events change status colors', async () => {
   const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
   const app = await launchApp(userData)
@@ -488,7 +497,7 @@ test('rename via the pencil icon persists across a relaunch', async () => {
   await expect(row2).toBeVisible()
   await expect(row2.locator('strong')).toHaveText('Renamed Session')
 
-  const saved = JSON.parse(readFileSync(join(userData, 'sessions.json'), 'utf8')) as Array<{
+  const saved = readSavedSessions(userData) as Array<{
     id: string
     name?: string
   }>
@@ -743,7 +752,7 @@ test('environments: switch, move, rollup dot, persistence', async () => {
   await app.close()
 
   // Relaunch: environment assignments persisted via sessions.json.
-  const saved = JSON.parse(readFileSync(join(userData, 'sessions.json'), 'utf8')) as Array<{
+  const saved = readSavedSessions(userData) as Array<{
     id: string
     environment?: number
   }>
@@ -825,7 +834,7 @@ test('browser pane: UI creation, chrome, close/reopen, persistence', async () =>
   // sessions.json is only written on change — poll the file for the update.
   await expect
     .poll(() => {
-      const saved = JSON.parse(readFileSync(join(userData, 'sessions.json'), 'utf8')) as Array<{
+      const saved = readSavedSessions(userData) as Array<{
         url?: string
       }>
       return saved[0]?.url
@@ -873,7 +882,7 @@ test('browser pane: UI creation, chrome, close/reopen, persistence', async () =>
   await app.close()
 
   // Relaunch: kind/url/environment persisted; pane restores as exited.
-  const saved = JSON.parse(readFileSync(join(userData, 'sessions.json'), 'utf8')) as Array<{
+  const saved = readSavedSessions(userData) as Array<{
     kind?: string
     url?: string
     environment?: number

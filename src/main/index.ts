@@ -304,9 +304,28 @@ app.whenReady().then(async () => {
       return created
     }
   )
-  ipcMain.handle('session:restart', (_e, id: string, fresh?: boolean) =>
-    manager.restart(id, fresh === true)
-  )
+  ipcMain.handle('session:restart', (_e, id: string, fresh?: boolean) => {
+    // Restarting a launched OpenClaw session after its grant was revoked
+    // (cockpit toggle, operatorRevokeOnExit, app restart) would spawn it with
+    // stale/no credentials. Re-grant and refresh the injected env first.
+    // wasGranted is captured BEFORE grant, exactly like session:create — that
+    // ordering decides revoke ownership (this restart created the grant, so
+    // it owns the eventual revoke).
+    const s = manager.get(id)
+    if (
+      s &&
+      s.kind === 'terminal' &&
+      s.agentId === 'openclaw' &&
+      s.status === 'exited' &&
+      !grants.isGranted(s.environment)
+    ) {
+      const wasGranted = grants.isGranted(s.environment)
+      const token = grants.grant(s.environment)
+      manager.updateSpecEnv(id, credentialEnv(`http://127.0.0.1:${control.port}`, token))
+      launchTracker.onLaunch(s.environment, id, wasGranted)
+    }
+    return manager.restart(id, fresh === true)
+  })
   ipcMain.handle('session:closeTerminal', (_e, id: string) => manager.closeTerminal(id))
   ipcMain.handle('session:delete', (_e, id: string) => manager.deleteSession(id))
   ipcMain.handle('session:rename', (_e, id: string, name: string) => manager.rename(id, name))

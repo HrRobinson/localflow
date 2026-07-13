@@ -75,3 +75,27 @@ describe('OperatorLaunchTracker.onPtyExit', () => {
     expect(new OperatorLaunchTracker().onPtyExit('nope', dead, true)).toBeNull()
   })
 })
+
+describe('OperatorLaunchTracker restart re-grant', () => {
+  it('re-launch after a revoke restores ownership for the same session', () => {
+    const t = new OperatorLaunchTracker()
+    t.onLaunch(1, 's1', false)
+    // Grant revoked out from under the session (cockpit toggle or
+    // operatorRevokeOnExit); the restart path re-grants and re-registers with
+    // wasGrantedBefore=false — the restart created the new grant, so it owns
+    // the eventual revoke again.
+    expect(t.onPtyExit('s1', () => false, true)).toBe(1)
+    t.onLaunch(1, 's1', false)
+    expect(t.trackedIds()).toEqual(['s1']) // no duplicate tracking
+    expect(t.onClose('s1')).toBe(1)
+  })
+
+  it('restart of a reuse-launched session that re-grants takes ownership', () => {
+    const t = new OperatorLaunchTracker()
+    t.onLaunch(2, 's1', true) // launched into a manually-granted env
+    // Manual revoke, then restart: env is ungranted, so the restart grants
+    // it (wasGrantedBefore=false) and now owns it.
+    t.onLaunch(2, 's1', false)
+    expect(t.onClose('s1')).toBe(2)
+  })
+})

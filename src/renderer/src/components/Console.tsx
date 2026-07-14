@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ConsoleEvent, ConsoleSource } from '../../../shared/console'
 import { DEFAULT_CONSOLE_PREFS } from '../../../shared/console'
+import { rowActions } from '../../../shared/console-actions'
 import {
   visibleEvents,
   deriveConsoleScope,
@@ -15,13 +16,28 @@ const MIN_HEIGHT = 120
 const MAX_HEIGHT = 600
 const PERSIST_DEBOUNCE_MS = 300
 
+const ACTION_LABEL: Record<'rerun-watchpoint' | 'open-source', string> = {
+  'rerun-watchpoint': 'rerun watchpoint',
+  'open-source': 'open source'
+}
+
 interface ConsoleProps {
   open: boolean
   onClose: () => void
   focus: ConsoleFocus
+  /** Reflect-and-replay row actions: jump to the row's source (session/cockpit). */
+  onOpenSource: (event: ConsoleEvent) => void
+  /** Re-arm a capture row's watchpoint (show-not-author — no request composition). */
+  onRerunWatchpoint: (event: ConsoleEvent) => void
 }
 
-export function Console({ open, onClose, focus }: ConsoleProps): React.JSX.Element | null {
+export function Console({
+  open,
+  onClose,
+  focus,
+  onOpenSource,
+  onRerunWatchpoint
+}: ConsoleProps): React.JSX.Element | null {
   const [events, setEvents] = useState<ConsoleEvent[]>([])
   const [sources, setSources] = useState<Set<ConsoleSource>>(new Set())
   const [scopeMode, setScopeMode] = useState<'auto' | ConsoleScope>('auto')
@@ -209,9 +225,26 @@ export function Console({ open, onClose, focus }: ConsoleProps): React.JSX.Eleme
               <span className="flex-1">{e.label}</span>
             </button>
             {expanded === e.id && (
-              <pre data-console-detail className="overflow-x-auto py-1 pl-16 text-white/60">
-                {JSON.stringify(e.detail, null, 2)}
-              </pre>
+              <div className="py-1 pl-16">
+                <pre data-console-detail className="overflow-x-auto text-white/60">
+                  {JSON.stringify(e.detail, null, 2)}
+                </pre>
+                <div className="flex gap-2 pt-1">
+                  {rowActions(e).map((action) => (
+                    <button
+                      key={action}
+                      data-console-action={action}
+                      className="cursor-pointer rounded border border-white/20 px-1.5 py-0.5 text-white/70 hover:text-white"
+                      onClick={() =>
+                        action === 'open-source' ? onOpenSource(e) : onRerunWatchpoint(e)
+                      }
+                      onMouseDown={(ev) => ev.preventDefault()}
+                    >
+                      {ACTION_LABEL[action]}
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
         ))}

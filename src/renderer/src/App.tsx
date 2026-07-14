@@ -12,6 +12,7 @@ import Sidebar from './components/Sidebar'
 import Changes from './components/Changes'
 import Cockpit from './components/Cockpit'
 import { Console } from './components/Console'
+import type { ConsoleEvent } from '../../shared/console'
 import { reconcileOrder } from './lib/order'
 import { pickNeighbor, swapInOrder, type PaneRect, type Direction } from './lib/pane-nav'
 import { nextNeedsYou } from './lib/needs-you'
@@ -376,6 +377,31 @@ export default function App(): React.JSX.Element {
   }
   const enterActivity = (): void => setView('activity')
   const enterCockpit = (): void => setView('cockpit')
+  // Console row "open source": reflect-and-replay, not navigation-by-guess —
+  // a status row jumps to its session (same focus semantics as clicking it
+  // in the sidebar); operator/capture rows have no single pane to jump to,
+  // so they open the cockpit for the row's environment instead.
+  const openConsoleSource = (event: ConsoleEvent): void => {
+    if (event.detail.source === 'status') {
+      if (event.sessionId) openSession(event.sessionId)
+      return
+    }
+    setEnvironment(event.environment)
+    setView('cockpit')
+  }
+  // Console row "rerun watchpoint": capture rows only. Re-arms the SAME
+  // workflow/step/capture-kinds the original watchpoint was registered
+  // with, via the existing operator watchpoint registration IPC — this is a
+  // replay of an existing watch, never request composition (the drawer
+  // stays show-not-author).
+  const rerunWatchpoint = async (event: ConsoleEvent): Promise<void> => {
+    if (event.detail.source !== 'capture') return
+    const watchpointId = event.detail.watchpointId
+    const watchpoints = await window.localflow.listWatchpoints(event.environment)
+    const wp = watchpoints.find((w) => w.id === watchpointId)
+    if (!wp) return
+    await window.localflow.registerWatchpoint(event.environment, wp.workflow, wp.step, wp.capture)
+  }
   // Switching environments re-scopes focus: the active/enlarged pane must be
   // one of the target environment's panes, or null.
   const switchEnvironment = (n: number): void => {
@@ -932,6 +958,8 @@ export default function App(): React.JSX.Element {
         open={consoleOpen}
         onClose={() => setConsoleOpen(false)}
         focus={{ view, enlarged, environment }}
+        onOpenSource={openConsoleSource}
+        onRerunWatchpoint={(event) => void rerunWatchpoint(event)}
       />
     </div>
   )

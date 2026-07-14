@@ -10,16 +10,33 @@ import { normalizeHttpUrl } from '../shared/urls'
 export type { AddPaneRequest }
 
 /**
+ * User-path hook for granting an OpenClaw companion pane its operator
+ * credentials. Called (with the pane's environment) only when a companion is
+ * an `openclaw` TERMINAL pane, just before it spawns; returns the extra env to
+ * merge into its spawn spec and a `register` to run once the pane exists (to
+ * track the launch for revoke-on-close). Injected so pane-ops stays pure and
+ * has no dependency on the grant store / control server. Deliberately NOT
+ * wired into `operatorCreatePane` — the control-API route rejects openclaw
+ * upstream, and must keep doing so.
+ */
+export type OpenclawGrant = (environment: number) => {
+  env: Record<string, string>
+  register: (paneId: string) => void
+}
+
+/**
  * Adds a companion pane next to `sourcePaneId`: reuses its group, or wraps a
  * solo source into a fresh group named after it. cwd/environment come from
  * the SOURCE RECORD, never from the caller. Returns the new pane or null
- * (unknown source, invalid request).
+ * (unknown source, invalid request). `grantOpenclaw`, when supplied, grants an
+ * openclaw terminal companion its operator credentials (user paths only).
  */
 export function addCompanionPane(
   manager: SessionManager,
   specFor: (agentId: AgentId, customCommand?: string) => SpawnSpec,
   sourcePaneId: string,
-  req: AddPaneRequest
+  req: AddPaneRequest,
+  grantOpenclaw?: OpenclawGrant
 ): SessionInfo | null {
   const source = manager.get(sourcePaneId)
   if (!source) return null
@@ -34,17 +51,25 @@ export function addCompanionPane(
     manager.assignToGroup(source.id, groupId)
   }
 
-  const companion =
-    req.kind === 'terminal'
-      ? // Browser sources have no cwd; a terminal companion falls back to the
-        // user's home directory rather than spawning at ''.
-        manager.create(
-          source.cwd || homedir(),
-          specFor(req.agentId, req.customCommand),
-          source.environment
-        )
-      : manager.createBrowser(req.url, source.environment)
+  let register: ((paneId: string) => void) | undefined
+  let companion: SessionInfo
+  if (req.kind === 'terminal') {
+    let spec = specFor(req.agentId, req.customCommand)
+    // Grant + inject credentials BEFORE spawn so the pty comes up with them —
+    // openclaw only, and only when the caller supplied the user-path hook.
+    if (req.agentId === 'openclaw' && grantOpenclaw) {
+      const granted = grantOpenclaw(source.environment)
+      spec = { ...spec, env: { ...spec.env, ...granted.env } }
+      register = granted.register
+    }
+    // Browser sources have no cwd; a terminal companion falls back to the
+    // user's home directory rather than spawning at ''.
+    companion = manager.create(source.cwd || homedir(), spec, source.environment)
+  } else {
+    companion = manager.createBrowser(req.url, source.environment)
+  }
 
+  register?.(companion.id)
   const grouped = manager.assignToGroup(companion.id, groupId)
   return grouped ?? companion
 }

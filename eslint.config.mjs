@@ -3,7 +3,20 @@ import tseslint from 'typescript-eslint'
 import reactHooks from 'eslint-plugin-react-hooks'
 
 export default tseslint.config(
-  { ignores: ['out/**', 'dist/**', 'node_modules/**', 'playwright-report/**', 'test-results/**'] },
+  {
+    // `.claude/` holds gitignored agent worktrees — each a full repo checkout
+    // with its own tsconfig, which otherwise makes typescript-eslint throw
+    // "multiple candidate TSConfigRootDirs". eslint's flat config does not read
+    // .gitignore, so it must be ignored explicitly here.
+    ignores: [
+      'out/**',
+      'dist/**',
+      'node_modules/**',
+      'playwright-report/**',
+      'test-results/**',
+      '.claude/**'
+    ]
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

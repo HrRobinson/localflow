@@ -630,6 +630,18 @@ export default function App(): React.JSX.Element {
     return () => off()
   }, [])
 
+  // Seed the drawer's open state once at startup; Console.tsx owns the rest
+  // of the prefs (height, sources, text) since it's already the sole reader.
+  useEffect(() => {
+    let alive = true
+    void window.localflow.getConsolePrefs().then((prefs) => {
+      if (alive) setConsoleOpen(prefs.open)
+    })
+    return () => {
+      alive = false
+    }
+  }, [])
+
   const showEnvironment =
     view === 'environment' && sessions.some((s) => s.environment === environment)
   const envSessions = sessions.filter((s) => s.environment === environment)

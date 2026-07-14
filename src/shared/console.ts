@@ -29,6 +29,21 @@ export interface ConsoleEvent {
 /** What a mapper returns; the bus assigns id + ts (main-process authority). */
 export type ConsoleEventInput = Omit<ConsoleEvent, 'id' | 'ts'>
 
+/** Persisted drawer prefs (height, open state, last filter). */
+export interface ConsolePrefs {
+  height: number
+  open: boolean
+  sources: ConsoleSource[]
+  text: string
+}
+
+export const DEFAULT_CONSOLE_PREFS: ConsolePrefs = {
+  height: 240,
+  open: false,
+  sources: [],
+  text: ''
+}
+
 export function toStatusEvent(
   sessionId: string,
   environment: number,

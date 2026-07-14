@@ -42,6 +42,7 @@ import { CaptureStore } from './capture-store'
 import { WatchpointRegistry } from './watchpoints'
 import { ConsoleEventBus } from './console-bus'
 import { toStatusEvent, toOperatorEvent, toCaptureEvent } from '../shared/console'
+import type { ConsolePrefs } from '../shared/console'
 import type { ActivityEntry, GrantInfo, OperatorStatus } from '../shared/operator'
 import type { Capabilities } from '../shared/git'
 import {
@@ -748,6 +749,9 @@ app.whenReady().then(async () => {
     return resolved
   })
   ipcMain.on('theme:openFolder', () => void shell.openPath(themesDir))
+
+  ipcMain.handle('console:getPrefs', () => registry.getConsolePrefs())
+  ipcMain.on('console:setPrefs', (_e, prefs: ConsolePrefs) => registry.setConsolePrefs(prefs))
 
   createWindow()
 })

@@ -1,5 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ConsoleEvent, ConsoleSource } from '../../../shared/console'
+import { DEFAULT_CONSOLE_PREFS } from '../../../shared/console'
 import {
   visibleEvents,
   deriveConsoleScope,
@@ -9,6 +10,10 @@ import {
 } from '../../../shared/console-filter'
 
 const SOURCES: ConsoleSource[] = ['status', 'operator', 'capture']
+
+const MIN_HEIGHT = 120
+const MAX_HEIGHT = 600
+const PERSIST_DEBOUNCE_MS = 300
 
 interface ConsoleProps {
   open: boolean
@@ -21,9 +26,38 @@ export function Console({ open, onClose, focus }: ConsoleProps): React.JSX.Eleme
   const [sources, setSources] = useState<Set<ConsoleSource>>(new Set())
   const [scopeMode, setScopeMode] = useState<'auto' | ConsoleScope>('auto')
   const [text, setText] = useState('')
+  const [height, setHeight] = useState(DEFAULT_CONSOLE_PREFS.height)
   const [expanded, setExpanded] = useState<string | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const stickToBottom = useRef(true)
+  // Guards the persist effect from clobbering disk with defaults before the
+  // one-time initial load below has resolved.
+  const hydrated = useRef(false)
+
+  // Seed height/sources/text from disk once, regardless of open state, so
+  // the drawer already reflects the last session the first time it opens.
+  useEffect(() => {
+    let alive = true
+    void window.localflow.getConsolePrefs().then((prefs) => {
+      if (!alive) return
+      setHeight(prefs.height)
+      setSources(new Set(prefs.sources))
+      setText(prefs.text)
+      hydrated.current = true
+    })
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  // Debounce-persist height/open/sources/text so dragging doesn't hammer disk.
+  useEffect(() => {
+    if (!hydrated.current) return
+    const timer = setTimeout(() => {
+      window.localflow.setConsolePrefs({ height, open, sources: Array.from(sources), text })
+    }, PERSIST_DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+  }, [height, open, sources, text])
 
   // Snapshot on open + live subscription while mounted.
   useEffect(() => {
@@ -64,14 +98,36 @@ export function Console({ open, onClose, focus }: ConsoleProps): React.JSX.Eleme
     })
   }
 
+  // Top-edge drag-resize: dragging up (clientY decreasing) grows the drawer.
+  function onResizePointerDown(e: React.PointerEvent<HTMLDivElement>): void {
+    e.preventDefault()
+    const startY = e.clientY
+    const startHeight = height
+    function onMove(ev: PointerEvent): void {
+      const next = startHeight + (startY - ev.clientY)
+      setHeight(Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, next)))
+    }
+    function onUp(): void {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
+
   if (!open) return null
 
   return (
     <div
       data-console
       className="fixed right-0 bottom-0 left-0 z-40 flex flex-col border-t border-white/10 bg-black/80 text-white/80 backdrop-blur"
-      style={{ height: 240 }}
+      style={{ height }}
     >
+      <div
+        data-console-resize
+        onPointerDown={onResizePointerDown}
+        className="h-1 shrink-0 cursor-row-resize hover:bg-white/20"
+      />
       <div className="flex items-center gap-2 px-3 py-1.5 text-[12px]">
         <div className="flex gap-1">
           {SOURCES.map((s) => (
@@ -99,6 +155,14 @@ export function Console({ open, onClose, focus }: ConsoleProps): React.JSX.Eleme
             onMouseDown={(e) => e.preventDefault()}
           >
             everywhere
+          </button>
+          <button
+            data-console-scope="here"
+            className="cursor-pointer rounded border border-white/20 px-1.5 py-0.5"
+            onClick={() => setScopeMode(deriveConsoleScope(focus))}
+            onMouseDown={(e) => e.preventDefault()}
+          >
+            pin here
           </button>
           {scopeMode !== 'auto' && (
             <button

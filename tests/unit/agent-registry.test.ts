@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { AgentRegistry, loadAgentConfig, saveAgentConfig } from '../../src/main/agent-registry'
 import { RESERVED_ENV_KEYS } from '../../src/main/hook-adapter'
+import { DEFAULT_CONSOLE_PREFS, type ConsolePrefs } from '../../src/shared/console'
 
 function tmpConfig(): string {
   return join(mkdtempSync(join(tmpdir(), 'localflow-ar-')), 'config.json')
@@ -366,5 +367,84 @@ describe('M4 config: defaultAgent, per-agent overrides, theme', () => {
     reg.setTheme('light')
     expect(reg.getTheme()).toBe('light')
     expect(JSON.parse(readFileSync(file, 'utf8')).theme).toBe('light')
+  })
+})
+
+describe('console prefs config', () => {
+  it('loadAgentConfig leaves console undefined when the key is absent', () => {
+    const file = tmpConfig()
+    expect(loadAgentConfig(file).console).toBeUndefined()
+  })
+
+  it('getConsolePrefs returns defaults on a config.json lacking console', () => {
+    const file = tmpConfig()
+    const reg = new AgentRegistry(file, async () => null)
+    expect(reg.getConsolePrefs()).toEqual(DEFAULT_CONSOLE_PREFS)
+  })
+
+  it('setConsolePrefs / getConsolePrefs round-trip', () => {
+    const file = tmpConfig()
+    const reg = new AgentRegistry(file, async () => null)
+    const prefs: ConsolePrefs = {
+      height: 320,
+      open: true,
+      sources: ['status', 'capture'],
+      text: 'needs-you'
+    }
+    reg.setConsolePrefs(prefs)
+    expect(reg.getConsolePrefs()).toEqual(prefs)
+    expect(JSON.parse(readFileSync(file, 'utf8')).console).toEqual(prefs)
+
+    const reg2 = new AgentRegistry(file, async () => null)
+    expect(reg2.getConsolePrefs()).toEqual(prefs)
+  })
+
+  it('loadAgentConfig falls back to defaults on a malformed console shape', () => {
+    const file = tmpConfig()
+    writeFileSync(
+      file,
+      JSON.stringify({
+        agentPaths: {},
+        console: { height: 'tall', open: true, sources: ['status'], text: '' }
+      })
+    )
+    expect(loadAgentConfig(file).console).toEqual(DEFAULT_CONSOLE_PREFS)
+
+    writeFileSync(
+      file,
+      JSON.stringify({
+        agentPaths: {},
+        console: { height: 300, open: true, sources: ['status', 'bogus'], text: '' }
+      })
+    )
+    expect(loadAgentConfig(file).console).toEqual(DEFAULT_CONSOLE_PREFS)
+
+    writeFileSync(
+      file,
+      JSON.stringify({
+        agentPaths: {},
+        console: 'not-an-object'
+      })
+    )
+    expect(loadAgentConfig(file).console).toEqual(DEFAULT_CONSOLE_PREFS)
+  })
+
+  it('setConsolePrefs preserves other config keys and unknown top-level keys', () => {
+    const file = tmpConfig()
+    writeFileSync(
+      file,
+      JSON.stringify({
+        agentPaths: { codex: '/opt/bin/codex' },
+        theme: 'nord',
+        myCustomKey: { a: 1 }
+      })
+    )
+    const reg = new AgentRegistry(file, async () => null)
+    reg.setConsolePrefs({ height: 400, open: false, sources: [], text: '' })
+    const onDisk = JSON.parse(readFileSync(file, 'utf8'))
+    expect(onDisk.agentPaths).toEqual({ codex: '/opt/bin/codex' })
+    expect(onDisk.theme).toBe('nord')
+    expect(onDisk.myCustomKey).toEqual({ a: 1 })
+    expect(onDisk.console).toEqual({ height: 400, open: false, sources: [], text: '' })
   })
 })

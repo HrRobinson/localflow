@@ -97,26 +97,50 @@ One pass, dcg-inspired, each stage cheap before the expensive one:
    and long, space- or `=`-joined) and any leading `VAR=val` assignments to
    reach the effective command. The old regex prefixes are left in pack
    files as harmless dead weight — unwrapping is authoritative now.
-4. **Command-position substitution recursion** (per segment, `subst`
-   module, run in the engine right after unwrapping) — a real shell
-   evaluates `$(...)`/`` `...` `` *eagerly*, before anything about "is this
-   a guarded command" is decided. When a substitution fills the *whole*
-   command position — the entire (unwrapped) segment is one substitution
-   (`$(rm -rf /)`, `` `rm -rf /` ``), or it is the value of a leading
-   `NAME=$(...)` assignment word, itself possibly behind further plain
-   `NAME=val` assignment words (`FOO=$(rm -rf /)`, `FOO=bar
-   BAZ=$(rm -rf /)`) — there is no argv[0] for any pack's `^`-anchored
-   regex to match, so the substitution used to execute for real, completely
-   unjudged. The fix recurses: the substitution's raw, unevaluated inner
-   text is re-run through the whole pipeline (re-tokenized, re-segmented,
-   re-matched), exactly like the inline `bash -c '...'` re-entry below,
-   sharing its depth cap and latency budget — so nested substitutions
-   (`$( $(rm -rf /) )`) resolve for free (each layer is a fresh recursive
-   call) and adversarial nesting still fails open past the cap rather than
-   overflowing the stack or stalling. This is deliberately narrow: a
-   substitution merely *concatenated* into the command name
-   (`pre$(cmd)post`) is not unpacked — only one that stands in for the whole
-   command position is.
+4. **Substitution recursion — command position, then every remaining
+   position** (per segment, `subst` and `lexer` modules, run in the engine
+   right after unwrapping) — a real shell evaluates `$(...)`/`` `...` ``
+   *eagerly*, before anything about "is this a guarded command" is decided,
+   regardless of where in the line it sits. Two passes handle this:
+   - **Command-position** (`subst::command_position_substitution`): when a
+     substitution fills the *whole* command position — the entire
+     (unwrapped) segment is one substitution (`$(rm -rf /)`, `` `rm -rf /`
+     ``), or it is the value of a leading `NAME=$(...)` assignment word,
+     itself possibly behind further plain `NAME=val` assignment words
+     (`FOO=$(rm -rf /)`, `FOO=bar BAZ=$(rm -rf /)`) — there is no argv[0]
+     for any pack's `^`-anchored regex to match. Recognized narrowly (a
+     substitution must fill the *whole* word, not merely be concatenated
+     into it), because this pass alone can't safely guess what a shell
+     would do with a mixed word — that's what the second pass now handles.
+   - **Every other position** (`lexer::find_all_substitutions`, called from
+     the engine for each word in the segment): once command position is
+     handled, every remaining `$(...)`/`` `...` `` found *anywhere else* in
+     the segment — an argument to a guarded or unguarded command, quoted or
+     bare, and even one merely concatenated into a larger word
+     (`$(cmd)suffix`, `pre$(cmd)post`) — is extracted and judged too. This
+     closes what used to be the last unjudged shape: a substitution
+     argument to a command no pack guards (`echo $(rm -rf /)`, `cat $(rm
+     -rf /)`, `foo $(rm -rf /) bar`) previously reached `build_argv` with
+     no fail-safe applicable (that fail-safe, step 6 below, is scoped to
+     already-guarded commands only) and the substitution's contents were
+     never looked at again — a full, silent bypass, since bash runs `rm -rf
+     /` regardless of what (if anything) consumes the substitution's
+     output. Scanned over the *original*, pre-unwrap segment specifically
+     so a substitution hiding in a word a wrapper's unwrapping would
+     otherwise consume (e.g. `env`'s own leading `FOO=$(...)` assignment,
+     skipped past when finding `env`'s effective command) is not missed
+     either.
+
+   Both passes re-run the extracted inner text through the whole pipeline
+   (re-tokenized, re-segmented, re-matched), exactly like the inline
+   `bash -c '...'` re-entry below, sharing its depth cap and latency
+   budget — so nested substitutions (`$( $(rm -rf /) )`, `$( ( rm -rf / )
+   )`) resolve for free (each layer/occurrence is a fresh recursive call)
+   and adversarial nesting still fails open past the cap rather than
+   overflowing the stack or stalling. A benign inner (`echo $(date)`,
+   `echo "$(uname -a)"`, `grep $(cat patterns) file`) still resolves to
+   ALLOW — only a guarded/destructive inner denies, so this adds no new
+   false positives on commands nothing else flags.
 5. **Normalize** (per segment, `normalize` module) — now a small, purely
    semantic step over the already-resolved argv (the ad-hoc quote handling
    that used to live here moved into the lexer, step 2): case-fold `argv[0]`
@@ -143,7 +167,17 @@ One pass, dcg-inspired, each stage cheap before the expensive one:
    denied on this basis alone, independent of whatever `some-cmd` is).
    Scoped deliberately narrowly — to *already-guarded* commands only — so it
    adds no new scrutiny to commands no pack cares about (`echo $(date)`,
-   `echo "$(date)"` still ALLOW).
+   `echo "$(date)"` still ALLOW). This check is independent of, and runs in
+   addition to, step 4's argument-position recursion above: recursion asks
+   "is the substitution's *inner command* itself destructive" (catches
+   `rm -rf $(rm -rf /tmp)`, but would *allow* `rm -rf $(echo /)` on its
+   own, since `echo` isn't guarded); this fail-safe instead asks "is the
+   *target* of an already-guarded command unknowable at all," which is true
+   no matter how benign the substitution's own command is — the guard never
+   evaluates what a substitution actually outputs, so it has no way to know
+   whether `$(echo /)` resolves to a harmless path or a catastrophic one.
+   `rm -rf $(echo /)` is therefore still denied here even though recursing
+   into `echo /` on its own resolves to ALLOW.
 7. **Pre-filter** — a fast substring / literal scan that rejects the ~99% of
    commands that contain no token any pack cares about. This is the hot path:
    most commands never reach a regex. Built from the union of cheap literal
@@ -178,24 +212,26 @@ One pass, dcg-inspired, each stage cheap before the expensive one:
   recognized as an opaque region so its contents can't be mistaken for a
   top-level separator or hide a bypass by letter-splitting. The guard
   reasons about **static token structure only** — it does not know or guess
-  what a substitution, a variable, or a glob would actually expand to at run
-  time. Three things follow from that, deliberately: (1) a substitution
-  argument to an *already-guarded* command (`rm`, `git`, `gcloud`, `gsutil`,
-  …) is denied fail-safe rather than evaluated (see pipeline step 6 above);
-  (2) a substitution argument to a command no pack cares about (`echo
-  $(date)`) is left alone — evaluating it isn't attempted, and it isn't the
-  guard's job to add scrutiny to commands nothing else flags; (3) a
-  substitution occupying *command position* itself (`$(rm -rf /)`, `` `rm
-  -rf /` ``, or the value of a leading `NAME=$(...)` assignment word) is
-  **recursed into and judged** rather than left alone — unlike a
-  substitution passed as an argument, one standing in for the command is
-  eagerly evaluated by a real shell regardless of anything else on the line,
-  so leaving it unevaluated would be a silent bypass, not merely
-  under-scrutiny (see pipeline step 4 above). An unterminated
-  quote still leaves the remainder of the line as a single unsplit
-  word/segment (the conservative, fail-open-safe fallback — worst case it
-  misses a split, it never manufactures one that hides a match that would
-  otherwise have fired).
+  what a variable or a glob would actually expand to at run time, and it
+  never *executes* a substitution to see its output. That said, a
+  substitution's own inner *command* is always judged, wherever the
+  substitution sits: (1) a substitution argument to an *already-guarded*
+  command (`rm`, `git`, `gcloud`, `gsutil`, …) is additionally denied
+  fail-safe regardless of what its inner command judges to, because the
+  guard cannot know what the substitution will *output* even once it knows
+  the inner command isn't itself destructive — an unknowable dynamic target
+  is denied on that basis alone (see pipeline step 6 above); (2) a
+  substitution *anywhere else* — command position, or an argument to a
+  guarded or unguarded command, quoted or bare, or merely concatenated into
+  a larger word — is **recursed into and judged** the same way `bash -c
+  '...'` payloads are: the substitution's raw inner text is re-run through
+  the whole pipeline, and a destructive inner command denies (`echo $(rm -rf
+  /)`, `cat $(rm -rf /)`, `` echo `rm -rf /` ``) while a benign one still
+  ALLOWs (`echo $(date)`, `echo "$(uname -a)"`, `grep $(cat patterns)
+  file`) — see pipeline step 4 above. An unterminated quote still leaves the
+  remainder of the line as a single unsplit word/segment (the conservative,
+  fail-open-safe fallback — worst case it misses a split, it never
+  manufactures one that hides a match that would otherwise have fired).
 - **Grouping/compound-keyword handling is a boundary heuristic, not
   compound-statement parsing.** Unquoted, unescaped `(`, `)`, `{`, `}` end
   the current segment exactly like `;` does, and a segment's leading `then`/
@@ -235,24 +271,46 @@ One pass, dcg-inspired, each stage cheap before the expensive one:
   deferral, a sub-environment) rather than merely passing the command
   through unchanged. A destructive command wrapped in one of these still
   evades every rule today.
-- **Command-position substitution recursion covers the shapes a real shell
-  evaluates eagerly on their own, not every way a substitution can smuggle a
-  command.** `$(rm -rf /)`, `` `rm -rf /` ``, and `NAME=$(rm -rf /)`
-  (including behind further plain `NAME=val` assignments and nested
-  substitutions) are detected and recursed into. **Not detected**: a
-  substitution merely *concatenated* into a larger command-position word
-  (`$(rm -rf /)suffix`, `prefix$(cmd)`) — real shells evaluate the
-  substitution and paste the result into the word before treating it as a
-  command name, but modeling that would mean guessing at concatenation
-  semantics the guard doesn't otherwise attempt (see the lexer's
-  "static token structure only" stance above); and a substitution embedded
-  in a `VAR=$(...)` assignment that is itself consumed as one of `env`'s own
-  leading assignments (`env FOO=$(rm -rf /) rm -rf /tmp`) — `env`'s
-  unwrapping skips past any `NAME=val`-shaped word to reach env's real
-  command argument, including one whose value happens to be a substitution,
-  before the command-position check ever sees it. Both are narrow,
-  pre-existing gaps in the same spirit as the wrapper list above, not new
-  ones introduced by this fix.
+- **Substitution recursion now covers every `$(...)`/`` `...` `` the lexer
+  recognizes as one, in any position — not just the shapes a real shell
+  evaluates eagerly on their own in command position.** Originally (G1
+  BLOCKER 2 fix) only `$(rm -rf /)`, `` `rm -rf /` ``, and `NAME=$(rm -rf
+  /)` in *command* position were detected and recursed into; a substitution
+  in *argument* position to a command no pack guards (`echo $(rm -rf /)`,
+  `cat $(rm -rf /)`, `foo $(rm -rf /) bar`) reached `build_argv` with no
+  fail-safe applicable and its contents were never looked at again — a full,
+  silent bypass, since bash runs the substitution's command regardless of
+  what (if anything) consumes its output. `lexer::find_all_substitutions`
+  closes this: every `$(...)`/`` `...` `` found anywhere in a segment's
+  words — command or argument position, guarded or unguarded command,
+  quoted or bare — is now extracted and recursed into. Two shapes
+  previously documented here as explicitly **not** detected are closed as a
+  side effect of scanning the *original*, pre-unwrap segment rather than
+  only a "pure command position" word: a substitution *concatenated* into a
+  larger word (`$(rm -rf /)suffix` now denies — the embedded region is
+  found and judged even though it isn't the whole word) and a substitution
+  embedded in a `VAR=$(...)` assignment consumed by `env`'s own
+  leading-assignment skip (`env FOO=$(rm -rf /) cmd` now denies — the raw
+  segment is scanned before `env`'s effective-command unwrapping discards
+  that word). Verified directly against the built binary; see
+  `tests/corpus_subst_arg_position.rs`.
+
+  **What is still not detected**, genuinely out of scope for this fix: a
+  `$(...)` nested *inside* `${...}` parameter-expansion syntax (`echo
+  ${VAR:-$(rm -rf /)}` still ALLOWs) — `scan_brace_balanced` (the lexer's
+  `${...}` scanner) copies its body as inert text without recognizing a
+  nested `$(` the way the top-level and `"..."`/`$(...)` scanners do, so
+  the resulting word's `has_substitution` flag is never set and the new
+  recursion — which is deliberately gated on that flag rather than
+  re-scanning every word's raw text unconditionally — never sees it. That
+  gate is not merely a performance shortcut: it is what keeps a backtick or
+  `$(` sequence that survived quote resolution from *single-quoted* text
+  (where real bash treats it as inert, e.g. `` git commit -m 'run `rm -rf
+  /` in prod' `` must stay ALLOW, and does) from being misread as a live
+  substitution — removing it to chase the `${...}` case would reintroduce
+  exactly that false positive. Fixing the `${...}` gap properly belongs in
+  the lexer's brace scanner, not the engine's recursion, and is deferred as
+  a narrow, separate follow-up.
 - **`$'...'` ANSI-C quoting decodes the common escapes, not the full bash
   set.** `\n \t \r \a \b \f \v \\ \'`, `\xHH` (up to two hex digits), and
   `\0NNN` (up to three octal digits) are decoded, so `$'/'` and `$'\x2f'`
@@ -514,7 +572,19 @@ per-session inject/revoke lifecycle), so it is integration, not new machinery.
   -rf /; fi`, `for …; do rm -rf /; done`, `while …; do rm -rf /; done`,
   `command`/`env`/`nohup`/`nice`/`stdbuf`/`ionice` wrapping, and `rm -rf
   $'/'`/`rm -rf $'\x2f'`, plus the matching benign spread and composition
-  with grouping/chaining), asserting no false positives.
+  with grouping/chaining), asserting no false positives; a dedicated
+  sudo-unwrapping-plus-command-position-substitution corpus
+  (`tests/corpus_sudo_and_substitution.rs` — the fourth review round); and a
+  dedicated argument-position-substitution corpus
+  (`tests/corpus_subst_arg_position.rs` — the fifth review round: `echo
+  $(rm -rf /)`, `cat $(rm -rf /)`, `foo $(rm -rf /) bar`, `` echo `rm -rf
+  /` ``, a substitution wrapping a grouped subshell, and the gcloud-pack
+  equivalent all deny; the matching benign spread — `echo "$(date)"`,
+  `echo $(git rev-parse HEAD)`, `grep $(cat patterns) file`, `x=$(date) &&
+  echo $x`, `find / -name $(echo x)` — all allow; the previously-documented
+  `env FOO=$(...) cmd` and `$(...)suffix` residuals are asserted closed;
+  plus latency checks for many substitutions in one segment and many
+  segments each carrying one), asserting no false positives.
 - **Acceptance (this slice):** `lfguard test "git reset --hard"` exits 1 with a
   reason; `lfguard test "git status"` exits 0; `lfguard explain "git reset
   --hard"` prints the matched pack + rule + reason.

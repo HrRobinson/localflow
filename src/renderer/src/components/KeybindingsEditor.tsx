@@ -44,7 +44,8 @@ const LABELS: Record<KeyAction, string> = {
   'move-to-environment-6': 'Move pane to environment 6',
   'move-to-environment-7': 'Move pane to environment 7',
   'move-to-environment-8': 'Move pane to environment 8',
-  'move-to-environment-9': 'Move pane to environment 9'
+  'move-to-environment-9': 'Move pane to environment 9',
+  'console-toggle': 'Toggle console'
 }
 
 const GROUPS: { title: string; actions: KeyAction[] }[] = [
@@ -91,7 +92,7 @@ const GROUPS: { title: string; actions: KeyAction[] }[] = [
     ]
   },
   { title: 'Attention', actions: ['focus-needs-you'] },
-  { title: 'App', actions: ['new-session', 'go-up', 'toggle-sidebar'] }
+  { title: 'App', actions: ['new-session', 'go-up', 'toggle-sidebar', 'console-toggle'] }
 ]
 
 const rowBtn =

@@ -35,6 +35,7 @@ export type KeyAction =
   | 'move-to-environment-7'
   | 'move-to-environment-8'
   | 'move-to-environment-9'
+  | 'console-toggle'
 
 export const DEFAULT_BINDINGS: Record<KeyAction, string> = {
   'focus-left': 'cmd+h',
@@ -72,7 +73,8 @@ export const DEFAULT_BINDINGS: Record<KeyAction, string> = {
   'move-to-environment-6': 'ctrl+6',
   'move-to-environment-7': 'ctrl+7',
   'move-to-environment-8': 'ctrl+8',
-  'move-to-environment-9': 'ctrl+9'
+  'move-to-environment-9': 'ctrl+9',
+  'console-toggle': 'cmd+/'
 }
 
 /**

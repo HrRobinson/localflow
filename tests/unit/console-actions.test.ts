@@ -8,12 +8,21 @@ function row(source: ConsoleEvent['source'], detail: ConsoleEvent['detail']): Co
 
 describe('rowActions', () => {
   it('offers rerun-watchpoint + open-source on capture rows', () => {
-    const e = row('capture', { source: 'capture', watchpointId: 'w', captureId: 'c', halted: false })
+    const e = row('capture', {
+      source: 'capture',
+      watchpointId: 'w',
+      captureId: 'c',
+      halted: false
+    })
     expect(rowActions(e).sort()).toEqual(['open-source', 'rerun-watchpoint'])
   })
 
   it('offers only open-source on status and operator rows', () => {
-    expect(rowActions(row('status', { source: 'status', kind: 'Stop', status: 'idle' }))).toEqual(['open-source'])
-    expect(rowActions(row('operator', { source: 'operator', action: 'x' }))).toEqual(['open-source'])
+    expect(rowActions(row('status', { source: 'status', kind: 'Stop', status: 'idle' }))).toEqual([
+      'open-source'
+    ])
+    expect(rowActions(row('operator', { source: 'operator', action: 'x' }))).toEqual([
+      'open-source'
+    ])
   })
 })

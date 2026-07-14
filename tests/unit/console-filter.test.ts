@@ -8,9 +8,19 @@ import {
 import type { ConsoleEvent, ConsoleSource } from '../../src/shared/console'
 
 let seq = 0
-function ev(source: ConsoleSource, environment: number, label: string, sessionId?: string): ConsoleEvent {
+function ev(
+  source: ConsoleSource,
+  environment: number,
+  label: string,
+  sessionId?: string
+): ConsoleEvent {
   return {
-    id: `e${++seq}`, ts: seq, source, environment, sessionId, label,
+    id: `e${++seq}`,
+    ts: seq,
+    source,
+    environment,
+    sessionId,
+    label,
     detail: { source: 'operator', action: label } as ConsoleEvent['detail']
   }
 }
@@ -48,7 +58,9 @@ describe('visibleEvents', () => {
   })
 
   it('text is a case-insensitive substring over label', () => {
-    expect(visibleEvents(events, filter({ text: 'PANES' })).map((e) => e.label)).toEqual(['POST panes'])
+    expect(visibleEvents(events, filter({ text: 'PANES' })).map((e) => e.label)).toEqual([
+      'POST panes'
+    ])
   })
 
   it('source, scope, and text AND together', () => {
@@ -63,17 +75,25 @@ describe('visibleEvents', () => {
 
 describe('deriveConsoleScope', () => {
   it('enlarged into a session yields session scope', () => {
-    expect(deriveConsoleScope({ view: 'environment', enlarged: { id: 's5', level: 'pane' }, environment: 3 }))
-      .toEqual({ kind: 'session', sessionId: 's5' })
+    expect(
+      deriveConsoleScope({
+        view: 'environment',
+        enlarged: { id: 's5', level: 'pane' },
+        environment: 3
+      })
+    ).toEqual({ kind: 'session', sessionId: 's5' })
   })
 
   it('an environment grid yields environment scope', () => {
-    expect(deriveConsoleScope({ view: 'environment', enlarged: null, environment: 3 }))
-      .toEqual({ kind: 'environment', environment: 3 })
+    expect(deriveConsoleScope({ view: 'environment', enlarged: null, environment: 3 })).toEqual({
+      kind: 'environment',
+      environment: 3
+    })
   })
 
   it('home yields everywhere', () => {
-    expect(deriveConsoleScope({ view: 'home', enlarged: null, environment: 1 }))
-      .toEqual({ kind: 'everywhere' })
+    expect(deriveConsoleScope({ view: 'home', enlarged: null, environment: 1 })).toEqual({
+      kind: 'everywhere'
+    })
   })
 })

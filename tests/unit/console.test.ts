@@ -15,7 +15,12 @@ describe('console mappers', () => {
   })
 
   it('maps an operator entry, carrying handle as sessionId and detail as args', () => {
-    const entry: OperatorActivityEntry = { at: 1, route: 'operator:resume', handle: 'sess-9', detail: 'cap approve' }
+    const entry: OperatorActivityEntry = {
+      at: 1,
+      route: 'operator:resume',
+      handle: 'sess-9',
+      detail: 'cap approve'
+    }
     const e = toOperatorEvent(2, entry)
     expect(e.source).toBe('operator')
     expect(e.environment).toBe(2)
@@ -25,16 +30,25 @@ describe('console mappers', () => {
 
   it('maps a capture to a capture console event with references only', () => {
     const cap: Capture = {
-      id: 'cap-1', environment: 4, watchpointId: 'wp-1', createdAt: 1,
-      halted: true, screenshotPath: '/x/shot.png', output: ['line']
+      id: 'cap-1',
+      environment: 4,
+      watchpointId: 'wp-1',
+      createdAt: 1,
+      halted: true,
+      screenshotPath: '/x/shot.png',
+      output: ['line']
     }
     const e = toCaptureEvent(cap)
     expect(e.source).toBe('capture')
     expect(e.environment).toBe(4)
     expect(e.sessionId).toBeUndefined()
     expect(e.detail).toEqual({
-      source: 'capture', watchpointId: 'wp-1', captureId: 'cap-1',
-      halted: true, screenshotPath: '/x/shot.png', output: ['line']
+      source: 'capture',
+      watchpointId: 'wp-1',
+      captureId: 'cap-1',
+      halted: true,
+      screenshotPath: '/x/shot.png',
+      output: ['line']
     })
   })
 })

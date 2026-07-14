@@ -3,7 +3,12 @@ import { ConsoleEventBus } from '../../src/main/console-bus'
 import type { ConsoleEventInput } from '../../src/shared/console'
 
 function input(label: string): ConsoleEventInput {
-  return { source: 'status', environment: 1, label, detail: { source: 'status', kind: 'Stop', status: 'idle' } }
+  return {
+    source: 'status',
+    environment: 1,
+    label,
+    detail: { source: 'status', kind: 'Stop', status: 'idle' }
+  }
 }
 
 describe('ConsoleEventBus', () => {

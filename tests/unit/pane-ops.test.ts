@@ -9,9 +9,11 @@ import {
   type SpawnFn,
   type SpawnSpec
 } from '../../src/main/session-manager'
-import { addCompanionPane, operatorCreatePane } from '../../src/main/pane-ops'
+import { addCompanionPane, operatorCreatePane, type OpenclawGrant } from '../../src/main/pane-ops'
 import type { OperatorPaneRequest } from '../../src/main/control-api'
 import type { AgentId } from '../../src/shared/types'
+import { OperatorGrantStore } from '../../src/main/operator-grant'
+import { credentialEnv, OperatorLaunchTracker } from '../../src/main/operator-launch'
 
 class FakePty implements PtyLike {
   onData(): void {}
@@ -127,6 +129,134 @@ describe('addCompanionPane', () => {
       agentId: 'shell'
     })
     expect(companion).toBeNull()
+  })
+})
+
+describe('addCompanionPane openclaw grant (user path)', () => {
+  // Rebuilds index.ts's grantOpenclawPane against the REAL grant store +
+  // launch tracker, so these tests exercise the exact wiring the IPC layer
+  // hands to addCompanionPane (endpoint/token → credentialEnv, wasGranted
+  // captured BEFORE grant, onLaunch registration).
+  const PORT = 5123
+  function makeHarness(): {
+    mgr: SessionManager
+    grants: OperatorGrantStore
+    tracker: OperatorLaunchTracker
+    grantOpenclaw: OpenclawGrant
+    spawnEnvOf: (paneId: string) => Record<string, string> | undefined
+  } {
+    const spawnEnvs = new Map<string, Record<string, string> | undefined>()
+    let nextId = 0
+    const spawnFn: SpawnFn = (_bin, _args, opts) => {
+      // node-pty is faked; capture the env the pane would have spawned with.
+      spawnEnvs.set(String(nextId++), opts.env as Record<string, string>)
+      return new FakePty()
+    }
+    const mgr = new SessionManager({
+      settingsDir: mkdtempSync(join(tmpdir(), 'localflow-pane-ops-oc-')),
+      port: 9999,
+      token: 'tok',
+      spawnFn
+    })
+    const grants = new OperatorGrantStore()
+    const tracker = new OperatorLaunchTracker()
+    const grantOpenclaw: OpenclawGrant = (environment) => {
+      const wasGranted = grants.isGranted(environment)
+      const token = grants.grant(environment)
+      return {
+        env: credentialEnv(`http://127.0.0.1:${PORT}`, token),
+        register: (paneId) => tracker.onLaunch(environment, paneId, wasGranted)
+      }
+    }
+    // Spawns happen in creation order; map a pane to its captured env by
+    // matching the injected LOCALFLOW_TOKEN, else fall back to insertion order.
+    const spawnEnvOf = (paneId: string): Record<string, string> | undefined => {
+      const s = mgr.get(paneId)
+      for (const env of spawnEnvs.values()) {
+        if (env?.['LOCALFLOW_TOKEN'] && env['LOCALFLOW_TOKEN'] === grants.grant(s!.environment)) {
+          return env
+        }
+      }
+      return undefined
+    }
+    return { mgr, grants, tracker, grantOpenclaw, spawnEnvOf }
+  }
+
+  it('grants and injects credentialEnv into the spawn spec of an openclaw companion', () => {
+    const { mgr, grants, spawnEnvOf, grantOpenclaw } = makeHarness()
+    const source = mgr.create('/proj/foo', claudeSpec, 3)
+
+    const companion = addCompanionPane(
+      mgr,
+      specFor,
+      source.id,
+      { kind: 'terminal', agentId: 'openclaw' },
+      grantOpenclaw
+    )
+
+    expect(companion).not.toBeNull()
+    expect(grants.isGranted(3)).toBe(true)
+    const env = spawnEnvOf(companion!.id)
+    expect(env?.['LOCALFLOW_ENDPOINT']).toBe(`http://127.0.0.1:${PORT}`)
+    expect(env?.['LOCALFLOW_TOKEN']).toBe(grants.grant(3))
+  })
+
+  it('registers the launch so the created grant is revoked when the pane closes', () => {
+    const { mgr, tracker, grantOpenclaw } = makeHarness()
+    const source = mgr.create('/proj/foo', claudeSpec, 3)
+
+    const companion = addCompanionPane(
+      mgr,
+      specFor,
+      source.id,
+      { kind: 'terminal', agentId: 'openclaw' },
+      grantOpenclaw
+    )
+
+    expect(tracker.trackedIds()).toEqual([companion!.id])
+    // wasGranted was false (captured BEFORE grant), so the launch owns the
+    // env and its close revokes.
+    expect(tracker.onClose(companion!.id)).toBe(3)
+  })
+
+  it('captures wasGranted BEFORE granting: a companion reusing an existing grant does not own it', () => {
+    const { mgr, grants, tracker, grantOpenclaw } = makeHarness()
+    grants.grant(3) // env already granted (e.g. a prior operator launch)
+    const source = mgr.create('/proj/foo', claudeSpec, 3)
+
+    const companion = addCompanionPane(
+      mgr,
+      specFor,
+      source.id,
+      { kind: 'terminal', agentId: 'openclaw' },
+      grantOpenclaw
+    )
+
+    // The pane is tracked but does NOT own the pre-existing grant.
+    expect(tracker.onClose(companion!.id)).toBeNull()
+  })
+
+  it('does not grant for a non-openclaw companion', () => {
+    const { mgr, grants, tracker, grantOpenclaw } = makeHarness()
+    const source = mgr.create('/proj/foo', claudeSpec, 3)
+
+    addCompanionPane(mgr, specFor, source.id, { kind: 'terminal', agentId: 'shell' }, grantOpenclaw)
+
+    expect(grants.isGranted(3)).toBe(false)
+    expect(tracker.trackedIds()).toEqual([])
+  })
+
+  it('does not grant when no hook is supplied (operator-style call)', () => {
+    const { mgr, grants } = makeHarness()
+    const source = mgr.create('/proj/foo', claudeSpec, 3)
+
+    const companion = addCompanionPane(mgr, specFor, source.id, {
+      kind: 'terminal',
+      agentId: 'openclaw'
+    })
+
+    expect(companion).not.toBeNull()
+    expect(grants.isGranted(3)).toBe(false)
   })
 })
 

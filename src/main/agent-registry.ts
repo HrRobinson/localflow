@@ -11,6 +11,7 @@ import {
 } from '../shared/agents'
 import { splitArgs } from '../shared/args'
 import { RESERVED_ENV_KEYS } from './hook-adapter'
+import { DEFAULT_CONSOLE_PREFS, type ConsolePrefs, type ConsoleSource } from '../shared/console'
 
 export interface AgentConfig {
   /** User-configured absolute paths per agent, overriding PATH lookup. */
@@ -22,6 +23,8 @@ export interface AgentConfig {
   agents?: Partial<Record<AgentId, AgentOverride>>
   /** Selected theme name; resolved against userData/themes (M4). */
   theme?: string
+  /** Bottom console drawer prefs: height, open state, last filter (M6). */
+  console?: ConsolePrefs
   /**
    * Unknown top-level keys found in config.json, preserved verbatim so
    * hand-added config-as-code entries survive a save round-trip.
@@ -71,7 +74,30 @@ function parseAgents(raw: unknown): AgentConfig['agents'] | undefined {
   return Object.keys(out).length > 0 ? out : undefined
 }
 
-const KNOWN_TOP_LEVEL_KEYS = new Set(['agentPaths', 'lastAgent', 'defaultAgent', 'agents', 'theme'])
+const CONSOLE_SOURCES: ConsoleSource[] = ['status', 'operator', 'capture', 'network']
+
+/** Validates the console-prefs shape at the config-file boundary; null on any malformed field. */
+function parseConsolePrefs(raw: unknown): ConsolePrefs | null {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null
+  const height = (raw as { height?: unknown }).height
+  const open = (raw as { open?: unknown }).open
+  const sources = (raw as { sources?: unknown }).sources
+  const text = (raw as { text?: unknown }).text
+  if (typeof height !== 'number' || !Number.isFinite(height)) return null
+  if (typeof open !== 'boolean') return null
+  if (!Array.isArray(sources) || !sources.every((s) => CONSOLE_SOURCES.includes(s))) return null
+  if (typeof text !== 'string') return null
+  return { height, open, sources: sources as ConsoleSource[], text }
+}
+
+const KNOWN_TOP_LEVEL_KEYS = new Set([
+  'agentPaths',
+  'lastAgent',
+  'defaultAgent',
+  'agents',
+  'theme',
+  'console'
+])
 
 export function loadAgentConfig(file: string): AgentConfig {
   try {
@@ -98,6 +124,9 @@ export function loadAgentConfig(file: string): AgentConfig {
     const agents = parseAgents(obj.agents)
     if (agents) config.agents = agents
     if (typeof obj.theme === 'string' && obj.theme.trim().length > 0) config.theme = obj.theme
+    if (obj.console !== undefined) {
+      config.console = parseConsolePrefs(obj.console) ?? DEFAULT_CONSOLE_PREFS
+    }
     // Preserve any hand-added top-level keys (config-as-code) so they
     // survive a later saveAgentConfig call untouched.
     const extra: Record<string, unknown> = {}
@@ -266,6 +295,15 @@ export class AgentRegistry {
 
   setTheme(name: string): void {
     this.config.theme = name
+    saveAgentConfig(this.configFile, this.config)
+  }
+
+  getConsolePrefs(): ConsolePrefs {
+    return this.config.console ?? DEFAULT_CONSOLE_PREFS
+  }
+
+  setConsolePrefs(prefs: ConsolePrefs): void {
+    this.config.console = parseConsolePrefs(prefs) ?? DEFAULT_CONSOLE_PREFS
     saveAgentConfig(this.configFile, this.config)
   }
 

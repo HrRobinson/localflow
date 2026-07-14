@@ -274,6 +274,10 @@ describe('DEFAULT_BINDINGS', () => {
     expect(DEFAULT_BINDINGS['open-editor']).toBe('cmd+e')
   })
 
+  it('binds console-toggle to cmd+/ by default', () => {
+    expect(DEFAULT_BINDINGS['console-toggle']).toBe('cmd+/')
+  })
+
   it('has no duplicate combos among defaults', () => {
     for (const [action, binding] of Object.entries(DEFAULT_BINDINGS)) {
       expect(findConflicts(DEFAULT_BINDINGS, action as KeyAction, binding)).toEqual([])

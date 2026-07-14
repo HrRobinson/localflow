@@ -11,6 +11,8 @@ import Activity from './components/Activity'
 import Sidebar from './components/Sidebar'
 import Changes from './components/Changes'
 import Cockpit from './components/Cockpit'
+import { Console } from './components/Console'
+import type { ConsoleEvent } from '../../shared/console'
 import { reconcileOrder } from './lib/order'
 import { pickNeighbor, swapInOrder, type PaneRect, type Direction } from './lib/pane-nav'
 import { nextNeedsYou } from './lib/needs-you'
@@ -76,6 +78,11 @@ export default function App(): React.JSX.Element {
   const [enlarged, setEnlarged] = useState<{ id: string; level: 'pane' | 'session' } | null>(null)
   // cmd+b hides the sidebar for a fullscreen-style focus mode.
   const [sidebarVisible, setSidebarVisible] = useState(true)
+  // cmd+/ opens the bottom console drawer; works from any view.
+  const [consoleOpen, setConsoleOpen] = useState(false)
+  // Once the user toggles the drawer, the async prefs seed must not clobber
+  // their choice (the seed IPC can resolve after an early keypress).
+  const consoleTouched = useRef(false)
   // Which pane has keyboard focus, and the display order panes render in.
   // `order` is reconciled from `sessions` on every refresh: new ids are
   // appended, ids no longer present are dropped, everything else is stable.
@@ -373,6 +380,31 @@ export default function App(): React.JSX.Element {
   }
   const enterActivity = (): void => setView('activity')
   const enterCockpit = (): void => setView('cockpit')
+  // Console row "open source": reflect-and-replay, not navigation-by-guess —
+  // a status row jumps to its session (same focus semantics as clicking it
+  // in the sidebar); operator/capture rows have no single pane to jump to,
+  // so they open the cockpit for the row's environment instead.
+  const openConsoleSource = (event: ConsoleEvent): void => {
+    if (event.detail.source === 'status') {
+      if (event.sessionId) openSession(event.sessionId)
+      return
+    }
+    setEnvironment(event.environment)
+    setView('cockpit')
+  }
+  // Console row "rerun watchpoint": capture rows only. Re-arms the SAME
+  // workflow/step/capture-kinds the original watchpoint was registered
+  // with, via the existing operator watchpoint registration IPC — this is a
+  // replay of an existing watch, never request composition (the drawer
+  // stays show-not-author).
+  const rerunWatchpoint = async (event: ConsoleEvent): Promise<void> => {
+    if (event.detail.source !== 'capture') return
+    const watchpointId = event.detail.watchpointId
+    const watchpoints = await window.localflow.listWatchpoints(event.environment)
+    const wp = watchpoints.find((w) => w.id === watchpointId)
+    if (!wp) return
+    await window.localflow.registerWatchpoint(event.environment, wp.workflow, wp.step, wp.capture)
+  }
   // Switching environments re-scopes focus: the active/enlarged pane must be
   // one of the target environment's panes, or null.
   const switchEnvironment = (n: number): void => {
@@ -502,6 +534,11 @@ export default function App(): React.JSX.Element {
         setSidebarVisible((cur) => !cur)
         return
       }
+      if (action === 'console-toggle') {
+        consoleTouched.current = true
+        setConsoleOpen((v) => !v)
+        return
+      }
       // Jump-to-attention works from any view: from home/settings it enters
       // the environment view on the first waiting pane; inside the environment
       // view it cycles relative to the active pane. openSession supplies the
@@ -623,6 +660,18 @@ export default function App(): React.JSX.Element {
     return () => off()
   }, [])
 
+  // Seed the drawer's open state once at startup; Console.tsx owns the rest
+  // of the prefs (height, sources, text) since it's already the sole reader.
+  useEffect(() => {
+    let alive = true
+    void window.localflow.getConsolePrefs().then((prefs) => {
+      if (alive && !consoleTouched.current) setConsoleOpen(prefs.open)
+    })
+    return () => {
+      alive = false
+    }
+  }, [])
+
   const showEnvironment =
     view === 'environment' && sessions.some((s) => s.environment === environment)
   const envSessions = sessions.filter((s) => s.environment === environment)
@@ -654,6 +703,11 @@ export default function App(): React.JSX.Element {
   const enlargeTop = enlarged
     ? ENLARGE_PAD + CHROME_BAR_H + (showSiblingStrip ? CHROME_BAR_H : 0)
     : ENLARGE_PAD
+  // Pane-level enlarge toggle for a single pane id: enlarge it, or collapse
+  // back to the grid if it's already the pane-level anchor. Shared by both
+  // renderPane branches so the two identical closures can't drift.
+  const togglePane = (id: string): void =>
+    setEnlarged((cur) => (cur?.level === 'pane' && cur.id === id ? null : { id, level: 'pane' }))
   // Shared by both the solo and grouped render paths below so a pane's
   // element is identical either way — grouping must not change a solo
   // pane's DOM (existing e2e selectors depend on that).
@@ -664,11 +718,7 @@ export default function App(): React.JSX.Element {
         session={s}
         enlarged={enlarged?.level === 'pane' && enlarged.id === s.id}
         active={activeId === s.id}
-        onToggleEnlarge={() =>
-          setEnlarged((cur) =>
-            cur?.level === 'pane' && cur.id === s.id ? null : { id: s.id, level: 'pane' }
-          )
-        }
+        onToggleEnlarge={() => togglePane(s.id)}
         onActivate={() => setActiveId(s.id)}
         onReopen={() => void restart(s.id, false)}
         onClose={() => void closeTerminal(s.id)}
@@ -679,11 +729,7 @@ export default function App(): React.JSX.Element {
         session={s}
         enlarged={enlarged?.level === 'pane' && enlarged.id === s.id}
         active={activeId === s.id}
-        onToggleEnlarge={() =>
-          setEnlarged((cur) =>
-            cur?.level === 'pane' && cur.id === s.id ? null : { id: s.id, level: 'pane' }
-          )
-        }
+        onToggleEnlarge={() => togglePane(s.id)}
         onActivate={() => setActiveId(s.id)}
         onRestart={(fresh) => void restart(s.id, fresh)}
         onClose={() => void closeTerminal(s.id)}
@@ -802,6 +848,10 @@ export default function App(): React.JSX.Element {
                     <GroupBox
                       group={group}
                       status={worstStatus(members.map((m) => m.status))}
+                      // Session-enlarged: the breadcrumb already names the
+                      // group, so collapse this now-redundant (and inert)
+                      // header. Grid header stays exactly as before.
+                      headerHidden={isSessionEnlarged}
                       onAddPane={() => setAddPaneFor(members[0].id)}
                       onEnlargeSession={() => {
                         setEnlarged({ id: members[0].id, level: 'session' })
@@ -909,6 +959,16 @@ export default function App(): React.JSX.Element {
             />
           )
         })()}
+      <Console
+        open={consoleOpen}
+        onClose={() => {
+          consoleTouched.current = true
+          setConsoleOpen(false)
+        }}
+        focus={{ view, enlarged, environment }}
+        onOpenSource={openConsoleSource}
+        onRerunWatchpoint={(event) => void rerunWatchpoint(event)}
+      />
     </div>
   )
 }

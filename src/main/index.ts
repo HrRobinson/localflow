@@ -40,6 +40,9 @@ import { BrowserBridge } from './browser-bridge'
 import { WebviewBrowserControl } from './browser-control'
 import { CaptureStore } from './capture-store'
 import { WatchpointRegistry } from './watchpoints'
+import { ConsoleEventBus } from './console-bus'
+import { toStatusEvent, toOperatorEvent, toCaptureEvent } from '../shared/console'
+import type { ConsolePrefs } from '../shared/console'
 import type { ActivityEntry, GrantInfo, OperatorStatus } from '../shared/operator'
 import type { Capabilities } from '../shared/git'
 import {
@@ -202,6 +205,7 @@ app.whenReady().then(async () => {
   // Rolling per-environment action log (newest last, capped). In-memory only —
   // the feed is deliberately not persisted across restarts (spec "Out of scope").
   const activity = new Map<number, ActivityEntry[]>()
+  const consoleBus = new ConsoleEventBus()
 
   // One append path for the per-environment action log: cap, store, push live.
   const pushActivity = (env: number, entry: ActivityEntry): void => {
@@ -210,6 +214,7 @@ app.whenReady().then(async () => {
     if (log.length > 200) log.splice(0, log.length - 200)
     activity.set(env, log)
     sendToWindow('operator:activity', env, entry)
+    consoleBus.emit(toOperatorEvent(env, entry))
   }
 
   const browserBridge = new BrowserBridge()
@@ -231,8 +236,10 @@ app.whenReady().then(async () => {
     browser: browserControl,
     captures: captureStore,
     watchpoints,
-    onActivity: pushActivity
+    onActivity: pushActivity,
+    onCapture: (cap) => consoleBus.emit(toCaptureEvent(cap))
   })
+  consoleBus.subscribe((event) => sendToWindow('console:event', event))
   app.on('before-quit', () => {
     control.close()
     // The scratch dir only holds handoff assets for live sessions; nothing in
@@ -271,6 +278,24 @@ app.whenReady().then(async () => {
     reportSkillEnv(env, 'remove', removeSkillEnv(openclawConfig))
   }
 
+  // User-path OpenClaw pane grant, mirroring session:create's openclaw branch:
+  // capture wasGranted BEFORE granting (revoke ownership — a pane that reused
+  // an existing grant must not revoke it on close), hand back the operator
+  // credentials to inject into the spawn env, and a `register` to track the
+  // launch so revoke-on-close keeps working. Shared by group:addPane and
+  // templates:create — the operator control-API route intentionally does NOT
+  // use this (it rejects openclaw upstream in parseOperatorPaneRequest).
+  const grantOpenclawPane = (
+    environment: number
+  ): { env: Record<string, string>; register: (paneId: string) => void } => {
+    const wasGranted = grants.isGranted(environment)
+    const token = grantOperator(environment)
+    return {
+      env: credentialEnv(`http://127.0.0.1:${control.port}`, token),
+      register: (paneId: string) => launchTracker.onLaunch(environment, paneId, wasGranted)
+    }
+  }
+
   ipcMain.on('browser:register', (_e, handle: string, webContentsId: number) => {
     if (typeof handle === 'string' && Number.isInteger(webContentsId)) {
       browserBridge.register(handle, webContentsId)
@@ -301,7 +326,11 @@ app.whenReady().then(async () => {
       if (env !== null) revokeOperator(env)
     }
   })
-  manager.onActivity((id, entry) => sendToWindow('activity:event', id, entry))
+  manager.onActivity((id, entry) => {
+    sendToWindow('activity:event', id, entry)
+    const env = manager.list().find((s) => s.id === id)?.environment ?? 1
+    consoleBus.emit(toStatusEvent(id, env, entry))
+  })
   manager.onSessionsChanged(() => {
     const currentIds = new Set(manager.list().map((s) => s.id))
     for (const id of launchTracker.trackedIds()) {
@@ -355,6 +384,10 @@ app.whenReady().then(async () => {
     'session:create',
     async (_e, agentId: AgentId, cwd?: string, customCommand?: string, environment?: number) => {
       if (!VALID_AGENTS.includes(agentId)) return null
+      // customCommand is optional, but a non-string over IPC would throw on
+      // the .trim() calls below — reject cleanly, same posture as the
+      // VALID_AGENTS guard above.
+      if (customCommand !== undefined && typeof customCommand !== 'string') return null
       if (agentId === 'custom' && !customCommand?.trim()) return null
       let dir = process.env['LOCALFLOW_E2E'] === '1' ? cwd : undefined
       if (!dir) {
@@ -433,13 +466,19 @@ app.whenReady().then(async () => {
     if (typeof sourcePaneId !== 'string' || typeof req !== 'object' || req === null) return null
     if (req.kind === 'terminal') {
       if (!VALID_AGENTS.includes(req.agentId)) return null
-      if (req.agentId === 'custom' && !req.customCommand?.trim()) return null
+      // A non-string customCommand would throw on .trim() — reject rather
+      // than surface a TypeError to the bridge (same as session:create).
+      if (
+        req.agentId === 'custom' &&
+        (typeof req.customCommand !== 'string' || !req.customCommand.trim())
+      )
+        return null
     } else if (req.kind === 'browser') {
       if (typeof req.url !== 'string') return null
     } else {
       return null
     }
-    return addCompanionPane(manager, specFor, sourcePaneId, req)
+    return addCompanionPane(manager, specFor, sourcePaneId, req, grantOpenclawPane)
   })
   ipcMain.handle('session:createBrowser', (_e, url: string, environment?: number) => {
     // Validate at the boundary; manager.createBrowser re-validates (throws),
@@ -489,12 +528,30 @@ app.whenReady().then(async () => {
       const resolvedDir = dir
       const group = manager.createGroup(basename(resolvedDir), environment)
       return launchable.map((pane) => {
-        const created =
-          pane.kind === 'terminal'
-            ? manager.create(resolvedDir, specFor(pane.agentId ?? 'claude'), environment)
-            : // parseSessionTemplates only ever emits a browser pane with a
-              // validated url, so this is never actually undefined.
-              manager.createBrowser(pane.url!, environment)
+        let created: SessionInfo
+        if (pane.kind === 'terminal') {
+          const agentId = pane.agentId ?? 'claude'
+          let spec = specFor(agentId)
+          // Same grant + credential injection as session:create's openclaw
+          // branch. For a template with several openclaw panes in one
+          // environment the grant is captured PER PANE, but grants.grant is
+          // idempotent: the first pane owns the revoke (wasGranted=false), each
+          // later pane reuses the same token (wasGranted=true) and only adds a
+          // tracked session — so the grant is revoked once, when the last of
+          // them closes.
+          let register: ((paneId: string) => void) | undefined
+          if (agentId === 'openclaw') {
+            const granted = grantOpenclawPane(environment)
+            spec = { ...spec, env: { ...spec.env, ...granted.env } }
+            register = granted.register
+          }
+          created = manager.create(resolvedDir, spec, environment)
+          register?.(created.id)
+        } else {
+          // parseSessionTemplates only ever emits a browser pane with a
+          // validated url, so this is never actually undefined.
+          created = manager.createBrowser(pane.url!, environment)
+        }
         return manager.assignToGroup(created.id, group.id) ?? created
       })
     }
@@ -686,6 +743,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('operator:captures', (_e, environment: number) =>
     captureStore.list(clampEnvironment(environment))
   )
+  ipcMain.handle('console:list', () => consoleBus.snapshot())
   ipcMain.handle('operator:watchpoints', (_e, environment: number) =>
     watchpoints.list(clampEnvironment(environment))
   )
@@ -737,6 +795,9 @@ app.whenReady().then(async () => {
     return resolved
   })
   ipcMain.on('theme:openFolder', () => void shell.openPath(themesDir))
+
+  ipcMain.handle('console:getPrefs', () => registry.getConsolePrefs())
+  ipcMain.on('console:setPrefs', (_e, prefs: ConsolePrefs) => registry.setConsolePrefs(prefs))
 
   createWindow()
 })

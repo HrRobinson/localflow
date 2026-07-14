@@ -37,6 +37,10 @@ describe('nextFocusAfterClose', () => {
     expect(nextFocusAfterClose('b', ['a', 'b', 'c'], panes)).toBe('a')
   })
 
+  // Covers two intents at once: the delete case (closed pane already gone
+  // from `panes`) AND the solo-move call-site scenario below — both reduce to
+  // "closed pane absent, no group, land on the nearest remaining pane in
+  // order", so the moveToEnvironment block deliberately doesn't repeat it.
   it('handles the delete case where the closed pane is already gone from panes', () => {
     const panes = [pane('a'), pane('c')]
     expect(nextFocusAfterClose('b', ['a', 'b', 'c'], panes)).toBe('a')
@@ -60,10 +64,9 @@ describe('nextFocusAfterClose — moveToEnvironment call-site scenarios', () => 
     expect(nextFocusAfterClose('b', ['a', 'b', 'c', 'd', 'e'], panes)).toBe('a')
   })
 
-  it('solo pane move: lands on the nearest remaining pane (unchanged from prior behavior)', () => {
-    const panes = [pane('a'), pane('c')]
-    expect(nextFocusAfterClose('b', ['a', 'b', 'c'], panes)).toBe('a')
-  })
+  // The solo-move scenario (a moved solo pane, absent post-refresh, landing on
+  // the nearest remaining pane) is byte-identical to the delete case asserted
+  // in the nextFocusAfterClose block above — not duplicated here.
 })
 
 // Regression guard: deleteSession/closeTerminal call this with the

@@ -22,6 +22,7 @@ import type {
   Capture,
   Watchpoint
 } from './operator'
+import type { ConsoleEvent } from './console'
 
 export interface LocalflowApi {
   /**
@@ -143,6 +144,10 @@ export interface LocalflowApi {
   resumeCapture(environment: number, captureId: string, approve: boolean): Promise<boolean>
   /** Live control-API action-log entries, per environment. */
   onOperatorActivity(cb: (environment: number, entry: OperatorActivityEntry) => void): () => void
+  /** Snapshot of the console event ring (bottom console drawer). */
+  listConsole(): Promise<ConsoleEvent[]>
+  /** New console events pushed as they happen. */
+  onConsoleEvent(cb: (event: ConsoleEvent) => void): () => void
   /** Working-tree status for a session's repo. `repo:false` when the cwd isn't a git repo (or the session has none). */
   gitStatus(id: string): Promise<GitStatus>
   /** Diff text for one path at one layer. Untracked files come back as full additions; size-capped. */

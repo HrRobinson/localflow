@@ -10,6 +10,7 @@ import type {
 import type { ActivityEntry as OperatorActivityEntry, CaptureKind } from '../shared/operator'
 import type { KeyAction } from '../shared/keybindings'
 import type { Theme } from '../shared/theme'
+import type { ConsoleEvent } from '../shared/console'
 
 const api: LocalflowApi = {
   createSession: (agentId: AgentId, cwd?: string, customCommand?: string, environment?: number) =>
@@ -101,6 +102,12 @@ const api: LocalflowApi = {
     ): void => cb(environment, entry)
     ipcRenderer.on('operator:activity', listener)
     return () => ipcRenderer.removeListener('operator:activity', listener)
+  },
+  listConsole: () => ipcRenderer.invoke('console:list'),
+  onConsoleEvent: (cb) => {
+    const listener = (_e: IpcRendererEvent, event: ConsoleEvent): void => cb(event)
+    ipcRenderer.on('console:event', listener)
+    return () => ipcRenderer.removeListener('console:event', listener)
   },
   gitStatus: (id: string) => ipcRenderer.invoke('git:status', id),
   gitDiff: (id: string, path: string, staged: boolean) =>

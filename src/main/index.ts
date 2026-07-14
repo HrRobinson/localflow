@@ -40,6 +40,8 @@ import { BrowserBridge } from './browser-bridge'
 import { WebviewBrowserControl } from './browser-control'
 import { CaptureStore } from './capture-store'
 import { WatchpointRegistry } from './watchpoints'
+import { ConsoleEventBus } from './console-bus'
+import { toStatusEvent, toOperatorEvent, toCaptureEvent } from '../shared/console'
 import type { ActivityEntry, GrantInfo, OperatorStatus } from '../shared/operator'
 import type { Capabilities } from '../shared/git'
 import {
@@ -202,6 +204,7 @@ app.whenReady().then(async () => {
   // Rolling per-environment action log (newest last, capped). In-memory only —
   // the feed is deliberately not persisted across restarts (spec "Out of scope").
   const activity = new Map<number, ActivityEntry[]>()
+  const consoleBus = new ConsoleEventBus()
 
   // One append path for the per-environment action log: cap, store, push live.
   const pushActivity = (env: number, entry: ActivityEntry): void => {
@@ -210,6 +213,7 @@ app.whenReady().then(async () => {
     if (log.length > 200) log.splice(0, log.length - 200)
     activity.set(env, log)
     sendToWindow('operator:activity', env, entry)
+    consoleBus.emit(toOperatorEvent(env, entry))
   }
 
   const browserBridge = new BrowserBridge()
@@ -231,8 +235,10 @@ app.whenReady().then(async () => {
     browser: browserControl,
     captures: captureStore,
     watchpoints,
-    onActivity: pushActivity
+    onActivity: pushActivity,
+    onCapture: (cap) => consoleBus.emit(toCaptureEvent(cap))
   })
+  consoleBus.subscribe((event) => sendToWindow('console:event', event))
   app.on('before-quit', () => {
     control.close()
     // The scratch dir only holds handoff assets for live sessions; nothing in
@@ -301,7 +307,11 @@ app.whenReady().then(async () => {
       if (env !== null) revokeOperator(env)
     }
   })
-  manager.onActivity((id, entry) => sendToWindow('activity:event', id, entry))
+  manager.onActivity((id, entry) => {
+    sendToWindow('activity:event', id, entry)
+    const env = manager.list().find((s) => s.id === id)?.environment ?? 1
+    consoleBus.emit(toStatusEvent(id, env, entry))
+  })
   manager.onSessionsChanged(() => {
     const currentIds = new Set(manager.list().map((s) => s.id))
     for (const id of launchTracker.trackedIds()) {
@@ -686,6 +696,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('operator:captures', (_e, environment: number) =>
     captureStore.list(clampEnvironment(environment))
   )
+  ipcMain.handle('console:list', () => consoleBus.snapshot())
   ipcMain.handle('operator:watchpoints', (_e, environment: number) =>
     watchpoints.list(clampEnvironment(environment))
   )

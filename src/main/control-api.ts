@@ -8,7 +8,7 @@ import type { SessionManager } from './session-manager'
 import type { BrowserControl } from './browser-control'
 import type { CaptureStore } from './capture-store'
 import type { WatchpointRegistry } from './watchpoints'
-import { CONTROL_MAX_BODY_BYTES, type ActivityEntry } from '../shared/operator'
+import { CONTROL_MAX_BODY_BYTES, type ActivityEntry, type Capture } from '../shared/operator'
 import { VALID_AGENTS, type AgentId, type SessionInfo } from '../shared/types'
 import { normalizeHttpUrl } from '../shared/urls'
 
@@ -25,6 +25,7 @@ export interface ControlDeps {
     create(environment: number, req: OperatorPaneRequest): SessionInfo | null
   }
   onActivity?: (environment: number, entry: ActivityEntry) => void
+  onCapture?: (capture: Capture) => void
   // Wired in Layers 2 & 4; absent routes return 404 until then.
   browser?: BrowserControl
   captures?: CaptureStore
@@ -192,6 +193,7 @@ export async function handleRequest(
     const b = readBody()
     const cap = await deps.captures.ingest(environment, b, deps.watchpoints)
     if (!cap) return json(400, { error: 'invalid capture' })
+    deps.onCapture?.(cap)
     record('POST /captures', undefined, cap.watchpointId)
     return json(201, { id: cap.id })
   }

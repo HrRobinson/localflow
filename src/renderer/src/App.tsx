@@ -80,6 +80,9 @@ export default function App(): React.JSX.Element {
   const [sidebarVisible, setSidebarVisible] = useState(true)
   // cmd+/ opens the bottom console drawer; works from any view.
   const [consoleOpen, setConsoleOpen] = useState(false)
+  // Once the user toggles the drawer, the async prefs seed must not clobber
+  // their choice (the seed IPC can resolve after an early keypress).
+  const consoleTouched = useRef(false)
   // Which pane has keyboard focus, and the display order panes render in.
   // `order` is reconciled from `sessions` on every refresh: new ids are
   // appended, ids no longer present are dropped, everything else is stable.
@@ -532,6 +535,7 @@ export default function App(): React.JSX.Element {
         return
       }
       if (action === 'console-toggle') {
+        consoleTouched.current = true
         setConsoleOpen((v) => !v)
         return
       }
@@ -661,7 +665,7 @@ export default function App(): React.JSX.Element {
   useEffect(() => {
     let alive = true
     void window.localflow.getConsolePrefs().then((prefs) => {
-      if (alive) setConsoleOpen(prefs.open)
+      if (alive && !consoleTouched.current) setConsoleOpen(prefs.open)
     })
     return () => {
       alive = false
@@ -956,7 +960,10 @@ export default function App(): React.JSX.Element {
         })()}
       <Console
         open={consoleOpen}
-        onClose={() => setConsoleOpen(false)}
+        onClose={() => {
+          consoleTouched.current = true
+          setConsoleOpen(false)
+        }}
         focus={{ view, enlarged, environment }}
         onOpenSource={openConsoleSource}
         onRerunWatchpoint={(event) => void rerunWatchpoint(event)}

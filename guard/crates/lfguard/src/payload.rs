@@ -5,14 +5,18 @@
 //! `PreToolUse` hook). Unknown shapes and oversize input return `Err` so the
 //! caller can fail open.
 //!
-//! `inline_payloads` handles the common obfuscation shape where a real command
-//! is smuggled inside `bash -c '…'` / `sh -c "…"` / `python -c '…'`. v1 uses a
-//! trigger-regex, not a shell parser (no AST) — enough to re-judge the inner
-//! command without the cost/fragility of parsing shell grammar.
+//! `inline_payload` handles the common obfuscation shape where a real command
+//! is smuggled inside `bash -c '…'` / `sh -c "…"` / `python -c '…'`. It used
+//! to be a regex scan over raw text; now that the engine tokenizes the whole
+//! line first, this is a structural check over an already-resolved `argv`
+//! instead — which is strictly more correct, since it works the same
+//! regardless of which quoting style wrapped the payload (the tokenizer
+//! already resolved that), and it composes with re-lexing: the caller
+//! re-runs the whole pipeline on the extracted string, so a payload smuggled
+//! behind a layer of quoting the *outer* lexer could not see into (e.g. a
+//! single-quoted outer argument containing a further-quoted inner command)
+//! is still caught once the inner string is lexed on its own.
 
-use std::sync::OnceLock;
-
-use regex::Regex;
 use serde_json::Value;
 
 /// Hard cap on hook-payload size. Anything larger is refused (fail open) rather
@@ -59,25 +63,24 @@ pub fn command_from_hook_json(input: &str, max_bytes: usize) -> Result<String, P
     Err(PayloadError::NoCommand)
 }
 
-fn inline_regex() -> &'static Regex {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| {
-        // <interp> -c '<payload>'  or  <interp> -c "<payload>"
-        // interp: bash, sh, zsh, dash, python, python3, node, ruby, perl.
-        Regex::new(r#"(?:bash|sh|zsh|dash|python3?|node|ruby|perl)\s+-c\s+(?:'([^']*)'|"([^"]*)")"#)
-            .expect("static inline regex compiles")
-    })
-}
+/// Interpreters whose `-c <payload>` invocation smuggles a real command line.
+const INLINE_INTERPRETERS: &[&str] = &[
+    "bash", "sh", "zsh", "dash", "python", "python3", "node", "ruby", "perl",
+];
 
-/// Extract inner payloads from `<interp> -c '…'` wrappers in `normalized`.
-/// Returns the inner command strings (possibly several).
-pub fn inline_payloads(normalized: &str) -> Vec<String> {
-    inline_regex()
-        .captures_iter(normalized)
-        .filter_map(|c| c.get(1).or_else(|| c.get(2)))
-        .map(|m| m.as_str().to_string())
-        .filter(|s| !s.trim().is_empty())
-        .collect()
+/// If `argv` is an interpreter invocation carrying a `-c <payload>` flag,
+/// return the payload argument (the exact token right after `-c`) —
+/// `argv[0]` must already be case-folded and directory-stripped, which the
+/// engine does before calling this (so `/usr/bin/Bash -c '...'` is still
+/// recognized). Returns `None` for anything else, including interpreter
+/// invocations with no `-c`.
+pub fn inline_payload(argv: &[String]) -> Option<String> {
+    let prog = argv.first()?;
+    if !INLINE_INTERPRETERS.contains(&prog.as_str()) {
+        return None;
+    }
+    let idx = argv.iter().position(|a| a == "-c")?;
+    argv.get(idx + 1).cloned()
 }
 
 #[cfg(test)]
@@ -126,23 +129,36 @@ mod tests {
     }
 
     #[test]
-    fn extracts_single_inline_payload() {
-        assert_eq!(
-            inline_payloads("bash -c 'rm -rf /'"),
-            vec!["rm -rf /".to_string()]
-        );
+    fn extracts_single_quoted_payload() {
+        let argv = vec!["bash".to_string(), "-c".to_string(), "rm -rf /".to_string()];
+        assert_eq!(inline_payload(&argv), Some("rm -rf /".to_string()));
     }
 
     #[test]
-    fn extracts_double_quoted_inline_payload() {
-        assert_eq!(
-            inline_payloads(r#"python3 -c "git reset --hard""#),
-            vec!["git reset --hard".to_string()]
-        );
+    fn extracts_double_quoted_payload() {
+        let argv = vec![
+            "python3".to_string(),
+            "-c".to_string(),
+            "git reset --hard".to_string(),
+        ];
+        assert_eq!(inline_payload(&argv), Some("git reset --hard".to_string()));
     }
 
     #[test]
-    fn no_inline_payload_when_absent() {
-        assert!(inline_payloads("git status").is_empty());
+    fn no_inline_payload_when_not_an_interpreter() {
+        let argv = vec!["git".to_string(), "status".to_string()];
+        assert_eq!(inline_payload(&argv), None);
+    }
+
+    #[test]
+    fn no_inline_payload_when_no_dash_c() {
+        let argv = vec!["bash".to_string(), "script.sh".to_string()];
+        assert_eq!(inline_payload(&argv), None);
+    }
+
+    #[test]
+    fn dash_c_with_nothing_after_it_yields_none() {
+        let argv = vec!["bash".to_string(), "-c".to_string()];
+        assert_eq!(inline_payload(&argv), None);
     }
 }

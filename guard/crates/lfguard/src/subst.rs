@@ -28,9 +28,20 @@
 //!
 //! Deliberately narrow: this only detects a substitution *replacing* the
 //! command name, not one merely concatenated into it (`pre$(cmd)post` is
-//! left alone — real shells behave very differently there depending on what
-//! the substitution expands to, and guessing is out of scope, matching the
-//! project's "static token structure only" stance elsewhere).
+//! left alone here — real shells behave very differently there depending on
+//! what the substitution expands to, and guessing is out of scope, matching
+//! the project's "static token structure only" stance elsewhere).
+//!
+//! This module only ever handles the command-position shape. A substitution
+//! anywhere *else* in a segment — an argument to a guarded or unguarded
+//! command, or one merely concatenated into a larger word (including the
+//! `pre$(cmd)post` shape this module skips) — is handled separately by
+//! `crate::lexer::find_all_substitutions`, called directly from the engine
+//! for every word in the segment. The two are complementary, not
+//! overlapping: the engine tries this module's whole-segment/assignment
+//! check first (and `continue`s the segment on a match, since there is no
+//! literal argv[0] left to judge), then falls through to the more general
+//! any-position scan only when this one found nothing.
 
 use crate::lexer::{pure_substitution_body, Word};
 

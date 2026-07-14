@@ -16,7 +16,7 @@
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
-use crate::lexer::split_segments;
+use crate::lexer::{find_all_substitutions, split_segments};
 use crate::normalize::build_argv;
 use crate::pack::Pack;
 use crate::payload::inline_payload;
@@ -190,6 +190,71 @@ impl Engine {
                 // segment rather than trying to match "$(...)" as if it
                 // were a literal command name.
                 continue;
+            }
+
+            // Command substitution embedded ANYWHERE else in this segment —
+            // not filling the whole command position (handled above), but
+            // sitting inside an argument, inside a wrapper's own words (e.g.
+            // an `env FOO=$(...)` assignment later peeled off by
+            // unwrapping), or only part of a larger concatenated word
+            // (`$(cmd)suffix`). A real shell evaluates every `$(...)`/
+            // `` `...` `` eagerly wherever it appears, before deciding what
+            // the surrounding word means — so leaving any of these
+            // unjudged is a full, silent bypass regardless of position,
+            // quoting, or whether the outer command is one a pack guards.
+            // Scanned over the *original* (pre-unwrap) segment so a
+            // substitution hiding in a word a wrapper's unwrapping would
+            // otherwise consume is not missed either. Recurse into each one
+            // found — same depth cap and budget as every other structural
+            // re-entry in this function; a deny in any of them denies the
+            // whole segment. A benign inner (`echo $(date)`) still resolves
+            // to ALLOW here; only a guarded/destructive inner denies. This
+            // does not replace the guarded-argument fail-safe below, which
+            // covers a different risk (a *benign* inner whose result is
+            // still an unknowable, dynamic target for an already-guarded
+            // command, e.g. `rm -rf $(echo /)`).
+            for word in &seg {
+                if !word.has_substitution {
+                    continue;
+                }
+                for inner in find_all_substitutions(&word.text) {
+                    if depth >= MAX_INLINE_DEPTH {
+                        // Depth cap reached: fail open on this one
+                        // substitution and keep scanning the rest of the
+                        // segment rather than recursing unboundedly.
+                        continue;
+                    }
+                    if start.elapsed() > self.budget {
+                        return Decision::Allow {
+                            trace: AllowTrace::FailedOpenTimeout,
+                        };
+                    }
+                    match self.evaluate_inner(&inner, start, depth + 1) {
+                        Decision::Deny {
+                            pack,
+                            pattern,
+                            reason,
+                            ..
+                        } => {
+                            return Decision::Deny {
+                                pack,
+                                pattern,
+                                reason,
+                                via_inline: Some(inner),
+                            }
+                        }
+                        Decision::Allow {
+                            trace: AllowTrace::FailedOpenTimeout,
+                        } => {
+                            return Decision::Allow {
+                                trace: AllowTrace::FailedOpenTimeout,
+                            }
+                        }
+                        Decision::Allow { trace } => {
+                            allow_trace = Some(trace);
+                        }
+                    }
+                }
             }
 
             let argv = build_argv(effective);

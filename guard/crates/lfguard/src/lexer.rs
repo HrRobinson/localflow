@@ -485,6 +485,104 @@ pub(crate) fn pure_substitution_body(text: &str) -> Option<String> {
     }
 }
 
+/// Extract the raw, unevaluated inner text of *every* command-substitution
+/// region — `$(...)` or `` `...` `` — found anywhere in `text`, left to
+/// right. Unlike `pure_substitution_body`, `text` does not need to be
+/// entirely one substitution: this finds every occurrence regardless of
+/// what surrounds it — a prefix/suffix concatenated onto the same word
+/// (`pre$(cmd)post`), several substitutions in one word (`$(a)$(b)`), or a
+/// substitution nested inside grouping syntax (`$( ( cmd ) )`, itself just
+/// more raw text to this scan). A real shell evaluates every one of these
+/// eagerly wherever it sits — command position or argument, quoted or
+/// bare, guarded command or not — so the caller recurses into each
+/// returned string through the whole pipeline rather than only asking
+/// "does the whole word reduce to one substitution" the way
+/// `pure_substitution_body` does.
+///
+/// Reuses the lexer's own balanced scanners (`scan_paren_balanced`,
+/// `scan_backtick`), so nesting and quoted delimiters inside a
+/// substitution are delimited identically here and during the original
+/// tokenization — there is no second, drifting notion of "balanced".
+pub(crate) fn find_all_substitutions(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '$' if chars.peek() == Some(&'(') => {
+                chars.next(); // consume '('
+                out.push(scan_paren_balanced(&mut chars));
+            }
+            '`' => {
+                out.push(scan_backtick(&mut chars));
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod find_all_substitutions_tests {
+    use super::find_all_substitutions;
+
+    #[test]
+    fn finds_a_single_bare_dollar_paren() {
+        assert_eq!(
+            find_all_substitutions("$(rm -rf /)"),
+            vec!["rm -rf /".to_string()]
+        );
+    }
+
+    #[test]
+    fn finds_a_single_bare_backtick() {
+        assert_eq!(
+            find_all_substitutions("`rm -rf /`"),
+            vec!["rm -rf /".to_string()]
+        );
+    }
+
+    #[test]
+    fn finds_a_substitution_concatenated_with_a_prefix_and_suffix() {
+        assert_eq!(
+            find_all_substitutions("pre$(rm -rf /)post"),
+            vec!["rm -rf /".to_string()]
+        );
+        assert_eq!(
+            find_all_substitutions("$(rm -rf /)suffix"),
+            vec!["rm -rf /".to_string()]
+        );
+    }
+
+    #[test]
+    fn finds_multiple_substitutions_in_one_word() {
+        assert_eq!(
+            find_all_substitutions("$(rm -rf /)-$(git reset --hard)"),
+            vec!["rm -rf /".to_string(), "git reset --hard".to_string()]
+        );
+    }
+
+    #[test]
+    fn finds_a_substitution_wrapping_a_grouped_subshell() {
+        assert_eq!(
+            find_all_substitutions("$( ( rm -rf / ) )"),
+            vec![" ( rm -rf / ) ".to_string()]
+        );
+    }
+
+    #[test]
+    fn plain_text_yields_nothing() {
+        assert!(find_all_substitutions("plain-text").is_empty());
+        assert!(find_all_substitutions("").is_empty());
+    }
+
+    #[test]
+    fn dollar_brace_param_expansion_is_not_a_substitution() {
+        // `${HOME}` is parameter-expansion syntax, not a `$(...)`
+        // substitution — must not be misdetected as one.
+        assert!(find_all_substitutions("${HOME}").is_empty());
+    }
+}
+
 #[cfg(test)]
 mod pure_substitution_body_tests {
     use super::pure_substitution_body;

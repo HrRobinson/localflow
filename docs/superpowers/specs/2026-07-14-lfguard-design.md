@@ -45,21 +45,63 @@ One pass, dcg-inspired, each stage cheap before the expensive one:
 
 1. **Parse** the agent hook JSON payload (or take a raw command string from the
    CLI) → extract the command line to inspect.
-2. **Normalize** — strip absolute paths from the leading argv[0]
-   (`/usr/bin/git` → `git`) so rules match on the tool name, while
+2. **Segment** — split the raw line on top-level `&&`, `||`, `;`, `|`, and
+   newline separators, skipping any that fall inside a `'...'` or `"..."`
+   region (`git commit -m "a; rm -rf /"` is one segment, not two). Every
+   deny pattern is `^`-anchored to a single command, so without this step a
+   destructive command chained after a benign one (`echo hi && rm -rf /`,
+   `true; rm -rf ~`, `foo | rm -rf /`) would never be tested against any
+   rule — the normal shape of an agent's shell invocations. Each segment
+   flows through the rest of the pipeline independently; a deny in **any**
+   segment denies the whole line.
+3. **Normalize** (per segment) — strip absolute paths from the leading
+   argv[0] (`/usr/bin/git` → `git`) so rules match on the tool name, while
    **preserving arguments verbatim** (a path *argument* to `rm` is exactly what
-   we must judge). Collapse redundant whitespace. Lower-case nothing (commands
-   are case-sensitive).
-3. **Pre-filter** — a fast substring / literal scan that rejects the ~99% of
+   we must judge). Undo two cheap per-token evasions so packs don't have to
+   spell out every variant of a catastrophic path: strip one layer of
+   fully-wrapping quotes (`rm -rf "/"` → `rm -rf /`) and collapse a run of
+   leading slashes to one (`rm -rf //` → `rm -rf /`). Collapse redundant
+   whitespace. Lower-case nothing (commands are case-sensitive).
+4. **Pre-filter** — a fast substring / literal scan that rejects the ~99% of
    commands that contain no token any pack cares about. This is the hot path:
    most commands never reach a regex. Built from the union of cheap literal
-   anchors declared by the loaded packs.
-4. **Match** — run the loaded regex packs. **Allow-patterns are evaluated
-   before deny-patterns**: an explicit allow short-circuits to ALLOW, so a pack
-   can carve safe exceptions out of a broad deny. Only if no allow matches do
-   deny-patterns run; the first deny that matches decides, and it carries a
-   human-readable reason.
-5. **Decide** — ALLOW (exit 0) or DENY (exit 1, with pack + rule + reason).
+   anchors declared by the loaded packs. Run once on the whole (unsegmented)
+   normalized line as a cheap short-circuit, and again per pack per segment.
+5. **Match** — run the loaded regex packs against each segment. **Allow-
+   patterns are evaluated before deny-patterns**: an explicit allow
+   short-circuits that segment to ALLOW, so a pack can carve safe exceptions
+   out of a broad deny. Only if no allow matches do deny-patterns run; the
+   first deny that matches decides, and it carries a human-readable reason.
+   Because the `regex` crate has no lookaround, a rule that must fire
+   regardless of argument order (e.g. `rm -rf /etc` and `rm /etc -rf`) is
+   expressed as two ordered alternatives rather than one lookahead-based
+   pattern.
+6. **Decide** — ALLOW (exit 0) or DENY (exit 1, with pack + rule + reason).
+   DENY wins over ALLOW across segments: if any segment denies, the command
+   denies, even if an earlier or later segment matched an allow rule.
+
+### Known limitations (honest, not aspirational)
+
+- Segmentation is a quote-aware character scan, **not a shell parser**: it
+  does not evaluate `$(...)` / backtick command substitution, does not
+  understand here-docs, and an unterminated quote leaves the remainder of the
+  line as a single unsplit segment (the conservative, fail-open-safe
+  fallback — worst case it misses a split, it never manufactures one that
+  hides a match that would otherwise have fired).
+- The flag/target-order-independent treatment applied to the catastrophic
+  `rm` rule (I3) has **not** been generalized to the recursive `chmod`/`chown`
+  root rules in `core.filesystem`, which still require the flag before the
+  target (`chmod -R 777 /etc -fr` order variants are not covered). Deferred.
+- The `cloud.gcloud` catch-all (`gcloud ... delete`) is anchored to `delete`
+  as its own token, not a substring, but it is still a broad "any resource +
+  delete verb" rule; it does not distinguish `--quiet`/non-interactive flags
+  and makes no attempt to. Prefer adding a resource-specific rule (as done
+  for projects/SQL/compute/buckets/KMS) when a class of destructive command
+  is common enough to name explicitly in the reason.
+- `db.postgres` does **not** guard `UPDATE` without a `WHERE` clause (or
+  `DELETE`/`UPDATE` inside multi-statement `psql -c "...; ..."` payloads,
+  or statements spread across a `-f script.sql` file). Deferred to **G2** —
+  see the pack table below.
 
 ### Inline payloads (no AST in v1)
 
@@ -145,10 +187,10 @@ Field rules:
 
 | Pack             | Default | Guards |
 |------------------|---------|--------|
-| `core.filesystem`| on      | `rm -rf /`, `rm -rf ~`, `dd` to a device, `mkfs`, `> /dev/sd*`, recursive `chmod`/`chown` on `/`, truncating redirects onto tracked files |
-| `core.git`       | on      | `reset --hard`, `clean -f`, `push --force` (not `--force-with-lease`), `branch -D` on protected names, `checkout .` mass-discard |
-| `cloud.gcloud`   | opt-in  | `gcloud ... delete` on projects/instances/buckets/SQL, `--quiet` destructive flags, IAM-wipe shapes |
-| `db.postgres`    | opt-in  | `DROP DATABASE`/`DROP TABLE`, `TRUNCATE`, `psql -c` destructive one-liners, `DELETE`/`UPDATE` without a `WHERE` |
+| `core.filesystem`| on      | recursive `rm` of a filesystem root/home/system directory — any quoting, repeated-slash spelling, or flag/target order (`rm -rf /etc`, `rm -rf "/"`, `rm -rf //`, `rm /etc -rf` all denied); `rm --no-preserve-root`; `dd`/`truncate`/`>` writes to a raw block device (`/dev/*`); `mkfs`; recursive `chmod`/`chown` on a root or system directory |
+| `core.git`       | on      | `reset --hard`, `clean -f`, `push --force` (not `--force-with-lease`), `branch -D` (any branch, not only ones flagged as protected — v1 has no protected-branch concept), `checkout .` / `checkout -- .` mass-discard |
+| `cloud.gcloud`   | opt-in  | `gcloud ... delete` on projects/instances/buckets/SQL/KMS keys, `gcloud storage rm` / `gsutil rm` recursive object deletion, `gsutil rb` bucket removal, IAM policy-binding removal at project/org/folder scope, plus a generic `gcloud ... delete` catch-all (verb-token-anchored, not a substring match) for resource types without a dedicated rule |
+| `db.postgres`    | opt-in  | `DROP DATABASE`/`DROP SCHEMA`/`DROP TABLE`, `TRUNCATE`, `DELETE` without a `WHERE`, `dropdb`; matches raw SQL and `psql -c "..."` one-liners. **Not** guarded: `UPDATE` without a `WHERE` — deferred to G2 (see Known Limitations above) |
 
 G1 ships **all four packs**, each wired through the pipeline and CLI with a
 golden corpus (denies + must-allow safe commands, no false positives). The two
@@ -257,15 +299,19 @@ per-session inject/revoke lifecycle), so it is integration, not new machinery.
 
 **G1 (crate):**
 
-- **Unit** — normalization (path strip, arg preservation, whitespace),
-  pre-filter (a command with no trigger never reaches regex), pack loader
-  (valid TOML, duplicate id, bad regex → rule disabled + warn, missing reason →
-  reject), matcher (allow-before-deny short-circuit; first-deny-wins; the inline
-  `bash -c` fallback), fail-open (bad JSON / oversize / timeout → ALLOW + warn),
-  and the CLI exit codes.
+- **Unit** — normalization (path strip, arg preservation, whitespace, quote
+  stripping, repeated-slash collapsing), segmentation (`&&`/`||`/`;`/`|`/
+  newline splitting, quote-aware — a separator inside `'...'`/`"..."` is not a
+  boundary), pre-filter (a command with no trigger never reaches regex), pack
+  loader (valid TOML, duplicate id, bad regex → rule disabled + warn, missing
+  reason → reject), matcher (allow-before-deny short-circuit; first-deny-wins;
+  per-segment independent judging — a deny in any segment of a chained command
+  denies the whole line; the inline `bash -c` fallback), fail-open (bad JSON /
+  oversize / timeout → ALLOW + warn), and the CLI exit codes.
 - **Golden corpus** — a table of `(command, expected decision, expected pack)`
-  covering each `core.git` rule and a spread of must-allow safe commands
-  (`git status`, `git log`, `git commit`), asserting no false positives.
+  per pack, plus a dedicated command-chaining corpus (`echo hi && rm -rf /`,
+  `true; rm -rf ~`, `ls | rm -rf /` all deny; `cd foo && ls` allows; a
+  separator inside quotes does not split), asserting no false positives.
 - **Acceptance (this slice):** `lfguard test "git reset --hard"` exits 1 with a
   reason; `lfguard test "git status"` exits 0; `lfguard explain "git reset
   --hard"` prints the matched pack + rule + reason.
@@ -285,6 +331,11 @@ per-environment pack toggles take effect.
   auditable and user-editable.
 - Windows-specific packs (v1 targets the macOS/Linux shells localflow runs).
 - Rolling back a command already executed — lfguard is strictly a *pre*-guard.
+- SQL `UPDATE` without a `WHERE` clause — regex on SQL text is a poor fit for
+  reliably distinguishing a real `WHERE` clause from one that's commented out,
+  spans multiple statements, or is inside a string literal; deferred to G2,
+  which can consider a real SQL parser instead of extending the regex
+  approach. See "Known limitations" above.
 
 ## Open questions
 

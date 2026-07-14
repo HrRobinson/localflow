@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.4.0](https://github.com/HrRobinson/localflow/compare/v1.3.1...v1.4.0) (2026-07-13)
+
+
+### Features
+
+* open in editor via pane button and cmd+e ([#54](https://github.com/HrRobinson/localflow/issues/54)) ([7a0689a](https://github.com/HrRobinson/localflow/commit/7a0689a48e92bb98b5bb27b0be0f4cca8428d22c))
+* operator launch follow-ups ([#55](https://github.com/HrRobinson/localflow/issues/55)) ([6d28f67](https://github.com/HrRobinson/localflow/commit/6d28f67e7bda9df2fe7ff39ae5396e11b9d1a990))
+* session layers (nested sessions) ([#64](https://github.com/HrRobinson/localflow/issues/64)) ([eba4b74](https://github.com/HrRobinson/localflow/commit/eba4b74e264c5b11ad96d44cdb74c324c8dc23e0))
+
 ## [1.3.1](https://github.com/HrRobinson/localflow/compare/v1.3.0...v1.3.1) (2026-07-11)
 
 

@@ -40,6 +40,20 @@ fn denies_catastrophic_filesystem_commands() {
         "chmod -R 777 /",
         "chmod -R 000 /etc",
         "chown -R root:root /",
+        // I3: quoting variants — the target is wrapped in quotes.
+        r#"rm -rf "/""#,
+        "rm -rf '/'",
+        r#"rm -rf "/etc""#,
+        "rm -rf '~'",
+        // I3: repeated-slash variants of the root.
+        "rm -rf //",
+        "rm -rf ///",
+        "rm -rf //etc",
+        // I3: flags after the target instead of before it.
+        "rm /etc -rf",
+        "rm / --recursive",
+        "rm ~ -fr",
+        "sudo rm /etc -rf",
     ];
     for cmd in deny {
         assert_eq!(deny_pack(&e, cmd), "core.filesystem", "for {cmd:?}");

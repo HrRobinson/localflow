@@ -19,9 +19,18 @@ triggers = ["rm", "dd", "mkfs", "truncate", "chmod", "chown", "/dev/"]
 # Requires a recursive flag (combined like -rf/-fr/-Rf, or -r/-R, or
 # --recursive) AND a catastrophic target (filesystem root, a top-level system
 # directory, or the user's home). Ordinary `rm -rf ./build` or `rm -rf /tmp/x`
-# do NOT match — the target must be a root/home/system path.
+# do NOT match — the target must be a root/home/system path. Quoting
+# (`rm -rf "/"`) and repeated slashes (`rm -rf //`) are undone by
+# normalization before these patterns ever run, so they don't need to spell
+# those out. Two orderings are needed because the flag and the target can
+# appear in either order on the command line (`rm -rf /etc` vs `rm /etc -rf`).
 [[deny]]
 pattern = '^(?:sudo\s+)?rm\s+(?:\S+\s+)*(?:-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)\s+(?:\S+\s+)*(?:/\*|~/?\*?|\$HOME/?\*?|\$\{HOME\}/?\*?|/(?:etc|usr|var|bin|sbin|lib|lib64|boot|dev|sys|proc|opt|root|home|srv|mnt|System|Library|Applications|Users|Volumes)/?\*?|/)(?:\s|$)'
+reason = "recursive rm on a filesystem root, home, or system directory is catastrophic and irreversible"
+
+[[deny]]
+# Same target class, flag AFTER the target (`rm /etc -rf`, `rm / --recursive`).
+pattern = '^(?:sudo\s+)?rm\s+(?:\S+\s+)*(?:/\*|~/?\*?|\$HOME/?\*?|\$\{HOME\}/?\*?|/(?:etc|usr|var|bin|sbin|lib|lib64|boot|dev|sys|proc|opt|root|home|srv|mnt|System|Library|Applications|Users|Volumes)/?\*?|/)\s+(?:\S+\s+)*(?:-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)(?:\s|$)'
 reason = "recursive rm on a filesystem root, home, or system directory is catastrophic and irreversible"
 
 [[deny]]

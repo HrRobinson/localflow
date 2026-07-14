@@ -916,7 +916,11 @@ export default function App(): React.JSX.Element {
             />
           )
         })()}
-      <Console open={consoleOpen} onClose={() => setConsoleOpen(false)} />
+      <Console
+        open={consoleOpen}
+        onClose={() => setConsoleOpen(false)}
+        focus={{ view, enlarged, environment }}
+      />
     </div>
   )
 }

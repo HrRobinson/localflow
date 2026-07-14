@@ -17,6 +17,14 @@ on:
 permissions:
   contents: write
 
+# One release build per tag/ref at a time. Overlapping runs (a re-dispatch
+# while the release-please-triggered run is still uploading) would race the
+# `--clobber` uploads; queue them instead. Never cancel-in-progress: a
+# half-cancelled release run can leave a release with a partial artifact set.
+concurrency:
+  group: release-${{ inputs.tag || github.ref }}
+  cancel-in-progress: false
+
 jobs:
   mac-artifacts:
     runs-on: macos-latest
@@ -27,7 +35,12 @@ jobs:
       - uses: actions/setup-node@v6
         with: { node-version: 20, cache: npm }
       - run: npm ci
-      - run: npm run dist
+      # Both mac architectures from the one arm64 runner: electron-builder
+      # rebuilds native deps (node-pty) per target arch, and macOS clang
+      # cross-compiles x64 on arm64. Artifact names stay distinct — the
+      # default template suffixes -arm64 while x64 keeps the bare name — so
+      # the dmg/zip upload globs below cover both without clobbering.
+      - run: npm run build && npx electron-builder --mac --x64 --arm64 --publish never
       - run: gh release upload "$TAG" dist/*.dmg dist/*.zip --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

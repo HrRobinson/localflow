@@ -18,6 +18,10 @@ const BUILTIN_SOURCES: &[(&str, &str)] = &[
         "<builtin>cloud.gcloud",
         include_str!("../packs/cloud.gcloud.toml"),
     ),
+    (
+        "<builtin>db.postgres",
+        include_str!("../packs/db.postgres.toml"),
+    ),
 ];
 
 /// Load and compile the embedded built-in packs (fail-open: a bad built-in is

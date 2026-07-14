@@ -98,8 +98,6 @@ type Api = {
       environment: number
     ): Promise<Session[] | null>
     addPane(sourcePaneId: string, req: AddPaneReq): Promise<Session | null>
-    createGroup(name: string, environment: number): Promise<Group | null>
-    assignToGroup(paneId: string, groupId: string | null): Promise<Session | null>
     listGroups(): Promise<Group[]>
     listSessions(): Promise<Session[]>
     peekSession(id: string, maxLines?: number): Promise<string[]>
@@ -386,8 +384,10 @@ test('enlarge staircase: pane -> session -> pane -> grid', async () => {
     await win.keyboard.press('Meta+m')
     await expect(paneA).toHaveClass(/enlarged/)
     const breadcrumb = win.locator('.breadcrumb')
-    await expect(breadcrumb).toContainText('1') // env label
-    await expect(breadcrumb).toContainText(groupName) // session (group) level
+    // Assert the ordered env › group prefix Breadcrumb actually renders (env
+    // label '1' then the session/group name, joined by ' › '), not just a
+    // stray '1' that any digit in the tree would satisfy.
+    await expect(breadcrumb).toContainText(`1 › ${groupName}`)
     await expect(win.locator('.sibling-strip')).toBeVisible()
     await expect(win.locator('.sibling-strip .sibling-tab')).toHaveCount(2)
 

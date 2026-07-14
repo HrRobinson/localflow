@@ -38,12 +38,39 @@
 //!   lone `&` (background), and newlines end the current segment. A
 //!   separator character that is quoted, escaped, or inside a substitution
 //!   is word data, not a boundary.
+//! - **Grouping/compound-command boundaries**: unquoted, unescaped `(`, `)`,
+//!   `{`, `}` also end the current segment, exactly like `;` does — a
+//!   subshell's or brace-group's contents become their own segment(s) rather
+//!   than swallowing the whole construct into one un-`^`-anchorable word
+//!   (`( rm -rf / )`, `{ rm -rf /; }` would otherwise put `rm` at argv[1],
+//!   never argv[0], and every deny rule is anchored to argv[0]). `${...}`
+//!   parameter-expansion syntax is the one carve-out: a `{` immediately
+//!   after `$` is not a grouping boundary — real bash doesn't treat it as
+//!   one either — so `${HOME}` stays one literal token, matching the
+//!   existing `\$\{HOME\}` pack patterns. A leading shell keyword that only
+//!   introduces the real command (`then`, `do`, `else`, `elif`) is stripped
+//!   from a segment's front so the guarded command lands at argv[0]
+//!   (`if true; then rm -rf /; fi` and `for i in 1; do rm -rf /; done` both
+//!   judge `rm -rf /`, not `then`/`do`). This is heuristic keyword-stripping,
+//!   not compound-statement parsing — see the design doc's "known
+//!   limitations" for what a real shell grammar would additionally give.
+//! - **`$'...'` ANSI-C quoting**: real bash decodes backslash escapes inside
+//!   `$'...'` (`\n \t \r \\ \' \xHH \0NNN`, plus a handful more) rather than
+//!   treating the body as literal the way `'...'` does. The lexer decodes
+//!   the common escapes so `$'/'` and `$'\x2f'` both resolve to the argument
+//!   `/` instead of surviving as unresolved junk. Escapes this lexer does
+//!   not know (`\uXXXX`, `\UXXXXXXXX`, `\cX`, `\eE`, …) are kept literally
+//!   (backslash + character) rather than guessed at — see "known
+//!   limitations".
 //!
 //! ## What it deliberately does not do
 //!
-//! No shell grammar beyond the above: no variable expansion, no glob
-//! expansion, no here-docs, no evaluating what a substitution would actually
-//! output. See the design doc's "known limitations" for the honest scope.
+//! No shell grammar beyond the above: no variable expansion (`$VAR`,
+//! `${VAR}` are left as literal, unevaluated text), no glob expansion, no
+//! here-docs, no evaluating what a substitution would actually output, and
+//! grouping/keyword handling is a boundary heuristic, not a parser for `if`/
+//! `for`/`while`/`case` compound-command grammar. See the design doc's
+//! "known limitations" for the honest scope.
 
 /// One resolved argv token (a word): the fully concatenated, quote/escape
 /// resolved text, plus whether it contains an opaque command-substitution
@@ -83,10 +110,36 @@ pub fn split_segments(cmd: &str) -> Vec<Segment> {
     if !current.is_empty() {
         segments.push(current);
     }
-    segments
+    segments.into_iter().map(strip_leading_keywords).collect()
 }
 
-/// A chaining operator that ends a segment.
+/// Shell keywords that only ever *introduce* a real command inside a
+/// compound construct (`if X; then CMD; fi`, `for i in 1; do CMD; done`) —
+/// stripping a leading run of them off a segment reveals the actual
+/// command at argv[0]. Deliberately narrow: `if`/`for`/`while`/`until`
+/// themselves are left alone, since they head their own condition/list
+/// segment (harmless as an argv[0] no pack cares about), not the guarded
+/// command.
+const LEADING_KEYWORDS: &[&str] = &["then", "do", "else", "elif"];
+
+/// Drop a leading run of `LEADING_KEYWORDS` words from a segment. One pass,
+/// one `drain` — bounded by the segment's own length, so this can't turn an
+/// adversarially long segment into quadratic work.
+fn strip_leading_keywords(mut seg: Segment) -> Segment {
+    let mut i = 0;
+    while i < seg.len() && LEADING_KEYWORDS.contains(&seg[i].text.as_str()) {
+        i += 1;
+    }
+    if i > 0 {
+        seg.drain(0..i);
+    }
+    seg
+}
+
+/// A chaining operator (or grouping boundary) that ends a segment. All
+/// variants are treated identically by `split_segments` — the operator
+/// itself is discarded and the current segment is flushed — so `(`/`)`/`{`/
+/// `}` behave exactly like `;` for segmentation purposes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Operator {
     AndAnd,
@@ -95,6 +148,10 @@ pub enum Operator {
     Semi,
     Amp,
     Newline,
+    LParen,
+    RParen,
+    LBrace,
+    RBrace,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -160,6 +217,22 @@ fn lex(input: &str) -> Vec<LexTok> {
                 flush_word!();
                 toks.push(LexTok::Operator(Operator::Semi));
             }
+            '(' => {
+                flush_word!();
+                toks.push(LexTok::Operator(Operator::LParen));
+            }
+            ')' => {
+                flush_word!();
+                toks.push(LexTok::Operator(Operator::RParen));
+            }
+            '{' => {
+                flush_word!();
+                toks.push(LexTok::Operator(Operator::LBrace));
+            }
+            '}' => {
+                flush_word!();
+                toks.push(LexTok::Operator(Operator::RBrace));
+            }
             '\'' => {
                 in_word = true;
                 scan_single_quoted(&mut chars, &mut word_text);
@@ -185,6 +258,24 @@ fn lex(input: &str) -> Vec<LexTok> {
                 word_text.push_str("$(");
                 word_text.push_str(&scan_paren_balanced(&mut chars));
                 word_text.push(')');
+            }
+            '$' if chars.peek() == Some(&'\'') => {
+                chars.next(); // consume the opening '\''
+                in_word = true;
+                scan_ansi_c_quoted(&mut chars, &mut word_text);
+            }
+            '$' if chars.peek() == Some(&'{') => {
+                // `${...}` parameter expansion: not evaluated (no variable
+                // expansion, per the design doc's scope), but its `{`/`}`
+                // are NOT a grouping boundary the way a bare `{`/`}` is —
+                // real bash doesn't treat them as one either, and pack rules
+                // like `\$\{HOME\}` depend on `${HOME}` surviving as one
+                // contiguous literal token.
+                chars.next(); // consume '{'
+                in_word = true;
+                word_text.push_str("${");
+                word_text.push_str(&scan_brace_balanced(&mut chars));
+                word_text.push('}');
             }
             '`' => {
                 in_word = true;
@@ -353,6 +444,135 @@ fn scan_backtick(chars: &mut Chars) -> String {
     out
 }
 
+/// `$'...'` ANSI-C-quoted string body. The opening `$'` has already been
+/// consumed. Decodes the common bash escapes (`\n \t \r \a \b \f \v \\ \'`,
+/// `\xHH` up to two hex digits, `\0NNN` up to three octal digits) and copies
+/// every other character — including a literal `/` — straight through. An
+/// escape this scanner doesn't know is kept literally as `\<char>` rather
+/// than guessed at (documented as a known limitation: `\uXXXX`, `\UXXXXXXXX`,
+/// `\cX`, `\eE` are not decoded). Terminated by the first unescaped `'`; an
+/// unterminated string is the same conservative fallback as the other quote
+/// scanners — everything scanned becomes the word's content.
+fn scan_ansi_c_quoted(chars: &mut Chars, out: &mut String) {
+    while let Some(c) = chars.next() {
+        match c {
+            '\'' => return,
+            '\\' => match chars.next() {
+                Some('n') => out.push('\n'),
+                Some('t') => out.push('\t'),
+                Some('r') => out.push('\r'),
+                Some('a') => out.push('\u{7}'),
+                Some('b') => out.push('\u{8}'),
+                Some('f') => out.push('\u{c}'),
+                Some('v') => out.push('\u{b}'),
+                Some('\\') => out.push('\\'),
+                Some('\'') => out.push('\''),
+                Some('x') => push_escaped_digits(chars, out, 16, 2),
+                Some('0') => push_escaped_digits(chars, out, 8, 3),
+                Some(other) => {
+                    // Unrecognized escape: keep it literal rather than guess.
+                    out.push('\\');
+                    out.push(other);
+                }
+                None => out.push('\\'),
+            },
+            other => out.push(other),
+        }
+    }
+}
+
+/// Consume up to `max_digits` digits of the given `radix` from `chars` and
+/// push the decoded character to `out`. Used for `\xHH` (radix 16) and
+/// `\0NNN` (radix 8) inside `$'...'`. If zero digits are found, the escape
+/// is kept literal (`\x` / `\0` with nothing valid after it).
+fn push_escaped_digits(chars: &mut Chars, out: &mut String, radix: u32, max_digits: u32) {
+    let mut val: u32 = 0;
+    let mut n = 0;
+    while n < max_digits {
+        match chars.peek().and_then(|d| d.to_digit(radix)) {
+            Some(d) => {
+                val = val * radix + d;
+                chars.next();
+                n += 1;
+            }
+            None => break,
+        }
+    }
+    if n > 0 {
+        if let Some(ch) = char::from_u32(val) {
+            out.push(ch);
+        }
+    } else {
+        out.push('\\');
+        out.push(if radix == 16 { 'x' } else { '0' });
+    }
+}
+
+/// Scan a `${...}` body. The opening `${` has already been consumed; this
+/// consumes up to and including the matching `}` and returns the inner text
+/// (delimiters excluded). Never evaluated — parameter expansion is out of
+/// scope (see the design doc) — this exists solely so `${HOME}` survives as
+/// one contiguous literal token instead of having its `{`/`}` mistaken for a
+/// grouping boundary. Mirrors `scan_paren_balanced`'s quote/escape/nesting
+/// handling so a `}` inside a nested quote or a nested `${...}` doesn't
+/// prematurely end it.
+fn scan_brace_balanced(chars: &mut Chars) -> String {
+    let mut depth = 1u32;
+    let mut out = String::new();
+    while let Some(c) = chars.next() {
+        match c {
+            '{' => {
+                depth += 1;
+                out.push(c);
+            }
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return out;
+                }
+                out.push(c);
+            }
+            '\\' => {
+                out.push(c);
+                if let Some(n) = chars.next() {
+                    out.push(n);
+                }
+            }
+            '\'' => {
+                out.push(c);
+                for n in chars.by_ref() {
+                    out.push(n);
+                    if n == '\'' {
+                        break;
+                    }
+                }
+            }
+            '"' => {
+                out.push(c);
+                loop {
+                    match chars.next() {
+                        Some('\\') => {
+                            out.push('\\');
+                            if let Some(n) = chars.next() {
+                                out.push(n);
+                            }
+                        }
+                        Some('"') => {
+                            out.push('"');
+                            break;
+                        }
+                        Some(n) => out.push(n),
+                        None => break,
+                    }
+                }
+            }
+            other => out.push(other),
+        }
+    }
+    // Unterminated: return everything scanned (fail-safe fallback).
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -514,5 +734,110 @@ mod tests {
     fn nested_parens_in_substitution_stay_balanced() {
         let segments = segs("echo $(echo $(date))");
         assert_eq!(segments.len(), 1);
+    }
+
+    // ---- grouping / compound-command boundaries ------------------------
+
+    #[test]
+    fn parens_are_segment_boundaries_with_and_without_whitespace() {
+        assert_eq!(segs("( rm -rf / )"), vec![vec!["rm", "-rf", "/"]]);
+        assert_eq!(segs("(rm -rf /)"), vec![vec!["rm", "-rf", "/"]]);
+    }
+
+    #[test]
+    fn braces_are_segment_boundaries() {
+        assert_eq!(segs("{ rm -rf /; }"), vec![vec!["rm", "-rf", "/"]]);
+        assert_eq!(segs("{ ls; }"), vec![vec!["ls"]]);
+    }
+
+    #[test]
+    fn leading_then_do_else_elif_are_stripped_revealing_the_real_command() {
+        assert_eq!(
+            segs("if true; then rm -rf /; fi"),
+            vec![vec!["if", "true"], vec!["rm", "-rf", "/"], vec!["fi"]]
+        );
+        assert_eq!(
+            segs("for i in 1; do rm -rf /; done"),
+            vec![
+                vec!["for", "i", "in", "1"],
+                vec!["rm", "-rf", "/"],
+                vec!["done"]
+            ]
+        );
+        assert_eq!(
+            segs("while true; do rm -rf /; done"),
+            vec![vec!["while", "true"], vec!["rm", "-rf", "/"], vec!["done"]]
+        );
+    }
+
+    #[test]
+    fn grouping_chars_inside_quotes_or_escaped_are_data_not_boundaries() {
+        assert_eq!(segs(r#"echo "(a)""#), vec![vec!["echo", "(a)"]]);
+        assert_eq!(segs(r#"echo "{x}""#), vec![vec!["echo", "{x}"]]);
+        assert_eq!(segs("echo '(a)'"), vec![vec!["echo", "(a)"]]);
+        assert_eq!(segs(r"echo \(a\)"), vec![vec!["echo", "(a)"]]);
+    }
+
+    #[test]
+    fn dollar_paren_is_unaffected_by_new_grouping_boundaries() {
+        // `$(` is already consumed whole by the command-substitution scanner
+        // before the bare `(` boundary arm ever sees it.
+        let segments = split_segments("rm -rf $(some-cmd)");
+        assert_eq!(segments.len(), 1);
+        assert_eq!(segments[0][2].text, "$(some-cmd)");
+    }
+
+    #[test]
+    fn dollar_brace_param_expansion_is_not_a_grouping_boundary() {
+        // `${HOME}` must survive as one literal token — pack rules like
+        // `\$\{HOME\}` depend on it, and real bash doesn't treat this `{`/`}`
+        // as a command grouping brace either.
+        assert_eq!(words("rm -rf ${HOME}"), vec!["rm", "-rf", "${HOME}"]);
+    }
+
+    #[test]
+    fn ordinary_command_ls_inside_grouping_still_allows_shape() {
+        // Not a bypass check — just confirms grouping doesn't mis-segment a
+        // benign command (regression guard for the ALLOW side of the corpus).
+        assert_eq!(segs("( ls )"), vec![vec!["ls"]]);
+        assert_eq!(
+            segs("for i in 1; do echo hi; done"),
+            vec![vec!["for", "i", "in", "1"], vec!["echo", "hi"], vec!["done"]]
+        );
+    }
+
+    // ---- $'...' ANSI-C quoting ------------------------------------------
+
+    #[test]
+    fn dollar_single_quote_literal_slash() {
+        assert_eq!(words("rm -rf $'/'"), vec!["rm", "-rf", "/"]);
+    }
+
+    #[test]
+    fn dollar_single_quote_decodes_hex_escape() {
+        assert_eq!(words(r"rm -rf $'\x2f'"), vec!["rm", "-rf", "/"]);
+    }
+
+    #[test]
+    fn dollar_single_quote_decodes_common_escapes() {
+        assert_eq!(words(r"echo $'a\tb\nc'"), vec!["echo", "a\tb\nc"]);
+        assert_eq!(words(r"echo $'a\\b'"), vec!["echo", "a\\b"]);
+        assert_eq!(words(r"echo $'a\'b'"), vec!["echo", "a'b"]);
+    }
+
+    #[test]
+    fn dollar_single_quote_decodes_octal_escape() {
+        // \057 octal == 0x2f == '/'
+        assert_eq!(words(r"rm -rf $'\057'"), vec!["rm", "-rf", "/"]);
+    }
+
+    #[test]
+    fn dollar_single_quote_unrecognized_escape_kept_literal() {
+        assert_eq!(words(r"echo $'a\ub'"), vec!["echo", "a\\ub"]);
+    }
+
+    #[test]
+    fn dollar_single_quote_concatenates_adjacent_like_other_quotes() {
+        assert_eq!(words(r"rm -rf $'/e'tc"), vec!["rm", "-rf", "/etc"]);
     }
 }

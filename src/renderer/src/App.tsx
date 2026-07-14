@@ -654,6 +654,11 @@ export default function App(): React.JSX.Element {
   const enlargeTop = enlarged
     ? ENLARGE_PAD + CHROME_BAR_H + (showSiblingStrip ? CHROME_BAR_H : 0)
     : ENLARGE_PAD
+  // Pane-level enlarge toggle for a single pane id: enlarge it, or collapse
+  // back to the grid if it's already the pane-level anchor. Shared by both
+  // renderPane branches so the two identical closures can't drift.
+  const togglePane = (id: string): void =>
+    setEnlarged((cur) => (cur?.level === 'pane' && cur.id === id ? null : { id, level: 'pane' }))
   // Shared by both the solo and grouped render paths below so a pane's
   // element is identical either way — grouping must not change a solo
   // pane's DOM (existing e2e selectors depend on that).
@@ -664,11 +669,7 @@ export default function App(): React.JSX.Element {
         session={s}
         enlarged={enlarged?.level === 'pane' && enlarged.id === s.id}
         active={activeId === s.id}
-        onToggleEnlarge={() =>
-          setEnlarged((cur) =>
-            cur?.level === 'pane' && cur.id === s.id ? null : { id: s.id, level: 'pane' }
-          )
-        }
+        onToggleEnlarge={() => togglePane(s.id)}
         onActivate={() => setActiveId(s.id)}
         onReopen={() => void restart(s.id, false)}
         onClose={() => void closeTerminal(s.id)}
@@ -679,11 +680,7 @@ export default function App(): React.JSX.Element {
         session={s}
         enlarged={enlarged?.level === 'pane' && enlarged.id === s.id}
         active={activeId === s.id}
-        onToggleEnlarge={() =>
-          setEnlarged((cur) =>
-            cur?.level === 'pane' && cur.id === s.id ? null : { id: s.id, level: 'pane' }
-          )
-        }
+        onToggleEnlarge={() => togglePane(s.id)}
         onActivate={() => setActiveId(s.id)}
         onRestart={(fresh) => void restart(s.id, fresh)}
         onClose={() => void closeTerminal(s.id)}
@@ -802,6 +799,10 @@ export default function App(): React.JSX.Element {
                     <GroupBox
                       group={group}
                       status={worstStatus(members.map((m) => m.status))}
+                      // Session-enlarged: the breadcrumb already names the
+                      // group, so collapse this now-redundant (and inert)
+                      // header. Grid header stays exactly as before.
+                      headerHidden={isSessionEnlarged}
                       onAddPane={() => setAddPaneFor(members[0].id)}
                       onEnlargeSession={() => {
                         setEnlarged({ id: members[0].id, level: 'session' })

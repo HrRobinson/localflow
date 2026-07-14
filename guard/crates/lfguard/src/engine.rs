@@ -21,6 +21,7 @@ use crate::normalize::build_argv;
 use crate::pack::Pack;
 use crate::payload::inline_payload;
 use crate::prefilter::Prefilter;
+use crate::wrappers::unwrap_transparent_prefix;
 
 /// Default latency budget for a single evaluation. Exceeding it yields
 /// `Allow { .. timed_out: true }` — continuity wins over a stalled guard.
@@ -132,7 +133,12 @@ impl Engine {
             if seg.is_empty() {
                 continue;
             }
-            let argv = build_argv(&seg);
+            // Peel off transparent wrapper commands (`command`, `env`,
+            // `nohup`, `nice`, `stdbuf`, `ionice`) before judging — the
+            // engine reasons about the *effective* command, not the
+            // wrapper, so packs never need to know these wrappers exist.
+            let effective = unwrap_transparent_prefix(&seg);
+            let argv = build_argv(effective);
             if argv.is_empty() || argv[0].is_empty() {
                 continue;
             }
@@ -145,7 +151,7 @@ impl Engine {
             // unguarded command with a substitution (`echo $(date)`) gains
             // no new scrutiny.
             if self.guarded_commands.contains(&argv[0])
-                && seg.iter().skip(1).any(|w| w.has_substitution)
+                && effective.iter().skip(1).any(|w| w.has_substitution)
             {
                 return Decision::Deny {
                     pack: SUBSTITUTION_GUARD_PACK.to_string(),

@@ -11,6 +11,7 @@ import Activity from './components/Activity'
 import Sidebar from './components/Sidebar'
 import Changes from './components/Changes'
 import Cockpit from './components/Cockpit'
+import { Console } from './components/Console'
 import { reconcileOrder } from './lib/order'
 import { pickNeighbor, swapInOrder, type PaneRect, type Direction } from './lib/pane-nav'
 import { nextNeedsYou } from './lib/needs-you'
@@ -76,6 +77,8 @@ export default function App(): React.JSX.Element {
   const [enlarged, setEnlarged] = useState<{ id: string; level: 'pane' | 'session' } | null>(null)
   // cmd+b hides the sidebar for a fullscreen-style focus mode.
   const [sidebarVisible, setSidebarVisible] = useState(true)
+  // cmd+/ opens the bottom console drawer; works from any view.
+  const [consoleOpen, setConsoleOpen] = useState(false)
   // Which pane has keyboard focus, and the display order panes render in.
   // `order` is reconciled from `sessions` on every refresh: new ids are
   // appended, ids no longer present are dropped, everything else is stable.
@@ -502,6 +505,10 @@ export default function App(): React.JSX.Element {
         setSidebarVisible((cur) => !cur)
         return
       }
+      if (action === 'console-toggle') {
+        setConsoleOpen((v) => !v)
+        return
+      }
       // Jump-to-attention works from any view: from home/settings it enters
       // the environment view on the first waiting pane; inside the environment
       // view it cycles relative to the active pane. openSession supplies the
@@ -909,6 +916,7 @@ export default function App(): React.JSX.Element {
             />
           )
         })()}
+      <Console open={consoleOpen} onClose={() => setConsoleOpen(false)} />
     </div>
   )
 }

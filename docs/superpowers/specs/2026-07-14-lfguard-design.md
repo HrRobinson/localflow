@@ -75,7 +75,23 @@ One pass, dcg-inspired, each stage cheap before the expensive one:
    would never be tested against any rule — the normal shape of an agent's
    shell invocations. Each segment flows through the rest of the pipeline
    independently; a deny in **any** segment denies the whole line.
-3. **Normalize** (per segment, `normalize` module) — now a small, purely
+
+   The same single pass also treats unquoted, unescaped `(`, `)`, `{`, `}`
+   as segment boundaries (like `;`), strips a segment's leading `then`/`do`/
+   `else`/`elif` so a compound construct's real command lands at argv[0],
+   and decodes `$'...'` ANSI-C quoting — closing an adversarial-review round
+   that found `( rm -rf / )`, `{ rm -rf /; }`, `if true; then rm -rf /; fi`,
+   and `rm -rf $'\x2f'` all reaching argv[0]/args unrecognizable to every
+   deny rule. See "Known limitations" for the exact scope of each.
+3. **Unwrap transparent prefixes** (per segment, `wrappers` module, run in
+   the engine right before normalization) — `command`, `env`, `nohup`,
+   `nice`, `stdbuf`, `ionice` merely pass their command straight through, so
+   the guard judges the *effective* command (`command rm -rf /` and `env rm
+   -rf /` are judged as `rm -rf /`) rather than treating the wrapper as
+   argv[0]. `sudo` is handled differently — an optional prefix baked into
+   each pack's own patterns — since every existing rule already accounts
+   for it.
+4. **Normalize** (per segment, `normalize` module) — now a small, purely
    semantic step over the already-resolved argv (the ad-hoc quote handling
    that used to live here moved into the lexer, step 2): case-fold `argv[0]`
    only (`RM` → `rm`, `Git` → `git` — macOS's case-insensitive filesystem
@@ -90,7 +106,7 @@ One pass, dcg-inspired, each stage cheap before the expensive one:
    against — this is what "matching rules against argv structure, not raw
    text" means in practice: the string a rule sees is reconstructed from
    real, resolved tokens, not sliced out of the original quoting.
-4. **Guarded-command-substitution check** (per segment, in the engine) — a
+5. **Guarded-command-substitution check** (per segment, in the engine) — a
    fail-safe policy that falls straight out of tokenizing: if a segment's
    `argv[0]` is a command an active pack has a deny rule for (a "guarded"
    command — `rm`, `git`, `gcloud`, `gsutil`, …) and any of its *argument*
@@ -102,7 +118,7 @@ One pass, dcg-inspired, each stage cheap before the expensive one:
    Scoped deliberately narrowly — to *already-guarded* commands only — so it
    adds no new scrutiny to commands no pack cares about (`echo $(date)`,
    `echo "$(date)"` still ALLOW).
-5. **Pre-filter** — a fast substring / literal scan that rejects the ~99% of
+6. **Pre-filter** — a fast substring / literal scan that rejects the ~99% of
    commands that contain no token any pack cares about. This is the hot path:
    most commands never reach a regex. Built from the union of cheap literal
    anchors declared by the loaded packs, and run against each segment's
@@ -110,7 +126,7 @@ One pass, dcg-inspired, each stage cheap before the expensive one:
    substring can be *created* by concatenation resolution, e.g. `r"m"` only
    contains `rm` after the lexer resolves it, so pre-filtering before
    tokenization would be unsafe), then again per pack per segment.
-6. **Match** — run the loaded regex packs against each segment's matching
+7. **Match** — run the loaded regex packs against each segment's matching
    line. **Allow-patterns are evaluated before deny-patterns**: an explicit
    allow short-circuits that segment to ALLOW, so a pack can carve safe
    exceptions out of a broad deny. Only if no allow matches do deny-patterns
@@ -119,7 +135,7 @@ One pass, dcg-inspired, each stage cheap before the expensive one:
    regardless of argument order (e.g. `rm -rf /etc` and `rm /etc -rf`) is
    expressed as two ordered alternatives rather than one lookahead-based
    pattern.
-7. **Decide** — ALLOW (exit 0) or DENY (exit 1, with pack + rule + reason).
+8. **Decide** — ALLOW (exit 0) or DENY (exit 1, with pack + rule + reason).
    DENY wins over ALLOW across segments: if any segment denies, the command
    denies, even if an earlier or later segment matched an allow rule.
 
@@ -127,23 +143,68 @@ One pass, dcg-inspired, each stage cheap before the expensive one:
 
 - The lexer is a real, hand-rolled tokenizer for the shapes this spec lists
   (quoting, escaping, concatenation, operator splitting, opaque command
-  substitution) — it is still **not a shell parser**: no variable expansion
-  (`$VAR`, `${VAR}`), no glob expansion, no here-docs, no arithmetic
-  expansion, and command substitution is never evaluated, only recognized as
-  an opaque region so its contents can't be mistaken for a top-level
-  separator or hide a bypass by letter-splitting. The guard reasons about
-  **static token structure only** — it does not know or guess what a
-  substitution, a variable, or a glob would actually expand to at run time.
-  Two things follow from that, deliberately: (1) a substitution argument to
-  an *already-guarded* command (`rm`, `git`, `gcloud`, `gsutil`, …) is denied
-  fail-safe rather than evaluated (see pipeline step 4 above); (2) a
-  substitution argument to a command no pack cares about (`echo $(date)`) is
-  left alone — evaluating it isn't attempted, and it isn't the guard's job
-  to add scrutiny to commands nothing else flags. An unterminated quote
-  still leaves the remainder of the line as a single unsplit word/segment
-  (the conservative, fail-open-safe fallback — worst case it misses a split,
-  it never manufactures one that hides a match that would otherwise have
-  fired).
+  substitution, grouping/compound-keyword boundaries, transparent-prefix
+  unwrapping, `$'...'` ANSI-C quoting) — it is still **not a shell parser**:
+  no variable expansion (`$VAR`, `${VAR}` are recognized just far enough to
+  keep `${...}` from being mistaken for a grouping brace, but never
+  evaluated), no glob expansion, no here-docs, no arithmetic expansion, and
+  `$(...)`/`` `...` `` command substitution is never evaluated, only
+  recognized as an opaque region so its contents can't be mistaken for a
+  top-level separator or hide a bypass by letter-splitting. The guard
+  reasons about **static token structure only** — it does not know or guess
+  what a substitution, a variable, or a glob would actually expand to at run
+  time. Two things follow from that, deliberately: (1) a substitution
+  argument to an *already-guarded* command (`rm`, `git`, `gcloud`, `gsutil`,
+  …) is denied fail-safe rather than evaluated (see pipeline step 4 above);
+  (2) a substitution argument to a command no pack cares about (`echo
+  $(date)`) is left alone — evaluating it isn't attempted, and it isn't the
+  guard's job to add scrutiny to commands nothing else flags. An unterminated
+  quote still leaves the remainder of the line as a single unsplit
+  word/segment (the conservative, fail-open-safe fallback — worst case it
+  misses a split, it never manufactures one that hides a match that would
+  otherwise have fired).
+- **Grouping/compound-keyword handling is a boundary heuristic, not
+  compound-statement parsing.** Unquoted, unescaped `(`, `)`, `{`, `}` end
+  the current segment exactly like `;` does, and a segment's leading `then`/
+  `do`/`else`/`elif` is stripped so the guarded command lands at argv[0]
+  (`( rm -rf / )`, `{ rm -rf /; }`, `if true; then rm -rf /; fi`, `for i in
+  1; do rm -rf /; done`, `while true; do rm -rf /; done` are all caught).
+  `${...}` parameter-expansion syntax is carved out so `${HOME}` stays one
+  literal token rather than being split at its `{`/`}`. This is deliberately
+  the safe-leaning direction: because grouping chars are treated as a
+  boundary **regardless of adjacent whitespace** (same as every other
+  operator in this lexer), a shape a real shell would parse differently —
+  e.g. brace expansion glued directly onto a word, `rm -rf /{a,b}` — is
+  judged more conservatively than real bash would execute it (as if `/`
+  were its own target), which can over-deny but never manufactures a
+  bypass. `if`/`for`/`while`/`until`/`case` themselves are not parsed as
+  compound-command grammar — only their `then`/`do` continuations are
+  recognized — so exotic constructs outside this shape (`case`/`esac`
+  branches, `until`, nested subshells combined with process substitution
+  `<(...)`/`>(...)`) are not specifically modeled, though `(`/`)` still
+  segment-bound them structurally.
+- **Transparent-prefix unwrapping covers a named, non-exhaustive set.**
+  `command`, `env` (skipping leading `VAR=val` assignments and flags),
+  `nohup`, `nice` (skipping an optional `-n VALUE`/`-VALUE` niceness flag),
+  `stdbuf`, and `ionice` (skipping leading `-`-prefixed flags) are unwrapped
+  structurally so the guard judges the effective command, not the wrapper
+  (`command rm -rf /`, `env rm -rf /`, `nohup rm -rf /`, `nice rm -rf /` are
+  all caught). `sudo` continues to be handled the older way — an optional
+  `(?:sudo\s+)?` prefix baked into each pack's own deny patterns, since
+  every existing rule already accounts for it. **Not unwrapped**, and
+  explicitly out of scope for this slice: `xargs`, `timeout`, `watch`,
+  `time`, `chroot`, `su -c`, `flock`, and similar wrappers that change
+  execution semantics (batching, deferral, a sub-environment) rather than
+  merely passing the command through unchanged. A destructive command
+  wrapped in one of these still evades every rule today.
+- **`$'...'` ANSI-C quoting decodes the common escapes, not the full bash
+  set.** `\n \t \r \a \b \f \v \\ \'`, `\xHH` (up to two hex digits), and
+  `\0NNN` (up to three octal digits) are decoded, so `$'/'` and `$'\x2f'`
+  both resolve to the argument `/`. Escapes this lexer doesn't know —
+  `\uXXXX`, `\UXXXXXXXX`, `\cX` (control-char), `\eE`/`\E` (escape char) —
+  are kept literally (backslash + character) rather than guessed at; a
+  target smuggled exclusively through one of those is not decoded and could
+  evade a rule that depends on seeing the real character.
 - The flag/target-order-independent treatment applied to the catastrophic
   `rm` rule (I3) has **not** been generalized to the recursive `chmod`/`chown`
   root rules in `core.filesystem`, which still require the flag before the
@@ -385,12 +446,17 @@ per-session inject/revoke lifecycle), so it is integration, not new machinery.
 - **Golden corpus** — a table of `(command, expected decision, expected pack)`
   per pack, plus a dedicated command-chaining corpus (`echo hi && rm -rf /`,
   `true; rm -rf ~`, `ls | rm -rf /` all deny; `cd foo && ls` allows; a
-  separator inside quotes does not split) and a dedicated tokenizer-hardening
-  corpus (`tests/corpus_tokenizer.rs` — every adversarial shape from both
-  review rounds: escaped-quote-non-closing, adjacent-string concatenation,
-  case-folded argv[0], command substitution in a guarded position, plus a
-  3000-segment pathological-chain latency check), asserting no false
-  positives.
+  separator inside quotes does not split), a dedicated tokenizer-hardening
+  corpus (`tests/corpus_tokenizer.rs` — every adversarial shape from the
+  first two review rounds: escaped-quote-non-closing, adjacent-string
+  concatenation, case-folded argv[0], command substitution in a guarded
+  position, plus a 3000-segment pathological-chain latency check), and a
+  dedicated grouping/wrapper/ANSI-C-quoting corpus (`tests/corpus_grouping.rs`
+  — the third review round: `( rm -rf / )`, `{ rm -rf /; }`, `if …; then rm
+  -rf /; fi`, `for …; do rm -rf /; done`, `while …; do rm -rf /; done`,
+  `command`/`env`/`nohup`/`nice`/`stdbuf`/`ionice` wrapping, and `rm -rf
+  $'/'`/`rm -rf $'\x2f'`, plus the matching benign spread and composition
+  with grouping/chaining), asserting no false positives.
 - **Acceptance (this slice):** `lfguard test "git reset --hard"` exits 1 with a
   reason; `lfguard test "git status"` exits 0; `lfguard explain "git reset
   --hard"` prints the matched pack + rule + reason.

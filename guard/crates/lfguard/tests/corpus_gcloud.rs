@@ -69,6 +69,13 @@ fn allows_safe_gcloud_commands() {
         "gcloud config set project my-proj",
         "gcloud projects add-iam-policy-binding p --member=user:x --role=roles/viewer",
         "gcloud storage cp a.txt gs://b/",
+        // I1: "delete" as a substring of a resource NAME must not trigger
+        // the catch-all — only "delete" as its own verb token should.
+        "gcloud compute instances describe delete-me-vm",
+        "gcloud compute instances list --filter=name:delete-me",
+        "gcloud sql instances describe delete-later-db",
+        "gcloud compute instances create my-delete-vm",
+        "gcloud iam service-accounts describe delete-sa@p.iam.gserviceaccount.com",
     ];
     for cmd in allow {
         assert!(
@@ -76,4 +83,17 @@ fn allows_safe_gcloud_commands() {
             "expected ALLOW for {cmd:?}, got DENY"
         );
     }
+}
+
+#[test]
+fn catch_all_still_denies_delete_as_the_actual_verb() {
+    let e = engine();
+    // Not covered by a specific rule (no dedicated iam service-accounts
+    // rule), so this exercises the generic catch-all specifically.
+    let (pack, reason) = deny(
+        &e,
+        "gcloud iam service-accounts delete sa@p.iam.gserviceaccount.com",
+    );
+    assert_eq!(pack, "cloud.gcloud");
+    assert!(reason.contains("delete"));
 }

@@ -45,5 +45,11 @@ pattern = '^(?:sudo\s+)?gcloud\s+kms\s+(?:keys|keyrings)\s+.*\b(?:destroy|delete
 reason = "destroys a Cloud KMS key or keyring (data encrypted with it becomes unrecoverable)"
 
 [[deny]]
-pattern = '^(?:sudo\s+)?gcloud\s+\S+.*\bdelete\b'
+# `delete` must be its own whitespace-delimited token (the actual verb
+# position), not merely a `\b`-bounded substring — `\bdelete\b` alone still
+# matches inside a resource *name* like `delete-me-vm` (a hyphen is a
+# non-word character, so a word boundary sits right after "delete" there
+# too), wrongly blocking read-only commands such as
+# `gcloud compute instances describe delete-me-vm`.
+pattern = '^(?:sudo\s+)?gcloud\s+\S+.*\sdelete(?:\s|$)'
 reason = "destructive gcloud delete operation"

@@ -271,6 +271,24 @@ app.whenReady().then(async () => {
     reportSkillEnv(env, 'remove', removeSkillEnv(openclawConfig))
   }
 
+  // User-path OpenClaw pane grant, mirroring session:create's openclaw branch:
+  // capture wasGranted BEFORE granting (revoke ownership — a pane that reused
+  // an existing grant must not revoke it on close), hand back the operator
+  // credentials to inject into the spawn env, and a `register` to track the
+  // launch so revoke-on-close keeps working. Shared by group:addPane and
+  // templates:create — the operator control-API route intentionally does NOT
+  // use this (it rejects openclaw upstream in parseOperatorPaneRequest).
+  const grantOpenclawPane = (
+    environment: number
+  ): { env: Record<string, string>; register: (paneId: string) => void } => {
+    const wasGranted = grants.isGranted(environment)
+    const token = grantOperator(environment)
+    return {
+      env: credentialEnv(`http://127.0.0.1:${control.port}`, token),
+      register: (paneId: string) => launchTracker.onLaunch(environment, paneId, wasGranted)
+    }
+  }
+
   ipcMain.on('browser:register', (_e, handle: string, webContentsId: number) => {
     if (typeof handle === 'string' && Number.isInteger(webContentsId)) {
       browserBridge.register(handle, webContentsId)
@@ -439,7 +457,7 @@ app.whenReady().then(async () => {
     } else {
       return null
     }
-    return addCompanionPane(manager, specFor, sourcePaneId, req)
+    return addCompanionPane(manager, specFor, sourcePaneId, req, grantOpenclawPane)
   })
   ipcMain.handle('session:createBrowser', (_e, url: string, environment?: number) => {
     // Validate at the boundary; manager.createBrowser re-validates (throws),
@@ -489,12 +507,30 @@ app.whenReady().then(async () => {
       const resolvedDir = dir
       const group = manager.createGroup(basename(resolvedDir), environment)
       return launchable.map((pane) => {
-        const created =
-          pane.kind === 'terminal'
-            ? manager.create(resolvedDir, specFor(pane.agentId ?? 'claude'), environment)
-            : // parseSessionTemplates only ever emits a browser pane with a
-              // validated url, so this is never actually undefined.
-              manager.createBrowser(pane.url!, environment)
+        let created: SessionInfo
+        if (pane.kind === 'terminal') {
+          const agentId = pane.agentId ?? 'claude'
+          let spec = specFor(agentId)
+          // Same grant + credential injection as session:create's openclaw
+          // branch. For a template with several openclaw panes in one
+          // environment the grant is captured PER PANE, but grants.grant is
+          // idempotent: the first pane owns the revoke (wasGranted=false), each
+          // later pane reuses the same token (wasGranted=true) and only adds a
+          // tracked session — so the grant is revoked once, when the last of
+          // them closes.
+          let register: ((paneId: string) => void) | undefined
+          if (agentId === 'openclaw') {
+            const granted = grantOpenclawPane(environment)
+            spec = { ...spec, env: { ...spec.env, ...granted.env } }
+            register = granted.register
+          }
+          created = manager.create(resolvedDir, spec, environment)
+          register?.(created.id)
+        } else {
+          // parseSessionTemplates only ever emits a browser pane with a
+          // validated url, so this is never actually undefined.
+          created = manager.createBrowser(pane.url!, environment)
+        }
         return manager.assignToGroup(created.id, group.id) ?? created
       })
     }

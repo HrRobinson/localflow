@@ -125,8 +125,9 @@ state — no new source of truth for "where am I."
 `src/renderer/src/components/Console.tsx`, mounted at the bottom of the app
 shell, outside the view switch so it overlays every view.
 
-- **Toggle**: new remappable keybinding `console-toggle` (default `cmd+j`).
-  Verify no collision in `DEFAULT_BINDINGS` (cmd+j is currently unused).
+- **Toggle**: new remappable keybinding `console-toggle` (default `cmd+/`).
+  `cmd+j` is already taken by `focus-down` in `DEFAULT_BINDINGS`; `cmd+/` is
+  free and reserved for this.
 - **Resize**: a drag handle on the top edge sets height; height + open/closed
   + last filter persist to config (config-as-code, same posture as theme /
   keybindings). Closed by default on first launch.
@@ -172,7 +173,7 @@ shell, outside the view switch so it overlays every view.
 
 **e2e**
 
-- Toggle drawer with `cmd+j` and with a remapped key.
+- Toggle drawer with `cmd+/` and with a remapped key.
 - Drive a hook event → a **status** row appears; fire an operator action via
   the control API → an **operator** row appears; register + trigger a
   watchpoint → a **capture** row appears and expands to its output.
@@ -186,7 +187,7 @@ shell, outside the view switch so it overlays every view.
 
 - Purely additive: new bus + IPC + component + one keybinding + config keys.
   No existing stream, view, or persisted file schema changes.
-- `console-toggle` default `cmd+j` must not collide with existing bindings;
+- `console-toggle` default `cmd+/` must not collide with existing bindings;
   remappable like all others.
 - Config additions (drawer height, open state, last filter) are optional with
   defaults — a config.json lacking them loads normally.

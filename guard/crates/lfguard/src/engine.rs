@@ -1,6 +1,12 @@
-//! The decision engine: normalize -> pre-filter -> match (allow before deny)
-//! -> decide, with an inline `-c` re-entry and a hard latency cap that fails
-//! open.
+//! The decision engine: normalize -> pre-filter -> segment -> match
+//! (allow before deny, per segment) -> decide, with an inline `-c` re-entry
+//! and a hard latency cap that fails open.
+//!
+//! Segmentation (see `crate::segment`) closes the command-chaining bypass:
+//! deny patterns are `^`-anchored, so `echo hi && rm -rf /` must be split
+//! into `echo hi` and `rm -rf /` and each judged independently, or the deny
+//! pattern for `rm` never gets a chance to match anything but the start of
+//! the whole line.
 
 use std::time::{Duration, Instant};
 
@@ -8,6 +14,7 @@ use crate::normalize::normalize;
 use crate::pack::Pack;
 use crate::payload::inline_payloads;
 use crate::prefilter::Prefilter;
+use crate::segment::split_segments;
 
 /// Default latency budget for a single evaluation. Exceeding it yields
 /// `Allow { .. timed_out: true }` — continuity wins over a stalled guard.
@@ -84,22 +91,44 @@ impl Engine {
         let start = Instant::now();
         let normalized = normalize(raw_cmd);
 
-        // Fast reject: if nothing any pack cares about is present, allow.
+        // Fast reject: if nothing any pack cares about is present anywhere on
+        // the line, none of its segments can match either — allow.
         if !self.combined.might_match(&normalized) {
             return Decision::Allow {
                 trace: AllowTrace::NoMatch,
             };
         }
 
-        // Judge the outer command.
-        match self.judge(&normalized, start) {
-            JudgeOutcome::Decided(d) => return d,
-            JudgeOutcome::TimedOut => {
+        // Judge each top-level segment independently (`&&`, `||`, `;`, `|`,
+        // newline) — ANY segment denying denies the whole command. Segments
+        // are cut from the *raw* line (normalize's whitespace collapse would
+        // fold a real newline separator into a space and hide it from the
+        // splitter) and each is normalized on its own, so its own argv[0]
+        // gets the same path-stripping the outer command got (`echo hi &&
+        // /usr/bin/rm -rf /`).
+        let mut allow_trace: Option<AllowTrace> = None;
+        for raw_segment in split_segments(raw_cmd) {
+            if start.elapsed() > self.budget {
                 return Decision::Allow {
                     trace: AllowTrace::FailedOpenTimeout,
-                }
+                };
             }
-            JudgeOutcome::Clean => {}
+            let segment = normalize(&raw_segment);
+            if segment.is_empty() {
+                continue;
+            }
+            match self.judge(&segment, start) {
+                JudgeOutcome::Decided(d @ Decision::Deny { .. }) => return d,
+                JudgeOutcome::Decided(Decision::Allow { trace }) => {
+                    allow_trace = Some(trace);
+                }
+                JudgeOutcome::TimedOut => {
+                    return Decision::Allow {
+                        trace: AllowTrace::FailedOpenTimeout,
+                    }
+                }
+                JudgeOutcome::Clean => {}
+            }
         }
 
         // Judge any inline `-c '…'` payloads (obfuscation shape). A deny there
@@ -136,7 +165,7 @@ impl Engine {
         }
 
         Decision::Allow {
-            trace: AllowTrace::NoMatch,
+            trace: allow_trace.unwrap_or(AllowTrace::NoMatch),
         }
     }
 
@@ -271,6 +300,38 @@ reason = "deletes untracked files"
             Decision::Deny { reason, .. } => assert!(reason.contains("untracked")),
             _ => panic!("expected deny"),
         }
+    }
+
+    #[test]
+    fn denies_a_chained_command_joined_with_and_and() {
+        let d = test_engine().evaluate("echo hi && git reset --hard");
+        assert!(d.is_deny(), "expected DENY, got {d:?}");
+    }
+
+    #[test]
+    fn denies_a_chained_command_joined_with_semicolon() {
+        let d = test_engine().evaluate("true; git clean -fd");
+        assert!(d.is_deny(), "expected DENY, got {d:?}");
+    }
+
+    #[test]
+    fn denies_a_chained_command_joined_with_pipe() {
+        let d = test_engine().evaluate("echo hi | git reset --hard");
+        assert!(d.is_deny(), "expected DENY, got {d:?}");
+    }
+
+    #[test]
+    fn allows_a_benign_chained_command() {
+        let d = test_engine().evaluate("cd foo && ls");
+        assert!(!d.is_deny(), "expected ALLOW, got {d:?}");
+    }
+
+    #[test]
+    fn allow_rule_in_one_segment_does_not_block_the_chain() {
+        // The first segment hits the allow carve-out; the second is entirely
+        // unrelated to the pack. Overall must still allow.
+        let d = test_engine().evaluate("git reset --hard HEAD~2 && git status");
+        assert!(!d.is_deny(), "expected ALLOW, got {d:?}");
     }
 
     #[test]

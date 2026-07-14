@@ -19,6 +19,7 @@ pub mod pack;
 pub mod payload;
 pub mod prefilter;
 pub mod profile;
+pub mod segment;
 
 pub use engine::{AllowTrace, Decision, Engine};
 pub use pack::{Pack, PackWarning};

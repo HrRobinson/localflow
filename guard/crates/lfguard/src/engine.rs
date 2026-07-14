@@ -1,24 +1,40 @@
-//! The decision engine: normalize -> pre-filter -> segment -> match
-//! (allow before deny, per segment) -> decide, with an inline `-c` re-entry
-//! and a hard latency cap that fails open.
+//! The decision engine: tokenize -> segment -> per segment (build argv ->
+//! guarded-substitution check -> pre-filter -> match allow before deny) ->
+//! decide, with a structural inline `-c` re-entry and a hard latency cap
+//! that fails open.
 //!
-//! Segmentation (see `crate::segment`) closes the command-chaining bypass:
+//! Segmentation (see `crate::lexer`) closes the command-chaining bypass:
 //! deny patterns are `^`-anchored, so `echo hi && rm -rf /` must be split
 //! into `echo hi` and `rm -rf /` and each judged independently, or the deny
 //! pattern for `rm` never gets a chance to match anything but the start of
-//! the whole line.
+//! the whole line. Unlike the naive character scan this used to be, the
+//! lexer resolves quoting, escaping and adjacent-string concatenation
+//! *before* deciding where the boundaries are, so a hidden operator
+//! (`a&&rm -rf /`) is never missed and a quoted one (`echo "a && b"`) is
+//! never manufactured.
 
+use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
-use crate::normalize::normalize;
+use crate::lexer::split_segments;
+use crate::normalize::build_argv;
 use crate::pack::Pack;
-use crate::payload::inline_payloads;
+use crate::payload::inline_payload;
 use crate::prefilter::Prefilter;
-use crate::segment::split_segments;
 
 /// Default latency budget for a single evaluation. Exceeding it yields
 /// `Allow { .. timed_out: true }` — continuity wins over a stalled guard.
 pub const DEFAULT_BUDGET: Duration = Duration::from_millis(50);
+
+/// Bound on `bash -c '...'`-style recursion depth. Fail-open beyond this: we
+/// stop looking deeper rather than risk unbounded recursion on adversarial
+/// nesting.
+const MAX_INLINE_DEPTH: u32 = 8;
+
+/// The pack label used for the engine's own tokenizer-derived policy
+/// (command substitution in a guarded argument position), as opposed to a
+/// decision that came from a loaded pack's regex rule.
+const SUBSTITUTION_GUARD_PACK: &str = "lfguard.core";
 
 /// The engine's verdict.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -62,16 +78,28 @@ pub struct Engine {
     packs: Vec<Pack>,
     combined: Prefilter,
     budget: Duration,
+    /// Case-folded command names that at least one active pack has a deny
+    /// rule for. Used only to scope the command-substitution-in-a-guarded-
+    /// position policy — see `evaluate_segment`.
+    guarded_commands: HashSet<String>,
 }
 
 impl Engine {
     /// Build an engine from loaded packs.
     pub fn new(packs: Vec<Pack>) -> Self {
         let triggers: Vec<String> = packs.iter().flat_map(|p| p.triggers.clone()).collect();
+        let guarded_commands = packs
+            .iter()
+            .filter(|p| !p.deny.is_empty())
+            .flat_map(|p| p.triggers.iter())
+            .filter(|t| looks_like_bare_command_name(t))
+            .map(|t| t.to_ascii_lowercase())
+            .collect();
         Self {
             combined: Prefilter::new(triggers),
             packs,
             budget: DEFAULT_BUDGET,
+            guarded_commands,
         }
     }
 
@@ -89,78 +117,106 @@ impl Engine {
     /// Evaluate a raw command line and return the decision.
     pub fn evaluate(&self, raw_cmd: &str) -> Decision {
         let start = Instant::now();
-        let normalized = normalize(raw_cmd);
+        self.evaluate_inner(raw_cmd, start, 0)
+    }
 
-        // Fast reject: if nothing any pack cares about is present anywhere on
-        // the line, none of its segments can match either — allow.
-        if !self.combined.might_match(&normalized) {
-            return Decision::Allow {
-                trace: AllowTrace::NoMatch,
-            };
-        }
-
-        // Judge each top-level segment independently (`&&`, `||`, `;`, `|`,
-        // newline) — ANY segment denying denies the whole command. Segments
-        // are cut from the *raw* line (normalize's whitespace collapse would
-        // fold a real newline separator into a space and hide it from the
-        // splitter) and each is normalized on its own, so its own argv[0]
-        // gets the same path-stripping the outer command got (`echo hi &&
-        // /usr/bin/rm -rf /`).
+    fn evaluate_inner(&self, raw_cmd: &str, start: Instant, depth: u32) -> Decision {
         let mut allow_trace: Option<AllowTrace> = None;
-        for raw_segment in split_segments(raw_cmd) {
+
+        for seg in split_segments(raw_cmd) {
             if start.elapsed() > self.budget {
                 return Decision::Allow {
                     trace: AllowTrace::FailedOpenTimeout,
                 };
             }
-            let segment = normalize(&raw_segment);
-            if segment.is_empty() {
+            if seg.is_empty() {
                 continue;
             }
-            match self.judge(&segment, start) {
-                JudgeOutcome::Decided(d @ Decision::Deny { .. }) => return d,
-                JudgeOutcome::Decided(Decision::Allow { trace }) => {
-                    allow_trace = Some(trace);
-                }
-                JudgeOutcome::TimedOut => {
-                    return Decision::Allow {
-                        trace: AllowTrace::FailedOpenTimeout,
-                    }
-                }
-                JudgeOutcome::Clean => {}
+            let argv = build_argv(&seg);
+            if argv.is_empty() || argv[0].is_empty() {
+                continue;
             }
-        }
 
-        // Judge any inline `-c '…'` payloads (obfuscation shape). A deny there
-        // denies the whole command.
-        for inner in inline_payloads(&normalized) {
-            if start.elapsed() > self.budget {
-                return Decision::Allow {
-                    trace: AllowTrace::FailedOpenTimeout,
+            // Fail-safe: a guarded command (one an active pack has a deny
+            // rule for) with a command-substitution argument can't be
+            // proven safe — we don't evaluate `$(...)`/`` `...` ``, so we
+            // don't know what it resolves to. Scoped to arguments only
+            // (never argv[0] itself) and to already-guarded commands, so an
+            // unguarded command with a substitution (`echo $(date)`) gains
+            // no new scrutiny.
+            if self.guarded_commands.contains(&argv[0])
+                && seg.iter().skip(1).any(|w| w.has_substitution)
+            {
+                return Decision::Deny {
+                    pack: SUBSTITUTION_GUARD_PACK.to_string(),
+                    pattern: "guarded-command-substitution-argument".to_string(),
+                    reason: format!(
+                        "{} has a command-substitution argument; the guard cannot see \
+                         what it expands to, so it fails safe and blocks",
+                        argv[0]
+                    ),
+                    via_inline: None,
                 };
             }
-            let inner_norm = normalize(&inner);
-            match self.judge(&inner_norm, start) {
-                JudgeOutcome::Decided(Decision::Deny {
-                    pack,
-                    pattern,
-                    reason,
-                    ..
-                }) => {
-                    return Decision::Deny {
-                        pack,
-                        pattern,
-                        reason,
-                        via_inline: Some(inner.clone()),
+
+            let matching_line = argv.join(" ");
+            if self.combined.might_match(&matching_line) {
+                match self.judge(&matching_line, start) {
+                    JudgeOutcome::Decided(d @ Decision::Deny { .. }) => return d,
+                    JudgeOutcome::Decided(Decision::Allow { trace }) => {
+                        allow_trace = Some(trace);
+                    }
+                    JudgeOutcome::TimedOut => {
+                        return Decision::Allow {
+                            trace: AllowTrace::FailedOpenTimeout,
+                        }
+                    }
+                    JudgeOutcome::Clean => {}
+                }
+            }
+
+            // Structural inline-payload re-entry: `bash -c '…'` etc. Not
+            // gated behind the pre-filter above — the payload may only
+            // resolve to something trigger-bearing once it is *re-lexed* on
+            // its own (a nested quote inside an outer single-quoted `-c`
+            // argument is invisible to the outer scan by design; the
+            // recursive call re-tokenizes it correctly).
+            if depth < MAX_INLINE_DEPTH {
+                if let Some(inner) = inline_payload(&argv) {
+                    if start.elapsed() > self.budget {
+                        return Decision::Allow {
+                            trace: AllowTrace::FailedOpenTimeout,
+                        };
+                    }
+                    match self.evaluate_inner(&inner, start, depth + 1) {
+                        Decision::Deny {
+                            pack,
+                            pattern,
+                            reason,
+                            ..
+                        } => {
+                            return Decision::Deny {
+                                pack,
+                                pattern,
+                                reason,
+                                via_inline: Some(inner),
+                            }
+                        }
+                        allow @ Decision::Allow {
+                            trace: AllowTrace::AllowRule { .. },
+                        } => return allow,
+                        Decision::Allow {
+                            trace: AllowTrace::FailedOpenTimeout,
+                        } => {
+                            return Decision::Allow {
+                                trace: AllowTrace::FailedOpenTimeout,
+                            }
+                        }
+                        Decision::Allow {
+                            trace: AllowTrace::NoMatch,
+                        } => {}
                     }
                 }
-                JudgeOutcome::Decided(allow) => return allow, // an inline allow-rule wins
-                JudgeOutcome::TimedOut => {
-                    return Decision::Allow {
-                        trace: AllowTrace::FailedOpenTimeout,
-                    }
-                }
-                JudgeOutcome::Clean => {}
             }
         }
 
@@ -169,18 +225,20 @@ impl Engine {
         }
     }
 
-    /// Run allow-before-deny across all packs for one normalized command.
-    fn judge(&self, normalized: &str, start: Instant) -> JudgeOutcome {
+    /// Run allow-before-deny across all packs for one segment's matching
+    /// line (its argv, case-folded/dir-stripped/slash-collapsed, joined
+    /// with single spaces).
+    fn judge(&self, matching_line: &str, start: Instant) -> JudgeOutcome {
         for pack in &self.packs {
             if start.elapsed() > self.budget {
                 return JudgeOutcome::TimedOut;
             }
-            if !pack.prefilter().might_match(normalized) {
+            if !pack.prefilter().might_match(matching_line) {
                 continue;
             }
             // Allow rules first — a match short-circuits to ALLOW.
             for rule in &pack.allow {
-                if rule.regex.is_match(normalized) {
+                if rule.regex.is_match(matching_line) {
                     return JudgeOutcome::Decided(Decision::Allow {
                         trace: AllowTrace::AllowRule {
                             pack: pack.id.clone(),
@@ -192,7 +250,7 @@ impl Engine {
             }
             // Then deny rules — first match wins.
             for rule in &pack.deny {
-                if rule.regex.is_match(normalized) {
+                if rule.regex.is_match(matching_line) {
                     return JudgeOutcome::Decided(Decision::Deny {
                         pack: pack.id.clone(),
                         pattern: rule.pattern.clone(),
@@ -204,6 +262,19 @@ impl Engine {
         }
         JudgeOutcome::Clean
     }
+}
+
+/// A trigger literal is treated as naming a guarded *command* only if it
+/// looks like a bare command-name token (alphanumeric plus `_`/`-`/`.`) —
+/// this excludes structural triggers like `/dev/` while including real
+/// program names (`rm`, `git`, `gcloud`, `gsutil`, `dropdb`, …) and SQL
+/// keyword triggers (`drop`, `truncate`, `delete`) that would only ever
+/// equal argv[0] in a contrived case, harmlessly.
+fn looks_like_bare_command_name(trigger: &str) -> bool {
+    !trigger.is_empty()
+        && trigger
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.')
 }
 
 enum JudgeOutcome {
@@ -346,5 +417,24 @@ reason = "deletes untracked files"
             }
             _ => panic!("expected inline deny, got {d:?}"),
         }
+    }
+
+    #[test]
+    fn case_folded_command_name_is_still_caught() {
+        let d = test_engine().evaluate("Git reset --hard");
+        assert!(d.is_deny(), "expected DENY, got {d:?}");
+    }
+
+    #[test]
+    fn nested_quote_inside_inline_payload_is_caught_by_recursion() {
+        // The outer lexer sees this as one single-quoted, fully literal
+        // argument. `g"it"` never resolves to a contiguous "git" substring
+        // at the outer level (there's a literal `"` between the letters),
+        // so the outer combined pre-filter can't see a trigger here at all
+        // — the inline-payload recursion must not be gated behind it. Only
+        // once the inner string is re-lexed on its own does the nested
+        // double-quote resolve and concatenate into the real command name.
+        let d = test_engine().evaluate(r#"bash -c 'g"it" reset --hard'"#);
+        assert!(d.is_deny(), "expected DENY, got {d:?}");
     }
 }

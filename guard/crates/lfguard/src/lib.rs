@@ -14,12 +14,12 @@
 
 pub mod builtins;
 pub mod engine;
+pub mod lexer;
 pub mod normalize;
 pub mod pack;
 pub mod payload;
 pub mod prefilter;
 pub mod profile;
-pub mod segment;
 
 pub use engine::{AllowTrace, Decision, Engine};
 pub use pack::{Pack, PackWarning};

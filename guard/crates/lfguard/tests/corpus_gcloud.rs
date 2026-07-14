@@ -44,6 +44,10 @@ fn denies_destructive_gcloud_commands() {
             "delete",
         ),
         ("sudo gcloud projects delete p", "project"),
+        // I2: gsutil bucket removal was previously unguarded.
+        ("gsutil rb gs://x", "bucket"),
+        ("gsutil rb -f gs://x", "bucket"),
+        ("sudo gsutil rb gs://my-bucket", "bucket"),
     ];
     for (cmd, needle) in cases {
         let (pack, reason) = deny(&e, cmd);

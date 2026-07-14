@@ -37,6 +37,12 @@ pattern = '^(?:sudo\s+)?gcloud\s+storage\s+buckets\s+delete\b'
 reason = "deletes a Cloud Storage bucket"
 
 [[deny]]
+# `gsutil rb` (remove bucket) is the legacy-tool equivalent of
+# `gcloud storage buckets delete` above and was previously unguarded.
+pattern = '^(?:sudo\s+)?gsutil\s+(?:-\S+\s+)*rb(?:\s|$)'
+reason = "gsutil rb permanently removes a Cloud Storage bucket"
+
+[[deny]]
 pattern = '^(?:sudo\s+)?(?:gcloud\s+storage\s+rm|gsutil\s+(?:-\S+\s+)*rm)\s+(?:\S+\s+)*(?:-[a-zA-Z]*r[a-zA-Z]*|-R|--recursive)\b'
 reason = "recursively deletes objects from a Cloud Storage bucket"
 

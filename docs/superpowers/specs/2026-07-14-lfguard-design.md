@@ -150,9 +150,14 @@ Field rules:
 | `cloud.gcloud`   | opt-in  | `gcloud ... delete` on projects/instances/buckets/SQL, `--quiet` destructive flags, IAM-wipe shapes |
 | `db.postgres`    | opt-in  | `DROP DATABASE`/`DROP TABLE`, `TRUNCATE`, `psql -c` destructive one-liners, `DELETE`/`UPDATE` without a `WHERE` |
 
-G1 ships the crate with **`core.git` fully implemented and wired through the
-pipeline and CLI** as the vertical slice. The other three are authored as
-follow-on plan tasks so the first slice stays small and reviewable.
+G1 ships **all four packs**, each wired through the pipeline and CLI with a
+golden corpus (denies + must-allow safe commands, no false positives). The two
+default-on packs (`core.filesystem`, `core.git`) load under the default profile;
+the two opt-in packs (`cloud.gcloud`, `db.postgres`) stay inactive until enabled
+(crate: `profile::select_active`; CLI: `--pack <id>`; localflow later resolves
+the per-environment `guard.packs` list). The packs follow a **precision-over-
+coverage** posture: they block the irrecoverable footguns and fail open on the
+long tail rather than risk false positives that would get the guard disabled.
 
 ## Configuration
 

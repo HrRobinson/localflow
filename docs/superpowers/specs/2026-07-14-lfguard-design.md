@@ -45,49 +45,105 @@ One pass, dcg-inspired, each stage cheap before the expensive one:
 
 1. **Parse** the agent hook JSON payload (or take a raw command string from the
    CLI) → extract the command line to inspect.
-2. **Segment** — split the raw line on top-level `&&`, `||`, `;`, `|`, and
-   newline separators, skipping any that fall inside a `'...'` or `"..."`
-   region (`git commit -m "a; rm -rf /"` is one segment, not two). Every
-   deny pattern is `^`-anchored to a single command, so without this step a
-   destructive command chained after a benign one (`echo hi && rm -rf /`,
-   `true; rm -rf ~`, `foo | rm -rf /`) would never be tested against any
-   rule — the normal shape of an agent's shell invocations. Each segment
-   flows through the rest of the pipeline independently; a deny in **any**
-   segment denies the whole line.
-3. **Normalize** (per segment) — strip absolute paths from the leading
-   argv[0] (`/usr/bin/git` → `git`) so rules match on the tool name, while
-   **preserving arguments verbatim** (a path *argument* to `rm` is exactly what
-   we must judge). Undo two cheap per-token evasions so packs don't have to
-   spell out every variant of a catastrophic path: strip one layer of
-   fully-wrapping quotes (`rm -rf "/"` → `rm -rf /`) and collapse a run of
-   leading slashes to one (`rm -rf //` → `rm -rf /`). Collapse redundant
-   whitespace. Lower-case nothing (commands are case-sensitive).
-4. **Pre-filter** — a fast substring / literal scan that rejects the ~99% of
+2. **Tokenize + segment** (`lexer` module) — a real, hand-rolled shell-ish
+   lexer walks the raw line **once**, resolving quoting, backslash escaping,
+   adjacent-string concatenation, and command substitution into structured
+   words, and splitting on top-level `&&`, `||`, `;`, `|`, a lone `&`, and
+   newlines at the same time. This replaced a first-generation implementation
+   that did quote-stripping and chaining-splits as two separate, ad-hoc
+   *raw-text* passes (a naive `split_whitespace` "normalizer" plus a
+   character scan for chaining). Two adversarial review rounds proved that
+   two-pass, text-level approach bypassable:
+   - An escaped quote does not close a string in real shell grammar
+     (`echo "a\""` is the one-character argument `a"`, not two arguments) —
+     a text-level pass that didn't track *why* a quote closed got this wrong.
+   - Adjacent strings concatenate into a single argument (`"/e"tc`, `/et"c"`,
+     `""/`, `/""`, `"/"//` are `/etc`, `/etc`, `/`, `/`, `///`) — splitting
+     tokens has to happen *after* that resolution, or the split itself
+     manufactures a bypass (e.g. hiding `rm` as `r"m"`).
+   Doing quoting resolution and chaining-splits in the same single-pass scan
+   fixes the ordering problem structurally rather than patching each shape as
+   it's found: a separator character is only ever a real operator when the
+   scan is not inside a quoted, escaped, or command-substitution region, and
+   a word's *content* is only ever established once, from the same pass that
+   decided the boundaries. `$(...)` and `` `...` `` command substitution is
+   lexed as a single **opaque** token (never evaluated) specifically so a
+   `;`/`&&`/`|` inside the parens/backticks can never be mistaken for a
+   top-level separator. Every deny pattern is `^`-anchored to a single
+   command, so without segmentation a destructive command chained after a
+   benign one (`echo hi && rm -rf /`, `true; rm -rf ~`, `foo | rm -rf /`)
+   would never be tested against any rule — the normal shape of an agent's
+   shell invocations. Each segment flows through the rest of the pipeline
+   independently; a deny in **any** segment denies the whole line.
+3. **Normalize** (per segment, `normalize` module) — now a small, purely
+   semantic step over the already-resolved argv (the ad-hoc quote handling
+   that used to live here moved into the lexer, step 2): case-fold `argv[0]`
+   only (`RM` → `rm`, `Git` → `git` — macOS's case-insensitive filesystem
+   resolves `RM` to the same binary as `rm`, so matching case-sensitively on
+   the command name was a real bypass; **arguments are left exactly as
+   lexed**, since they can be matching-sensitive, e.g. SQL text); strip a
+   leading directory from `argv[0]` (`/usr/bin/git` → `git`) so rules match
+   on the tool name; collapse a run of leading slashes on every other token
+   to one (`rm -rf //` → `rm -rf /`), so packs don't have to spell out every
+   repeated-slash variant of a catastrophic path. The per-segment argv is
+   then joined with single spaces into the "matching line" pack regexes run
+   against — this is what "matching rules against argv structure, not raw
+   text" means in practice: the string a rule sees is reconstructed from
+   real, resolved tokens, not sliced out of the original quoting.
+4. **Guarded-command-substitution check** (per segment, in the engine) — a
+   fail-safe policy that falls straight out of tokenizing: if a segment's
+   `argv[0]` is a command an active pack has a deny rule for (a "guarded"
+   command — `rm`, `git`, `gcloud`, `gsutil`, …) and any of its *argument*
+   tokens (never `argv[0]` itself) contains an opaque command-substitution
+   region, the segment is **denied** — the guard cannot see what `$(...)`
+   or `` `...` `` expands to, so it cannot prove the resulting command is
+   safe, and it fails safe rather than guessing (`rm -rf $(some-cmd)` is
+   denied on this basis alone, independent of whatever `some-cmd` is).
+   Scoped deliberately narrowly — to *already-guarded* commands only — so it
+   adds no new scrutiny to commands no pack cares about (`echo $(date)`,
+   `echo "$(date)"` still ALLOW).
+5. **Pre-filter** — a fast substring / literal scan that rejects the ~99% of
    commands that contain no token any pack cares about. This is the hot path:
    most commands never reach a regex. Built from the union of cheap literal
-   anchors declared by the loaded packs. Run once on the whole (unsegmented)
-   normalized line as a cheap short-circuit, and again per pack per segment.
-5. **Match** — run the loaded regex packs against each segment. **Allow-
-   patterns are evaluated before deny-patterns**: an explicit allow
-   short-circuits that segment to ALLOW, so a pack can carve safe exceptions
-   out of a broad deny. Only if no allow matches do deny-patterns run; the
-   first deny that matches decides, and it carries a human-readable reason.
-   Because the `regex` crate has no lookaround, a rule that must fire
+   anchors declared by the loaded packs, and run against each segment's
+   already-tokenized matching line (never the raw pre-lex text — a trigger
+   substring can be *created* by concatenation resolution, e.g. `r"m"` only
+   contains `rm` after the lexer resolves it, so pre-filtering before
+   tokenization would be unsafe), then again per pack per segment.
+6. **Match** — run the loaded regex packs against each segment's matching
+   line. **Allow-patterns are evaluated before deny-patterns**: an explicit
+   allow short-circuits that segment to ALLOW, so a pack can carve safe
+   exceptions out of a broad deny. Only if no allow matches do deny-patterns
+   run; the first deny that matches decides, and it carries a human-readable
+   reason. Because the `regex` crate has no lookaround, a rule that must fire
    regardless of argument order (e.g. `rm -rf /etc` and `rm /etc -rf`) is
    expressed as two ordered alternatives rather than one lookahead-based
    pattern.
-6. **Decide** — ALLOW (exit 0) or DENY (exit 1, with pack + rule + reason).
+7. **Decide** — ALLOW (exit 0) or DENY (exit 1, with pack + rule + reason).
    DENY wins over ALLOW across segments: if any segment denies, the command
    denies, even if an earlier or later segment matched an allow rule.
 
 ### Known limitations (honest, not aspirational)
 
-- Segmentation is a quote-aware character scan, **not a shell parser**: it
-  does not evaluate `$(...)` / backtick command substitution, does not
-  understand here-docs, and an unterminated quote leaves the remainder of the
-  line as a single unsplit segment (the conservative, fail-open-safe
-  fallback — worst case it misses a split, it never manufactures one that
-  hides a match that would otherwise have fired).
+- The lexer is a real, hand-rolled tokenizer for the shapes this spec lists
+  (quoting, escaping, concatenation, operator splitting, opaque command
+  substitution) — it is still **not a shell parser**: no variable expansion
+  (`$VAR`, `${VAR}`), no glob expansion, no here-docs, no arithmetic
+  expansion, and command substitution is never evaluated, only recognized as
+  an opaque region so its contents can't be mistaken for a top-level
+  separator or hide a bypass by letter-splitting. The guard reasons about
+  **static token structure only** — it does not know or guess what a
+  substitution, a variable, or a glob would actually expand to at run time.
+  Two things follow from that, deliberately: (1) a substitution argument to
+  an *already-guarded* command (`rm`, `git`, `gcloud`, `gsutil`, …) is denied
+  fail-safe rather than evaluated (see pipeline step 4 above); (2) a
+  substitution argument to a command no pack cares about (`echo $(date)`) is
+  left alone — evaluating it isn't attempted, and it isn't the guard's job
+  to add scrutiny to commands nothing else flags. An unterminated quote
+  still leaves the remainder of the line as a single unsplit word/segment
+  (the conservative, fail-open-safe fallback — worst case it misses a split,
+  it never manufactures one that hides a match that would otherwise have
+  fired).
 - The flag/target-order-independent treatment applied to the catastrophic
   `rm` rule (I3) has **not** been generalized to the recursive `chmod`/`chown`
   root rules in `core.filesystem`, which still require the flag before the
@@ -106,12 +162,25 @@ One pass, dcg-inspired, each stage cheap before the expensive one:
 ### Inline payloads (no AST in v1)
 
 Agents frequently smuggle a real command inside `bash -c '…'`, `sh -c "…"`, or
-`python -c '…'`. v1 does **not** parse shell grammar or use tree-sitter/AST. A
-lightweight **trigger-regex fallback** recognizes these wrappers and re-runs the
-pipeline against the extracted inner payload, so `bash -c 'rm -rf /'` is judged
-on `rm -rf /`. This covers the common exfiltration/obfuscation shape without the
-cost and fragility of a shell parser. A full AST pass is explicitly a later
-option, not a v1 requirement.
+`python -c '…'`. This is handled **structurally**, not with a text-level
+regex fallback: once a segment's argv is built (step 3 above), if `argv[0]`
+(case-folded) is a known interpreter and the argv contains a `-c` flag, the
+token immediately after `-c` — a single, already quote/escape-resolved
+string, however it was originally quoted — is re-run through the whole
+pipeline (re-tokenized, re-segmented, re-matched) as its own command line.
+This is strictly more correct than a regex over raw text: it works
+identically regardless of the outer quoting style, and — critically — it is
+**not gated behind the outer segment's pre-filter check**, because an outer
+layer of quoting can hide a trigger word from the outer scan that only
+resolves once the inner string is lexed on its own (e.g. an outer
+single-quoted argument `'g"it" reset --hard'` never contains the contiguous
+substring `git` at the outer level; only re-lexing the extracted inner
+string on its own resolves the nested double quote and reveals it). A
+depth cap (8) bounds the recursion so adversarially nested `-c` wrapping
+can't be used to stall the guard past its latency budget. This covers the
+common exfiltration/obfuscation shape without the cost and fragility of a
+full shell-grammar/AST parser, which remains explicitly a later option, not
+a v1 requirement.
 
 ### Fail-open (the load-bearing decision)
 
@@ -299,19 +368,29 @@ per-session inject/revoke lifecycle), so it is integration, not new machinery.
 
 **G1 (crate):**
 
-- **Unit** — normalization (path strip, arg preservation, whitespace, quote
-  stripping, repeated-slash collapsing), segmentation (`&&`/`||`/`;`/`|`/
-  newline splitting, quote-aware — a separator inside `'...'`/`"..."` is not a
-  boundary), pre-filter (a command with no trigger never reaches regex), pack
-  loader (valid TOML, duplicate id, bad regex → rule disabled + warn, missing
-  reason → reject), matcher (allow-before-deny short-circuit; first-deny-wins;
-  per-segment independent judging — a deny in any segment of a chained command
-  denies the whole line; the inline `bash -c` fallback), fail-open (bad JSON /
-  oversize / timeout → ALLOW + warn), and the CLI exit codes.
+- **Unit** — the lexer (single/double quoting including the escaped-quote-
+  does-not-close-the-string case, backslash escapes both in and out of
+  double quotes, adjacent-string concatenation, operator splitting with and
+  without surrounding whitespace, opaque `$(...)`/backtick substitution not
+  splitting on separators inside it, unterminated-quote fallback),
+  normalization (argv[0] case-fold, path strip, argument preservation,
+  repeated-slash collapsing), pre-filter (a command with no trigger never
+  reaches regex), pack loader (valid TOML, duplicate id, bad regex → rule
+  disabled + warn, missing reason → reject), matcher (allow-before-deny
+  short-circuit; first-deny-wins; per-segment independent judging — a deny
+  in any segment of a chained command denies the whole line; the structural
+  inline `bash -c` re-entry, including recursion not gated behind the outer
+  pre-filter), fail-open (bad JSON / oversize / timeout → ALLOW + warn), and
+  the CLI exit codes.
 - **Golden corpus** — a table of `(command, expected decision, expected pack)`
   per pack, plus a dedicated command-chaining corpus (`echo hi && rm -rf /`,
   `true; rm -rf ~`, `ls | rm -rf /` all deny; `cd foo && ls` allows; a
-  separator inside quotes does not split), asserting no false positives.
+  separator inside quotes does not split) and a dedicated tokenizer-hardening
+  corpus (`tests/corpus_tokenizer.rs` — every adversarial shape from both
+  review rounds: escaped-quote-non-closing, adjacent-string concatenation,
+  case-folded argv[0], command substitution in a guarded position, plus a
+  3000-segment pathological-chain latency check), asserting no false
+  positives.
 - **Acceptance (this slice):** `lfguard test "git reset --hard"` exits 1 with a
   reason; `lfguard test "git status"` exits 0; `lfguard explain "git reset
   --hard"` prints the matched pack + rule + reason.
@@ -323,7 +402,11 @@ per-environment pack toggles take effect.
 
 ## Out of scope (v1 / YAGNI)
 
-- Shell-grammar AST parsing (the trigger-regex fallback covers inline payloads).
+- Shell-grammar AST parsing (the lexer covers quoting/escaping/concatenation/
+  operator-splitting/opaque-substitution — real shell grammar, structural
+  inline-payload re-entry, covers `bash -c '…'`-style payloads — but stops
+  short of a full AST: no variable expansion, no glob expansion, no here-docs,
+  no evaluating what a substitution actually resolves to).
 - Binary PATH-shims (rejected above).
 - Network calls from the crate itself (G2's localflow does the POST; the crate
   only decides and, in `check` mode, speaks the hook protocol).

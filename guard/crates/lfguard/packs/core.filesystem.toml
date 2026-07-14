@@ -11,8 +11,11 @@ name = "Core: filesystem"
 description = "Guards catastrophic filesystem destruction (root/home/system wipes, device writes, mkfs)."
 default_on = true
 version = 1
-# A leading `sudo` is normalized away from argv[0]? No — sudo stays as argv[0],
-# so the rules match an optional `sudo` prefix. Triggers stay broad + cheap.
+# `sudo` (with or without flags/options) is unwrapped structurally by the
+# engine before matching (see `wrappers::unwrap_transparent_prefix`), so
+# these rules see the effective command at argv[0], not `sudo` itself. The
+# `(?:sudo\s+)?` prefix below predates that and is now redundant/harmless —
+# kept rather than churned. Triggers stay broad + cheap.
 triggers = ["rm", "dd", "mkfs", "truncate", "chmod", "chown", "/dev/"]
 
 # --- rm: recursive delete of a catastrophic target ----------------------------

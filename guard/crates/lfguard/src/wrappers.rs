@@ -3,15 +3,19 @@
 //! A handful of commands merely wrap another command without changing its
 //! meaning for our purposes: `command rm -rf /`, `env rm -rf /`, `nohup rm
 //! -rf /` all execute `rm -rf /` exactly as if the wrapper weren't there.
-//! Unlike `sudo` — handled per-pack via an optional `(?:sudo\s+)?` regex
-//! prefix baked into every deny pattern, since `sudo` was already accounted
-//! for when those rules were written — these wrappers are peeled off
-//! structurally, once, before matching: the engine judges the *effective*
-//! command's argv, not the wrapper's, so no pack needs to know about them.
+//! `sudo <flags> rm -rf /` is the same shape — it just has a much larger
+//! option surface — so it is unwrapped structurally here too, the same as
+//! the others: the engine judges the *effective* command's argv, not the
+//! wrapper's, so no pack needs to know about any of these. (Packs still
+//! carry a redundant `(?:sudo\s+)?` regex prefix from before this fix; it is
+//! harmless dead weight now that unwrapping is authoritative — it only ever
+//! matches the `sudo <cmd>` shape unwrapping already peels off.)
 //!
 //! Handled: `command`, `env` (skipping leading `VAR=val` assignments and
 //! flags), `nohup`, `nice` (skipping an optional `-n VALUE` or `-VALUE`
-//! niceness flag), `stdbuf`, `ionice` (skipping leading `-`-prefixed flags).
+//! niceness flag), `stdbuf`, `ionice` (skipping leading `-`-prefixed flags),
+//! `sudo` (skipping leading `VAR=val` assignments and its own options,
+//! including arg-taking ones like `-u root`/`--user root`/`--user=root`).
 //!
 //! Deliberately not exhaustive — a broader class of wrapper commands change
 //! or defer execution in ways this module does not attempt to unwrap:
@@ -24,7 +28,29 @@ use crate::lexer::Word;
 /// case-insensitively against each word's text, mirroring the case-fold
 /// applied to argv[0] elsewhere in the pipeline (macOS's case-insensitive
 /// filesystem means `COMMAND rm -rf /` finds the same binary as `command`).
-const TRANSPARENT_PREFIXES: &[&str] = &["command", "env", "nohup", "nice", "stdbuf", "ionice"];
+const TRANSPARENT_PREFIXES: &[&str] =
+    &["command", "env", "nohup", "nice", "stdbuf", "ionice", "sudo"];
+
+/// `sudo` short options that take a value, e.g. `-u root`. Bundled/attached
+/// forms (`-uroot`) are also handled — see `unwrap_transparent_prefix`.
+const SUDO_ARG_TAKING_SHORT: &[char] = &['u', 'g', 'p', 'C', 'h', 'r', 't', 'U', 'R', 'D'];
+
+/// `sudo` long options that take a value when not given in `--opt=value`
+/// form (that form is handled generically — the whole token is one word
+/// either way).
+const SUDO_ARG_TAKING_LONG: &[&str] = &[
+    "user",
+    "group",
+    "prompt",
+    "chdir",
+    "host",
+    "role",
+    "type",
+    "close-from",
+    "other-user",
+    "chroot",
+    "directory",
+];
 
 /// Peel any number of transparent wrapper commands off the front of a
 /// segment's words, returning the slice starting at the effective command.
@@ -71,8 +97,66 @@ pub fn unwrap_transparent_prefix(seg: &[Word]) -> &[Word] {
                     rest = &rest[1..];
                 }
             }
+            "sudo" => rest = skip_sudo_options(rest),
             _ => {}
         }
+    }
+}
+
+/// Skip past `sudo`'s own leading `VAR=val` assignments and options —
+/// including arg-taking ones (`-u root`, `--user root`, `--user=root`, and
+/// the attached short form `-uroot`) — to reach the effective command.
+/// Bounded by `seg`'s length: each iteration consumes at least one token.
+fn skip_sudo_options(mut rest: &[Word]) -> &[Word] {
+    loop {
+        let Some(w) = rest.first() else { return rest };
+        let tok = w.text.as_str();
+
+        if is_env_assignment(tok) {
+            rest = &rest[1..];
+            continue;
+        }
+        if tok == "--" {
+            // End of options: whatever follows is the command, even if it
+            // looks flag-shaped.
+            return &rest[1..];
+        }
+        if let Some(long) = tok.strip_prefix("--") {
+            if long.is_empty() {
+                return &rest[1..]; // bare "--" already handled above
+            }
+            let name = long.split('=').next().unwrap_or(long);
+            if long.contains('=') || !SUDO_ARG_TAKING_LONG.contains(&name) {
+                // `--user=root` (value attached) or a boolean/unrecognized
+                // long flag: the whole token is consumed either way.
+                rest = &rest[1..];
+            } else {
+                // `--user root`: consume the flag and its separate value.
+                rest = &rest[1..];
+                if !rest.is_empty() {
+                    rest = &rest[1..];
+                }
+            }
+            continue;
+        }
+        if let Some(short) = tok.strip_prefix('-') {
+            if short.is_empty() {
+                return rest; // bare "-": not a recognized option, stop here
+            }
+            let first = short.chars().next().unwrap();
+            rest = &rest[1..];
+            if SUDO_ARG_TAKING_SHORT.contains(&first) && short.len() == 1 {
+                // `-u root`: the value is a separate token.
+                if !rest.is_empty() {
+                    rest = &rest[1..];
+                }
+            }
+            // Otherwise: a boolean flag, a bundle of boolean flags, or an
+            // arg-taking flag with its value attached (`-uroot`) — the one
+            // token already consumed above covers it.
+            continue;
+        }
+        return rest; // not an assignment or an option: this is the command
     }
 }
 
@@ -171,6 +255,90 @@ mod tests {
     }
 
     #[test]
+    fn unwraps_bare_sudo() {
+        let seg = vec![w("sudo"), w("rm"), w("-rf"), w("/")];
+        assert_eq!(texts(unwrap_transparent_prefix(&seg)), vec!["rm", "-rf", "/"]);
+    }
+
+    #[test]
+    fn unwraps_sudo_with_boolean_flags() {
+        for flag in ["-n", "-E", "-i", "-H", "-s", "-b", "-k", "-K", "-v", "-l", "-A", "-S"] {
+            let seg = vec![w("sudo"), w(flag), w("rm"), w("-rf"), w("/")];
+            assert_eq!(
+                texts(unwrap_transparent_prefix(&seg)),
+                vec!["rm", "-rf", "/"],
+                "flag {flag}"
+            );
+        }
+    }
+
+    #[test]
+    fn unwraps_sudo_with_short_arg_taking_flag_separate_value() {
+        let seg = vec![w("sudo"), w("-u"), w("root"), w("rm"), w("-rf"), w("/")];
+        assert_eq!(texts(unwrap_transparent_prefix(&seg)), vec!["rm", "-rf", "/"]);
+    }
+
+    #[test]
+    fn unwraps_sudo_with_short_arg_taking_flag_attached_value() {
+        let seg = vec![w("sudo"), w("-uroot"), w("rm"), w("-rf"), w("/")];
+        assert_eq!(texts(unwrap_transparent_prefix(&seg)), vec!["rm", "-rf", "/"]);
+    }
+
+    #[test]
+    fn unwraps_sudo_with_long_arg_taking_flag_separate_value() {
+        let seg = vec![w("sudo"), w("--user"), w("root"), w("rm"), w("-rf"), w("/")];
+        assert_eq!(texts(unwrap_transparent_prefix(&seg)), vec!["rm", "-rf", "/"]);
+    }
+
+    #[test]
+    fn unwraps_sudo_with_long_arg_taking_flag_equals_value() {
+        let seg = vec![w("sudo"), w("--user=root"), w("rm"), w("-rf"), w("/")];
+        assert_eq!(texts(unwrap_transparent_prefix(&seg)), vec!["rm", "-rf", "/"]);
+    }
+
+    #[test]
+    fn unwraps_sudo_with_leading_var_assignment() {
+        let seg = vec![w("sudo"), w("FOO=bar"), w("rm"), w("-rf"), w("/")];
+        assert_eq!(texts(unwrap_transparent_prefix(&seg)), vec!["rm", "-rf", "/"]);
+    }
+
+    #[test]
+    fn unwraps_sudo_multiple_flags_composed() {
+        let seg = vec![
+            w("sudo"),
+            w("-n"),
+            w("-u"),
+            w("root"),
+            w("gcloud"),
+            w("projects"),
+            w("delete"),
+            w("p"),
+        ];
+        assert_eq!(
+            texts(unwrap_transparent_prefix(&seg)),
+            vec!["gcloud", "projects", "delete", "p"]
+        );
+    }
+
+    #[test]
+    fn lone_sudo_unwraps_to_empty() {
+        let seg = vec![w("sudo")];
+        assert!(unwrap_transparent_prefix(&seg).is_empty());
+    }
+
+    #[test]
+    fn sudo_help_unwraps_to_empty() {
+        let seg = vec![w("sudo"), w("--help")];
+        assert!(unwrap_transparent_prefix(&seg).is_empty());
+    }
+
+    #[test]
+    fn sudo_composes_with_other_wrappers() {
+        let seg = vec![w("nohup"), w("sudo"), w("-u"), w("root"), w("rm"), w("-rf"), w("/")];
+        assert_eq!(texts(unwrap_transparent_prefix(&seg)), vec!["rm", "-rf", "/"]);
+    }
+
+    #[test]
     fn unwraps_case_insensitively() {
         let seg = vec![w("COMMAND"), w("RM"), w("-rf"), w("/")];
         assert_eq!(texts(unwrap_transparent_prefix(&seg)), vec!["RM", "-rf", "/"]);
@@ -180,6 +348,20 @@ mod tests {
     fn non_wrapper_is_unchanged() {
         let seg = vec![w("git"), w("status")];
         assert_eq!(texts(unwrap_transparent_prefix(&seg)), vec!["git", "status"]);
+    }
+
+    #[test]
+    fn plain_ls_through_sudo_stays_allow_shaped() {
+        assert_eq!(texts(unwrap_transparent_prefix(&[w("sudo"), w("ls")])), vec!["ls"]);
+        assert_eq!(
+            texts(unwrap_transparent_prefix(&[
+                w("sudo"),
+                w("-u"),
+                w("root"),
+                w("ls")
+            ])),
+            vec!["ls"]
+        );
     }
 
     #[test]

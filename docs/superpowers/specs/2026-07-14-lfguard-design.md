@@ -85,13 +85,39 @@ One pass, dcg-inspired, each stage cheap before the expensive one:
    deny rule. See "Known limitations" for the exact scope of each.
 3. **Unwrap transparent prefixes** (per segment, `wrappers` module, run in
    the engine right before normalization) — `command`, `env`, `nohup`,
-   `nice`, `stdbuf`, `ionice` merely pass their command straight through, so
-   the guard judges the *effective* command (`command rm -rf /` and `env rm
-   -rf /` are judged as `rm -rf /`) rather than treating the wrapper as
-   argv[0]. `sudo` is handled differently — an optional prefix baked into
-   each pack's own patterns — since every existing rule already accounts
-   for it.
-4. **Normalize** (per segment, `normalize` module) — now a small, purely
+   `nice`, `stdbuf`, `ionice`, and `sudo` merely pass their command straight
+   through, so the guard judges the *effective* command (`command rm -rf /`,
+   `env rm -rf /`, and `sudo -u root rm -rf /` are all judged as `rm -rf /`)
+   rather than treating the wrapper as argv[0]. `sudo` used to be handled
+   differently — an optional `(?:sudo\s+)?` prefix baked into each pack's
+   own patterns — which only matched `sudo` immediately followed by the
+   guarded command; any option in between (`sudo -u root rm -rf /`, `sudo -n
+   rm -rf /`, …) bypassed every pack. `sudo` is now unwrapped structurally
+   like the others, skipping its own options (boolean and arg-taking, short
+   and long, space- or `=`-joined) and any leading `VAR=val` assignments to
+   reach the effective command. The old regex prefixes are left in pack
+   files as harmless dead weight — unwrapping is authoritative now.
+4. **Command-position substitution recursion** (per segment, `subst`
+   module, run in the engine right after unwrapping) — a real shell
+   evaluates `$(...)`/`` `...` `` *eagerly*, before anything about "is this
+   a guarded command" is decided. When a substitution fills the *whole*
+   command position — the entire (unwrapped) segment is one substitution
+   (`$(rm -rf /)`, `` `rm -rf /` ``), or it is the value of a leading
+   `NAME=$(...)` assignment word, itself possibly behind further plain
+   `NAME=val` assignment words (`FOO=$(rm -rf /)`, `FOO=bar
+   BAZ=$(rm -rf /)`) — there is no argv[0] for any pack's `^`-anchored
+   regex to match, so the substitution used to execute for real, completely
+   unjudged. The fix recurses: the substitution's raw, unevaluated inner
+   text is re-run through the whole pipeline (re-tokenized, re-segmented,
+   re-matched), exactly like the inline `bash -c '...'` re-entry below,
+   sharing its depth cap and latency budget — so nested substitutions
+   (`$( $(rm -rf /) )`) resolve for free (each layer is a fresh recursive
+   call) and adversarial nesting still fails open past the cap rather than
+   overflowing the stack or stalling. This is deliberately narrow: a
+   substitution merely *concatenated* into the command name
+   (`pre$(cmd)post`) is not unpacked — only one that stands in for the whole
+   command position is.
+5. **Normalize** (per segment, `normalize` module) — now a small, purely
    semantic step over the already-resolved argv (the ad-hoc quote handling
    that used to live here moved into the lexer, step 2): case-fold `argv[0]`
    only (`RM` → `rm`, `Git` → `git` — macOS's case-insensitive filesystem
@@ -106,7 +132,7 @@ One pass, dcg-inspired, each stage cheap before the expensive one:
    against — this is what "matching rules against argv structure, not raw
    text" means in practice: the string a rule sees is reconstructed from
    real, resolved tokens, not sliced out of the original quoting.
-5. **Guarded-command-substitution check** (per segment, in the engine) — a
+6. **Guarded-command-substitution check** (per segment, in the engine) — a
    fail-safe policy that falls straight out of tokenizing: if a segment's
    `argv[0]` is a command an active pack has a deny rule for (a "guarded"
    command — `rm`, `git`, `gcloud`, `gsutil`, …) and any of its *argument*
@@ -118,7 +144,7 @@ One pass, dcg-inspired, each stage cheap before the expensive one:
    Scoped deliberately narrowly — to *already-guarded* commands only — so it
    adds no new scrutiny to commands no pack cares about (`echo $(date)`,
    `echo "$(date)"` still ALLOW).
-6. **Pre-filter** — a fast substring / literal scan that rejects the ~99% of
+7. **Pre-filter** — a fast substring / literal scan that rejects the ~99% of
    commands that contain no token any pack cares about. This is the hot path:
    most commands never reach a regex. Built from the union of cheap literal
    anchors declared by the loaded packs, and run against each segment's
@@ -126,7 +152,7 @@ One pass, dcg-inspired, each stage cheap before the expensive one:
    substring can be *created* by concatenation resolution, e.g. `r"m"` only
    contains `rm` after the lexer resolves it, so pre-filtering before
    tokenization would be unsafe), then again per pack per segment.
-7. **Match** — run the loaded regex packs against each segment's matching
+8. **Match** — run the loaded regex packs against each segment's matching
    line. **Allow-patterns are evaluated before deny-patterns**: an explicit
    allow short-circuits that segment to ALLOW, so a pack can carve safe
    exceptions out of a broad deny. Only if no allow matches do deny-patterns
@@ -135,7 +161,7 @@ One pass, dcg-inspired, each stage cheap before the expensive one:
    regardless of argument order (e.g. `rm -rf /etc` and `rm /etc -rf`) is
    expressed as two ordered alternatives rather than one lookahead-based
    pattern.
-8. **Decide** — ALLOW (exit 0) or DENY (exit 1, with pack + rule + reason).
+9. **Decide** — ALLOW (exit 0) or DENY (exit 1, with pack + rule + reason).
    DENY wins over ALLOW across segments: if any segment denies, the command
    denies, even if an earlier or later segment matched an allow rule.
 
@@ -153,12 +179,19 @@ One pass, dcg-inspired, each stage cheap before the expensive one:
   top-level separator or hide a bypass by letter-splitting. The guard
   reasons about **static token structure only** — it does not know or guess
   what a substitution, a variable, or a glob would actually expand to at run
-  time. Two things follow from that, deliberately: (1) a substitution
+  time. Three things follow from that, deliberately: (1) a substitution
   argument to an *already-guarded* command (`rm`, `git`, `gcloud`, `gsutil`,
-  …) is denied fail-safe rather than evaluated (see pipeline step 4 above);
+  …) is denied fail-safe rather than evaluated (see pipeline step 6 above);
   (2) a substitution argument to a command no pack cares about (`echo
   $(date)`) is left alone — evaluating it isn't attempted, and it isn't the
-  guard's job to add scrutiny to commands nothing else flags. An unterminated
+  guard's job to add scrutiny to commands nothing else flags; (3) a
+  substitution occupying *command position* itself (`$(rm -rf /)`, `` `rm
+  -rf /` ``, or the value of a leading `NAME=$(...)` assignment word) is
+  **recursed into and judged** rather than left alone — unlike a
+  substitution passed as an argument, one standing in for the command is
+  eagerly evaluated by a real shell regardless of anything else on the line,
+  so leaving it unevaluated would be a silent bypass, not merely
+  under-scrutiny (see pipeline step 4 above). An unterminated
   quote still leaves the remainder of the line as a single unsplit
   word/segment (the conservative, fail-open-safe fallback — worst case it
   misses a split, it never manufactures one that hides a match that would
@@ -186,17 +219,40 @@ One pass, dcg-inspired, each stage cheap before the expensive one:
 - **Transparent-prefix unwrapping covers a named, non-exhaustive set.**
   `command`, `env` (skipping leading `VAR=val` assignments and flags),
   `nohup`, `nice` (skipping an optional `-n VALUE`/`-VALUE` niceness flag),
-  `stdbuf`, and `ionice` (skipping leading `-`-prefixed flags) are unwrapped
+  `stdbuf`, `ionice` (skipping leading `-`-prefixed flags), and now `sudo`
+  (skipping leading `VAR=val` assignments and its own options — boolean and
+  arg-taking, short and long, space- or `=`-joined) are unwrapped
   structurally so the guard judges the effective command, not the wrapper
-  (`command rm -rf /`, `env rm -rf /`, `nohup rm -rf /`, `nice rm -rf /` are
-  all caught). `sudo` continues to be handled the older way — an optional
-  `(?:sudo\s+)?` prefix baked into each pack's own deny patterns, since
-  every existing rule already accounts for it. **Not unwrapped**, and
-  explicitly out of scope for this slice: `xargs`, `timeout`, `watch`,
-  `time`, `chroot`, `su -c`, `flock`, and similar wrappers that change
-  execution semantics (batching, deferral, a sub-environment) rather than
-  merely passing the command through unchanged. A destructive command
-  wrapped in one of these still evades every rule today.
+  (`command rm -rf /`, `env rm -rf /`, `nohup rm -rf /`, `nice rm -rf /`,
+  `sudo -u root rm -rf /`, `sudo --user=root rm -rf /` are all caught).
+  `sudo` used to be handled the older way — an optional `(?:sudo\s+)?`
+  prefix baked into each pack's own deny patterns — which only matched a
+  bare `sudo <cmd>`; any option in between bypassed every pack (fixed by
+  this unwrapping; the old regex prefixes remain in pack files as harmless
+  dead weight). **Not unwrapped**, and explicitly out of scope for this
+  slice: `xargs`, `timeout`, `watch`, `time`, `chroot`, `su -c`, `flock`,
+  and similar wrappers that change execution semantics (batching,
+  deferral, a sub-environment) rather than merely passing the command
+  through unchanged. A destructive command wrapped in one of these still
+  evades every rule today.
+- **Command-position substitution recursion covers the shapes a real shell
+  evaluates eagerly on their own, not every way a substitution can smuggle a
+  command.** `$(rm -rf /)`, `` `rm -rf /` ``, and `NAME=$(rm -rf /)`
+  (including behind further plain `NAME=val` assignments and nested
+  substitutions) are detected and recursed into. **Not detected**: a
+  substitution merely *concatenated* into a larger command-position word
+  (`$(rm -rf /)suffix`, `prefix$(cmd)`) — real shells evaluate the
+  substitution and paste the result into the word before treating it as a
+  command name, but modeling that would mean guessing at concatenation
+  semantics the guard doesn't otherwise attempt (see the lexer's
+  "static token structure only" stance above); and a substitution embedded
+  in a `VAR=$(...)` assignment that is itself consumed as one of `env`'s own
+  leading assignments (`env FOO=$(rm -rf /) rm -rf /tmp`) — `env`'s
+  unwrapping skips past any `NAME=val`-shaped word to reach env's real
+  command argument, including one whose value happens to be a substitution,
+  before the command-position check ever sees it. Both are narrow,
+  pre-existing gaps in the same spirit as the wrapper list above, not new
+  ones introduced by this fix.
 - **`$'...'` ANSI-C quoting decodes the common escapes, not the full bash
   set.** `\n \t \r \a \b \f \v \\ \'`, `\xHH` (up to two hex digits), and
   `\0NNN` (up to three octal digits) are decoded, so `$'/'` and `$'\x2f'`
@@ -224,7 +280,7 @@ One pass, dcg-inspired, each stage cheap before the expensive one:
 
 Agents frequently smuggle a real command inside `bash -c '…'`, `sh -c "…"`, or
 `python -c '…'`. This is handled **structurally**, not with a text-level
-regex fallback: once a segment's argv is built (step 3 above), if `argv[0]`
+regex fallback: once a segment's argv is built (step 5 above), if `argv[0]`
 (case-folded) is a known interpreter and the argv contains a `-c` flag, the
 token immediately after `-c` — a single, already quote/escape-resolved
 string, however it was originally quoted — is re-run through the whole
@@ -241,7 +297,9 @@ depth cap (8) bounds the recursion so adversarially nested `-c` wrapping
 can't be used to stall the guard past its latency budget. This covers the
 common exfiltration/obfuscation shape without the cost and fragility of a
 full shell-grammar/AST parser, which remains explicitly a later option, not
-a v1 requirement.
+a v1 requirement. The same depth cap and re-entry shape is shared by
+command-position substitution recursion (step 4 above) — `$( $(rm -rf /) )`
+resolves the same way a nested `bash -c 'bash -c "…"'` would.
 
 ### Fail-open (the load-bearing decision)
 

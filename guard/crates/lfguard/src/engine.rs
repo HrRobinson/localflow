@@ -21,15 +21,18 @@ use crate::normalize::build_argv;
 use crate::pack::Pack;
 use crate::payload::inline_payload;
 use crate::prefilter::Prefilter;
+use crate::subst::command_position_substitution;
 use crate::wrappers::unwrap_transparent_prefix;
 
 /// Default latency budget for a single evaluation. Exceeding it yields
 /// `Allow { .. timed_out: true }` — continuity wins over a stalled guard.
 pub const DEFAULT_BUDGET: Duration = Duration::from_millis(50);
 
-/// Bound on `bash -c '...'`-style recursion depth. Fail-open beyond this: we
-/// stop looking deeper rather than risk unbounded recursion on adversarial
-/// nesting.
+/// Bound on structural re-entry recursion depth: `bash -c '...'`-style
+/// inline payloads, and a command substitution occupying command position
+/// (`$(rm -rf /)`, including nested `$( $(rm -rf /) )`). Fail-open beyond
+/// this: we stop looking deeper rather than risk unbounded recursion on
+/// adversarial nesting.
 const MAX_INLINE_DEPTH: u32 = 8;
 
 /// The pack label used for the engine's own tokenizer-derived policy
@@ -134,10 +137,61 @@ impl Engine {
                 continue;
             }
             // Peel off transparent wrapper commands (`command`, `env`,
-            // `nohup`, `nice`, `stdbuf`, `ionice`) before judging — the
-            // engine reasons about the *effective* command, not the
+            // `nohup`, `nice`, `stdbuf`, `ionice`, `sudo`) before judging —
+            // the engine reasons about the *effective* command, not the
             // wrapper, so packs never need to know these wrappers exist.
             let effective = unwrap_transparent_prefix(&seg);
+
+            // Command substitution occupying *command position* — the
+            // whole (unwrapped) segment, or the value of a leading
+            // `NAME=$(...)` assignment word: a real shell evaluates
+            // `$(...)`/`` `...` `` eagerly, so `$(rm -rf /)` runs `rm -rf /`
+            // for real regardless of what (if anything) consumes its
+            // output. There's no argv[0] here for a pack to match against —
+            // recurse into the substitution's inner text and judge that
+            // instead, the same structural re-entry already used for inline
+            // `bash -c '...'` payloads below (same depth cap, same budget).
+            if let Some(inner) = command_position_substitution(effective) {
+                if depth < MAX_INLINE_DEPTH {
+                    if start.elapsed() > self.budget {
+                        return Decision::Allow {
+                            trace: AllowTrace::FailedOpenTimeout,
+                        };
+                    }
+                    match self.evaluate_inner(&inner, start, depth + 1) {
+                        Decision::Deny {
+                            pack,
+                            pattern,
+                            reason,
+                            ..
+                        } => {
+                            return Decision::Deny {
+                                pack,
+                                pattern,
+                                reason,
+                                via_inline: Some(inner),
+                            }
+                        }
+                        Decision::Allow {
+                            trace: AllowTrace::FailedOpenTimeout,
+                        } => {
+                            return Decision::Allow {
+                                trace: AllowTrace::FailedOpenTimeout,
+                            }
+                        }
+                        Decision::Allow { trace } => {
+                            allow_trace = Some(trace);
+                        }
+                    }
+                }
+                // Depth cap reached, or the recursion above resolved to a
+                // (non-timeout) allow: there is no literal argv[0] in this
+                // segment to judge against packs, so move on to the next
+                // segment rather than trying to match "$(...)" as if it
+                // were a literal command name.
+                continue;
+            }
+
             let argv = build_argv(effective);
             if argv.is_empty() || argv[0].is_empty() {
                 continue;

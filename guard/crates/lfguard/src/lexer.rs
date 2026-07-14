@@ -444,6 +444,100 @@ fn scan_backtick(chars: &mut Chars) -> String {
     out
 }
 
+/// If `text` (an already-resolved `Word`'s text, or a slice of one) is
+/// *entirely* one command-substitution region — `$(...)` or `` `...` ``,
+/// with nothing concatenated before or after it — return the substitution's
+/// raw, unevaluated inner text. Returns `None` for anything else, including
+/// a substitution that is only part of a larger concatenated word
+/// (`prefix$(cmd)suffix`) or a word with no substitution at all.
+///
+/// Reuses the same balanced-scanning the lexer used to build `text` in the
+/// first place (`scan_paren_balanced`/`scan_backtick`), so a nested
+/// substitution (`$(echo $(date))`) or one containing a quoted `)` is
+/// delimited identically here and during the original tokenization —
+/// there's no second, drifting notion of "balanced".
+///
+/// Used by `crate::subst` to detect a command substitution occupying
+/// *command position* (`$(rm -rf /)`, or the value of a `NAME=$(...)`
+/// assignment word) — a shape the original tokenizer only ever *flags*
+/// (`has_substitution`) but does not otherwise interpret.
+pub(crate) fn pure_substitution_body(text: &str) -> Option<String> {
+    let mut chars = text.chars().peekable();
+    match chars.next()? {
+        '$' if chars.peek() == Some(&'(') => {
+            chars.next(); // consume '('
+            let inner = scan_paren_balanced(&mut chars);
+            if chars.next().is_none() {
+                Some(inner)
+            } else {
+                None // trailing text after the substitution: not "pure"
+            }
+        }
+        '`' => {
+            let inner = scan_backtick(&mut chars);
+            if chars.next().is_none() {
+                Some(inner)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod pure_substitution_body_tests {
+    use super::pure_substitution_body;
+
+    #[test]
+    fn bare_dollar_paren_is_pure() {
+        assert_eq!(
+            pure_substitution_body("$(rm -rf /)"),
+            Some("rm -rf /".to_string())
+        );
+    }
+
+    #[test]
+    fn bare_backtick_is_pure() {
+        assert_eq!(
+            pure_substitution_body("`rm -rf /`"),
+            Some("rm -rf /".to_string())
+        );
+    }
+
+    #[test]
+    fn nested_dollar_paren_is_pure_and_keeps_inner_raw() {
+        assert_eq!(
+            pure_substitution_body("$(echo $(date))"),
+            Some("echo $(date)".to_string())
+        );
+    }
+
+    #[test]
+    fn trailing_text_after_substitution_is_not_pure() {
+        assert_eq!(pure_substitution_body("$(rm -rf /)suffix"), None);
+    }
+
+    #[test]
+    fn leading_text_before_substitution_is_not_pure() {
+        assert_eq!(pure_substitution_body("prefix$(rm -rf /)"), None);
+    }
+
+    #[test]
+    fn plain_word_is_not_pure() {
+        assert_eq!(pure_substitution_body("rm"), None);
+        assert_eq!(pure_substitution_body(""), None);
+    }
+
+    #[test]
+    fn quoted_close_paren_inside_substitution_does_not_end_it_early() {
+        assert_eq!(
+            pure_substitution_body(r#"$(echo ")")"#),
+            Some(r#"echo ")""#.to_string())
+        );
+    }
+}
+
 /// `$'...'` ANSI-C-quoted string body. The opening `$'` has already been
 /// consumed. Decodes the common bash escapes (`\n \t \r \a \b \f \v \\ \'`,
 /// `\xHH` up to two hex digits, `\0NNN` up to three octal digits) and copies

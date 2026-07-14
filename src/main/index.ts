@@ -355,6 +355,10 @@ app.whenReady().then(async () => {
     'session:create',
     async (_e, agentId: AgentId, cwd?: string, customCommand?: string, environment?: number) => {
       if (!VALID_AGENTS.includes(agentId)) return null
+      // customCommand is optional, but a non-string over IPC would throw on
+      // the .trim() calls below — reject cleanly, same posture as the
+      // VALID_AGENTS guard above.
+      if (customCommand !== undefined && typeof customCommand !== 'string') return null
       if (agentId === 'custom' && !customCommand?.trim()) return null
       let dir = process.env['LOCALFLOW_E2E'] === '1' ? cwd : undefined
       if (!dir) {
@@ -433,7 +437,13 @@ app.whenReady().then(async () => {
     if (typeof sourcePaneId !== 'string' || typeof req !== 'object' || req === null) return null
     if (req.kind === 'terminal') {
       if (!VALID_AGENTS.includes(req.agentId)) return null
-      if (req.agentId === 'custom' && !req.customCommand?.trim()) return null
+      // A non-string customCommand would throw on .trim() — reject rather
+      // than surface a TypeError to the bridge (same as session:create).
+      if (
+        req.agentId === 'custom' &&
+        (typeof req.customCommand !== 'string' || !req.customCommand.trim())
+      )
+        return null
     } else if (req.kind === 'browser') {
       if (typeof req.url !== 'string') return null
     } else {

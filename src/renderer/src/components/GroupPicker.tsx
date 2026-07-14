@@ -32,17 +32,19 @@ export default function GroupPicker({ groups, onPick, onCancel }: Props): React.
       >
         <h3 className="m-0 text-[13px] font-semibold text-gray-200">Move pane into session</h3>
         <div className="flex flex-col gap-1.5">
-          {groups.map((group) => (
-            <button
-              key={group.id}
-              className="pick-group cursor-pointer rounded-md border border-white/10 bg-white/[0.07] px-2.5 py-1.5 text-left text-[13px] text-gray-200 hover:bg-white/[0.13]"
-              data-group-id={group.id}
-              onClick={() => onPick(group.id)}
-              onMouseDown={(e) => e.stopPropagation()}
-            >
-              {group.name}
-            </button>
-          ))}
+          {[...groups]
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .map((group) => (
+              <button
+                key={group.id}
+                className="pick-group cursor-pointer rounded-md border border-white/10 bg-white/[0.07] px-2.5 py-1.5 text-left text-[13px] text-gray-200 hover:bg-white/[0.13]"
+                data-group-id={group.id}
+                onClick={() => onPick(group.id)}
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                {group.name}
+              </button>
+            ))}
           <button
             className="pick-new-group cursor-pointer rounded-md border border-white/10 bg-white/[0.07] px-2.5 py-1.5 text-left text-[13px] text-gray-200 hover:bg-white/[0.13]"
             onClick={() => onPick('new')}

@@ -13,10 +13,16 @@ use clap::{Parser, Subcommand};
 use lfguard::builtins::builtin_packs;
 use lfguard::engine::{AllowTrace, Decision, Engine};
 use lfguard::payload::{command_from_hook_json, MAX_PAYLOAD_BYTES};
+use lfguard::profile::select_active;
 
 #[derive(Parser)]
 #[command(name = "lfguard", version, about = "localflow command guard")]
 struct Cli {
+    /// Enable an opt-in pack by id (repeatable), e.g. `--pack cloud.gcloud`.
+    /// Default-on packs (core.*) are always active.
+    #[arg(long = "pack", global = true, value_name = "PACK_ID")]
+    packs: Vec<String>,
+
     #[command(subcommand)]
     command: Cmd,
 }
@@ -35,12 +41,13 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
 
     // Load the shipped built-in packs. Warnings are surfaced on stderr but are
-    // never fatal (fail open).
+    // never fatal (fail open). The default profile is default-on packs only;
+    // `--pack <id>` additively enables opt-in packs.
     let (packs, warnings) = builtin_packs();
     for w in &warnings {
         warn(&format!("pack warning ({}): {}", w.source, w.message));
     }
-    let engine = Engine::new(packs);
+    let engine = Engine::new(select_active(packs, &cli.packs));
 
     match cli.command {
         Cmd::Test { command } => cmd_test(&engine, &command),

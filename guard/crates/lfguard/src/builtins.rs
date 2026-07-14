@@ -14,6 +14,10 @@ const BUILTIN_SOURCES: &[(&str, &str)] = &[
         include_str!("../packs/core.filesystem.toml"),
     ),
     ("<builtin>core.git", include_str!("../packs/core.git.toml")),
+    (
+        "<builtin>cloud.gcloud",
+        include_str!("../packs/cloud.gcloud.toml"),
+    ),
 ];
 
 /// Load and compile the embedded built-in packs (fail-open: a bad built-in is

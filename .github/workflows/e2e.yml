@@ -9,7 +9,8 @@ on:
         'package.json',
         'package-lock.json',
         'electron.vite.config.ts',
-        'playwright.config.ts'
+        'playwright.config.ts',
+        '.github/workflows/e2e.yml'
       ]
   push:
     branches: [main]
@@ -21,7 +22,8 @@ on:
         'package.json',
         'package-lock.json',
         'electron.vite.config.ts',
-        'playwright.config.ts'
+        'playwright.config.ts',
+        '.github/workflows/e2e.yml'
       ]
 
 permissions:

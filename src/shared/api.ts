@@ -154,6 +154,10 @@ export interface LocalflowApi {
   getConsolePrefs(): Promise<ConsolePrefs>
   /** Persists drawer prefs (fire-and-forget; debounced by the caller). */
   setConsolePrefs(prefs: ConsolePrefs): void
+  /** Enabled opt-in lfguard pack ids (core.filesystem/core.git are always on, not included). */
+  getGuardPacks(): Promise<string[]>
+  /** Persists the enabled opt-in pack ids; applies to newly-launched panes. */
+  setGuardPacks(packs: string[]): void
   /** Working-tree status for a session's repo. `repo:false` when the cwd isn't a git repo (or the session has none). */
   gitStatus(id: string): Promise<GitStatus>
   /** Diff text for one path at one layer. Untracked files come back as full additions; size-capped. */

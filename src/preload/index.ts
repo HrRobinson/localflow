@@ -112,6 +112,8 @@ const api: LocalflowApi = {
   },
   getConsolePrefs: () => ipcRenderer.invoke('console:getPrefs'),
   setConsolePrefs: (prefs: ConsolePrefs) => ipcRenderer.send('console:setPrefs', prefs),
+  getGuardPacks: () => ipcRenderer.invoke('guard:getPacks'),
+  setGuardPacks: (packs: string[]) => ipcRenderer.send('guard:setPacks', packs),
   gitStatus: (id: string) => ipcRenderer.invoke('git:status', id),
   gitDiff: (id: string, path: string, staged: boolean) =>
     ipcRenderer.invoke('git:diff', id, path, staged),

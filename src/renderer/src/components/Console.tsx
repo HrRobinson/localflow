@@ -11,7 +11,7 @@ import {
   type ConsoleFocus
 } from '../../../shared/console-filter'
 
-const SOURCES: ConsoleSource[] = ['status', 'operator', 'capture', 'network']
+const SOURCES: ConsoleSource[] = ['status', 'operator', 'capture', 'guard', 'network']
 
 const MIN_HEIGHT = 120
 const MAX_HEIGHT = 600

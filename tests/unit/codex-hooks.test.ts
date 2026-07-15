@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { execFileSync } from 'node:child_process'
 import { buildCodexHookArgs } from '../../src/main/codex-hooks'
+import type { ResolvedGuard } from '../../src/main/guard-hook'
 
 // NOTE: the task brief's original test cases asserted LITERAL payload
 // substrings (e.g. `toContain('"event":"Stop"')`). Those assertions were
@@ -39,11 +40,11 @@ function runNotifyScript(script: string, extraArgs: string[]): string[] {
 
 describe('buildCodexHookArgs', () => {
   it("tier 'none' returns no args", () => {
-    expect(buildCodexHookArgs('p1', 4242, 'tok', 'none')).toEqual([])
+    expect(buildCodexHookArgs('p1', 4242, 'tok', 'none', null)).toEqual([])
   })
 
   it("tier 'notify' embeds only the Stop-mapped event", () => {
-    const args = buildCodexHookArgs('p1', 4242, 'tok', 'notify')
+    const args = buildCodexHookArgs('p1', 4242, 'tok', 'notify', null)
     expect(args).toHaveLength(2)
     expect(args[0]).toBe('-c')
     expect(args[1]).toMatch(/^notify=/)
@@ -57,7 +58,7 @@ describe('buildCodexHookArgs', () => {
   })
 
   it("tier 'full' embeds all three canonical events", () => {
-    const args = buildCodexHookArgs('p2', 4242, 'tok', 'full')
+    const args = buildCodexHookArgs('p2', 4242, 'tok', 'full', null)
     expect(args).toHaveLength(6)
     for (let i = 0; i < args.length; i += 2) {
       expect(args[i]).toBe('-c')
@@ -73,21 +74,37 @@ describe('buildCodexHookArgs', () => {
   })
 
   it('throws on an unsafe paneId or token', () => {
-    expect(() => buildCodexHookArgs("p'; rm -rf /", 4242, 'tok', 'notify')).toThrow()
-    expect(() => buildCodexHookArgs('p1', 4242, "tok'; rm -rf /", 'notify')).toThrow()
+    expect(() => buildCodexHookArgs("p'; rm -rf /", 4242, 'tok', 'notify', null)).toThrow()
+    expect(() => buildCodexHookArgs('p1', 4242, "tok'; rm -rf /", 'notify', null)).toThrow()
   })
 
   it('throws on an invalid port', () => {
-    expect(() => buildCodexHookArgs('p1', 0, 'tok', 'notify')).toThrow()
-    expect(() => buildCodexHookArgs('p1', 65536, 'tok', 'full')).toThrow()
+    expect(() => buildCodexHookArgs('p1', 0, 'tok', 'notify', null)).toThrow()
+    expect(() => buildCodexHookArgs('p1', 65536, 'tok', 'full', null)).toThrow()
   })
 
   it("tier 'notify' gates the curl behind a case guard, not a bare call", () => {
-    const args = buildCodexHookArgs('p1', 4242, 'tok', 'notify')
+    const args = buildCodexHookArgs('p1', 4242, 'tok', 'notify', null)
     const script = extractScript(args[1])
     expect(script).toMatch(/^case "\$0\$1" in/)
     expect(script).toContain('*agent-turn-complete*')
     expect(script).toMatch(/esac$/)
+  })
+
+  const guard: ResolvedGuard = { bin: '/g/lfguard', auditLog: '/g/audit.jsonl', packs: [] }
+
+  it('appends PreToolUse hook + trust bypass when guard present', () => {
+    const args = buildCodexHookArgs('pane1', 8080, 'tok', 'notify', guard)
+    expect(args).toContain('--dangerously-bypass-hook-trust')
+    const joined = args.join(' ')
+    expect(joined).toContain('hooks.PreToolUse=')
+    expect(joined).toContain('^Bash$')
+    expect(joined).toContain('check --hook-exit')
+  })
+
+  it('omits guard args when no guard', () => {
+    const args = buildCodexHookArgs('pane1', 8080, 'tok', 'notify', null)
+    expect(args).not.toContain('--dangerously-bypass-hook-trust')
   })
 })
 
@@ -114,7 +131,7 @@ describe('sh -c positional-arg semantics (real shell, not assumed)', () => {
 })
 
 describe("codex notify tier's case guard against realistic invocation shapes", () => {
-  const args = buildCodexHookArgs('p1', 4242, 'tok', 'notify')
+  const args = buildCodexHookArgs('p1', 4242, 'tok', 'notify', null)
   const script = extractScript(args[1])
 
   it('fires when Codex appends the notification JSON as the single extra arg ($0)', () => {

@@ -4,6 +4,9 @@ directories:
   output: dist
 files:
   - out/**
+extraResources:
+  - from: guard/target/release/lfguard
+    to: lfguard
 mac:
   target:
     - dmg

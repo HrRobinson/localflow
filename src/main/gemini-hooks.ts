@@ -1,6 +1,7 @@
 import { rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { HookEventName } from '../shared/types'
+import { guardHookCommand, type ResolvedGuard } from './guard-hook'
 
 const SAFE_TOKEN_RE = /^[A-Za-z0-9-]+$/
 
@@ -40,42 +41,57 @@ function notificationCommand(paneId: string, port: number, token: string): strin
   return `sh -c 'body=$(cat); case "$body" in *"\\"type\\":\\"ToolPermission\\""*|*"\\"type\\": \\"ToolPermission\\""*) ${curl} ;; esac'`
 }
 
-export function buildGeminiHookSettings(paneId: string, port: number, token: string): object {
+export function buildGeminiHookSettings(
+  paneId: string,
+  port: number,
+  token: string,
+  guard: ResolvedGuard | null
+): object {
   assertSafeToken(paneId, 'paneId')
   assertSafeToken(token, 'token')
   assertValidPort(port)
-  return {
-    hooks: {
-      BeforeAgent: [
-        {
-          hooks: [
-            { type: 'command', command: curlCommand(paneId, port, token, 'UserPromptSubmit') }
-          ]
-        }
-      ],
-      Notification: [
-        { hooks: [{ type: 'command', command: notificationCommand(paneId, port, token) }] }
-      ],
-      AfterAgent: [
-        { hooks: [{ type: 'command', command: curlCommand(paneId, port, token, 'Stop') }] }
-      ]
-    }
+  const hooks: Record<string, unknown> = {
+    BeforeAgent: [
+      {
+        hooks: [{ type: 'command', command: curlCommand(paneId, port, token, 'UserPromptSubmit') }]
+      }
+    ],
+    Notification: [
+      { hooks: [{ type: 'command', command: notificationCommand(paneId, port, token) }] }
+    ],
+    AfterAgent: [
+      { hooks: [{ type: 'command', command: curlCommand(paneId, port, token, 'Stop') }] }
+    ]
   }
+  if (guard) {
+    hooks.BeforeTool = [
+      {
+        matcher: 'run_shell_command',
+        hooks: [{ type: 'command', command: guardHookCommand(guard, paneId) }]
+      }
+    ]
+  }
+  return { hooks }
 }
 
 export function writeGeminiHookSettings(
   dir: string,
   paneId: string,
   port: number,
-  token: string
+  token: string,
+  guard: ResolvedGuard | null
 ): string {
   assertSafeToken(paneId, 'paneId')
   assertSafeToken(token, 'token')
   assertValidPort(port)
   const file = join(dir, `localflow-gemini-hooks-${paneId}.json`)
-  writeFileSync(file, JSON.stringify(buildGeminiHookSettings(paneId, port, token), null, 2), {
-    mode: 0o600
-  })
+  writeFileSync(
+    file,
+    JSON.stringify(buildGeminiHookSettings(paneId, port, token, guard), null, 2),
+    {
+      mode: 0o600
+    }
+  )
   return file
 }
 

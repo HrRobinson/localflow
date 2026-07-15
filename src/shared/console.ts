@@ -2,8 +2,8 @@ import type { ActivityEntry, ActivityEventKind, SessionStatus } from './types'
 import type { ActivityEntry as OperatorActivityEntry, Capture } from './operator'
 import type { ConsoleScope } from './console-filter'
 
-// 'network' is reserved for v2 (browser-pane CDP). Do NOT produce it in v1.
-export type ConsoleSource = 'status' | 'operator' | 'capture' | 'network'
+// 'guard' = lfguard deny (audit-log tail); 'network' = browser-pane CDP (Console v2).
+export type ConsoleSource = 'status' | 'operator' | 'capture' | 'guard' | 'network'
 
 export interface NetworkDetailInput {
   requestId: string
@@ -31,6 +31,7 @@ export type ConsoleDetail =
       output?: string[]
     }
   | ({ source: 'network' } & NetworkDetailInput)
+  | { source: 'guard'; command: string; reason: string; pack: string }
 
 export interface ConsoleEvent {
   id: string
@@ -108,6 +109,24 @@ export function toNetworkEvent(
     sessionId,
     label: `${detail.method} ${statusText} · ${truncateUrl(detail.url)}`,
     detail: { source: 'network', ...detail }
+  }
+}
+
+export interface GuardAuditRecord {
+  ts: number
+  tag: string | null
+  command: string
+  reason: string
+  pack: string
+}
+
+export function toGuardEvent(record: GuardAuditRecord, environment: number): ConsoleEventInput {
+  return {
+    source: 'guard',
+    environment,
+    sessionId: record.tag ?? undefined,
+    label: `blocked: ${record.command}`,
+    detail: { source: 'guard', command: record.command, reason: record.reason, pack: record.pack }
   }
 }
 

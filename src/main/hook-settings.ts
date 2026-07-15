@@ -1,6 +1,7 @@
 import { rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { HookEventName } from '../shared/types'
+import { guardHookCommand, type ResolvedGuard } from './guard-hook'
 
 const EVENTS: HookEventName[] = ['UserPromptSubmit', 'Notification', 'Stop']
 
@@ -18,7 +19,12 @@ function assertValidPort(port: number): void {
   }
 }
 
-export function buildHookSettings(paneId: string, port: number, token: string): object {
+export function buildHookSettings(
+  paneId: string,
+  port: number,
+  token: string,
+  guard: ResolvedGuard | null
+): object {
   assertSafeToken(paneId, 'paneId')
   assertSafeToken(token, 'token')
   assertValidPort(port)
@@ -28,6 +34,11 @@ export function buildHookSettings(paneId: string, port: number, token: string): 
     const command = `curl -s -m 3 -X POST http://127.0.0.1:${port}/event -H 'Content-Type: application/json' -H 'X-Localflow-Token: ${token}' -d '${payload}'`
     hooks[event] = [{ hooks: [{ type: 'command', command }] }]
   }
+  if (guard) {
+    hooks.PreToolUse = [
+      { matcher: 'Bash', hooks: [{ type: 'command', command: guardHookCommand(guard, paneId) }] }
+    ]
+  }
   return { hooks }
 }
 
@@ -35,13 +46,14 @@ export function writeHookSettings(
   dir: string,
   paneId: string,
   port: number,
-  token: string
+  token: string,
+  guard: ResolvedGuard | null
 ): string {
   assertSafeToken(paneId, 'paneId')
   assertSafeToken(token, 'token')
   assertValidPort(port)
   const file = join(dir, `localflow-hooks-${paneId}.json`)
-  writeFileSync(file, JSON.stringify(buildHookSettings(paneId, port, token), null, 2), {
+  writeFileSync(file, JSON.stringify(buildHookSettings(paneId, port, token, guard), null, 2), {
     mode: 0o600
   })
   return file

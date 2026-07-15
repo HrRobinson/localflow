@@ -4,6 +4,7 @@ const DEFAULT_CAPS: Record<ConsoleSource, number> = {
   status: 500,
   operator: 500,
   capture: 300,
+  guard: 300,
   network: 2000
 }
 

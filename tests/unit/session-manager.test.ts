@@ -8,6 +8,7 @@ import {
   type SpawnFn,
   type SpawnSpec
 } from '../../src/main/session-manager'
+import type { ResolvedGuard } from '../../src/main/guard-hook'
 
 class FakePty implements PtyLike {
   dataCb: ((d: string) => void) | null = null
@@ -1041,6 +1042,107 @@ describe('SessionManager', () => {
       })
       mgr.createGroup('g', 1)
       expect(fired).toBe(true)
+    })
+  })
+
+  describe('codex guard fail-open relaunch (G2)', () => {
+    // A ResolvedGuard whose CLI args are identifiable: buildCodexHookArgs
+    // embeds `--dangerously-bypass-hook-trust` and a `check --hook-exit`
+    // command string, so we can assert whether the guard rode the CLI.
+    const guard: ResolvedGuard = {
+      bin: '/fake/lfguard',
+      auditLog: '/fake/audit.log',
+      packs: ['default']
+    }
+
+    let t: number
+    let calls: string[][]
+    let guardedPtys: FakePty[]
+    let guardedMgr: SessionManager
+
+    const makeMgr = (guardFn?: () => ResolvedGuard | null): SessionManager => {
+      calls = []
+      guardedPtys = []
+      const spawnFn: SpawnFn = (_bin, args) => {
+        calls.push(args)
+        const pty = new FakePty()
+        guardedPtys.push(pty)
+        return pty
+      }
+      return new SessionManager({
+        settingsDir: mkdtempSync(join(tmpdir(), 'localflow-g2-')),
+        port: 9999,
+        token: 'tok',
+        now: () => t,
+        spawnFn,
+        guard: guardFn
+      })
+    }
+
+    const hasGuardArgs = (args: string[]): boolean =>
+      args.some((a) => a.includes('--dangerously-bypass-hook-trust'))
+
+    beforeEach(() => {
+      t = 0
+    })
+
+    it('relaunches a codex pane without the guard on instant exit', () => {
+      guardedMgr = makeMgr(() => guard)
+      const info = guardedMgr.create('/p', codexSpec, 1)
+      expect(calls).toHaveLength(1)
+      expect(hasGuardArgs(calls[0])).toBe(true)
+      // Instant exit (< 5000ms) — the guard flag likely bricked the launch.
+      t = 1000
+      guardedPtys[0].exitCb?.()
+      // Relaunched once, this time WITHOUT the guard args.
+      expect(calls).toHaveLength(2)
+      expect(hasGuardArgs(calls[1])).toBe(false)
+      // The pane is alive again, not left dead/exited.
+      expect(guardedMgr.list().find((s) => s.id === info.id)?.status).not.toBe('exited')
+    })
+
+    it('does not relaunch when the codex exit is not instant (> 5000ms)', () => {
+      guardedMgr = makeMgr(() => guard)
+      const info = guardedMgr.create('/p', codexSpec, 1)
+      t = 6000
+      guardedPtys[0].exitCb?.()
+      expect(calls).toHaveLength(1)
+      expect(guardedMgr.list().find((s) => s.id === info.id)?.status).toBe('exited')
+    })
+
+    it('never relaunches a settings-file (Claude) agent — guard not on CLI', () => {
+      guardedMgr = makeMgr(() => guard)
+      const info = guardedMgr.create('/p', claudeSpec, 1)
+      t = 1000
+      guardedPtys[0].exitCb?.()
+      // No relaunch; normal instant-exit handling ran.
+      expect(calls).toHaveLength(1)
+      const listed = guardedMgr.list().find((s) => s.id === info.id)
+      expect(listed?.status).toBe('exited')
+      expect(listed?.message).toContain('Exited right away')
+    })
+
+    it('prevents a relaunch loop: a second instant exit does not spawn a third time', () => {
+      guardedMgr = makeMgr(() => guard)
+      guardedMgr.create('/p', codexSpec, 1)
+      t = 1000
+      guardedPtys[0].exitCb?.() // triggers the guard-less relaunch (spawn #2)
+      expect(calls).toHaveLength(2)
+      // The retry pty also exits instantly — but its record has guardOnCli
+      // false, so it must NOT trigger another relaunch.
+      t = 2000
+      guardedPtys[1].exitCb?.()
+      expect(calls).toHaveLength(2)
+    })
+
+    it('does not relaunch a codex pane the user closed, even on an instant exit', () => {
+      guardedMgr = makeMgr(() => guard)
+      const info = guardedMgr.create('/p', codexSpec, 1)
+      guardedMgr.closeTerminal(info.id) // sets closedByUser, kills pty
+      t = 1000
+      guardedPtys[0].exitCb?.() // late real onExit
+      expect(calls).toHaveLength(1)
+      expect(guardedMgr.list().find((s) => s.id === info.id)?.status).toBe('exited')
     })
   })
 })

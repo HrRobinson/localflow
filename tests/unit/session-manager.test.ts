@@ -1145,4 +1145,22 @@ describe('SessionManager', () => {
       expect(guardedMgr.list().find((s) => s.id === info.id)?.status).toBe('exited')
     })
   })
+
+  describe('SessionManager.emitNotice', () => {
+    it('fans a synthetic line out to every onData subscriber', () => {
+      const mgr = new SessionManager({
+        settingsDir: mkdtempSync(join(tmpdir(), 'localflow-sm-')),
+        port: 0,
+        token: 'tok'
+      })
+      const seen: { id: string; data: string }[] = []
+      mgr.onData((id, data) => seen.push({ id, data }))
+      mgr.onData((id, data) => seen.push({ id, data }))
+      mgr.emitNotice('pane-7', '\r\n⛔ blocked\r\n')
+      expect(seen).toEqual([
+        { id: 'pane-7', data: '\r\n⛔ blocked\r\n' },
+        { id: 'pane-7', data: '\r\n⛔ blocked\r\n' }
+      ])
+    })
+  })
 })

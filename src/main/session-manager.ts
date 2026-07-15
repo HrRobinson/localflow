@@ -462,6 +462,15 @@ export class SessionManager {
     }
   }
 
+  /**
+   * Push a synthetic line to the pane's renderer WITHOUT writing to the pty.
+   * Same fan-out the instant-exit and relaunch notices use. Used to surface an
+   * lfguard block in the pane the operator tried to drive.
+   */
+  emitNotice(id: string, text: string): void {
+    this.dataCbs.forEach((cb) => cb(id, text))
+  }
+
   resize(id: string, cols: number, rows: number): void {
     try {
       this.sessions.get(id)?.pty?.resize(cols, rows)

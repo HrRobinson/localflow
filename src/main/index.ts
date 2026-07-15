@@ -219,7 +219,10 @@ app.whenReady().then(async () => {
 
   const browserBridge = new BrowserBridge()
   const captureStore = new CaptureStore(join(userData, 'captures'))
-  const browserControl = new WebviewBrowserControl(browserBridge, captureStore)
+  const browserControl = new WebviewBrowserControl(browserBridge, captureStore, undefined, {
+    emitBatch: (inputs) => consoleBus.emitBatch(inputs),
+    environmentFor: (handle) => manager.get(handle)?.environment ?? 1
+  })
   const watchpoints = new WatchpointRegistry()
 
   const control = await startControlServer({
@@ -299,6 +302,7 @@ app.whenReady().then(async () => {
   ipcMain.on('browser:register', (_e, handle: string, webContentsId: number) => {
     if (typeof handle === 'string' && Number.isInteger(webContentsId)) {
       browserBridge.register(handle, webContentsId)
+      browserControl.startNetworkTap(handle)
     }
   })
   ipcMain.on('browser:unregister', (_e, handle: string) => {

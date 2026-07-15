@@ -85,4 +85,36 @@ describe('NetworkTap', () => {
     tap.flush()
     expect(emitted[0][0].detail).toMatchObject({ source: 'network', incomplete: true })
   })
+
+  it('caps a flush at 50 rows, draining the remainder on the next tick', () => {
+    const { tap, emitted } = make()
+    for (let i = 0; i < 60; i++) {
+      tap.onMessage('Network.requestWillBeSent', {
+        requestId: `r${i}`,
+        request: { url: `/x${i}`, method: 'GET' }
+      })
+      tap.onMessage('Network.loadingFinished', { requestId: `r${i}`, encodedDataLength: 1 })
+    }
+    tap.flush()
+    expect(emitted[0]).toHaveLength(50)
+    tap.flush()
+    expect(emitted[1]).toHaveLength(10)
+  })
+
+  it('start() flushes the queue on the interval and stop() clears it', () => {
+    const { tap, emitted } = make()
+    tap.onMessage('Network.requestWillBeSent', {
+      requestId: 'r1',
+      request: { url: '/x', method: 'GET' }
+    })
+    tap.onMessage('Network.loadingFinished', { requestId: 'r1', encodedDataLength: 1 })
+    tap.start(120)
+    return new Promise<void>((resolve) => {
+      setTimeout(() => {
+        tap.stop()
+        expect(emitted.flat().length).toBeGreaterThanOrEqual(1)
+        resolve()
+      }, 200)
+    })
+  })
 })

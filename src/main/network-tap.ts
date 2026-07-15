@@ -2,6 +2,7 @@ import type { ConsoleEventInput, NetworkDetailInput } from '../shared/console'
 import { toNetworkEvent } from '../shared/console'
 
 const REQUEST_TIMEOUT_MS = 30_000
+const MAX_BATCH = 50
 
 interface Pending {
   requestId: string
@@ -31,6 +32,7 @@ export class NetworkTap {
   private pending = new Map<string, Pending>()
   private queue: NetworkDetailInput[] = []
   private readonly now: () => number
+  private timer: ReturnType<typeof setInterval> | null = null
 
   constructor(private deps: NetworkTapDeps) {
     this.now = deps.now ?? Date.now
@@ -104,14 +106,27 @@ export class NetworkTap {
     this.flush()
   }
 
-  /** Drain the queue to the bus in one fan-out (Task 10 adds the 50-cap). */
+  /** Drain the queue to the bus in one fan-out, capped at MAX_BATCH rows per flush. */
   flush(): void {
     this.sweepTimeouts()
     if (this.queue.length === 0) return
-    const batch = this.queue.splice(0, this.queue.length)
+    const batch = this.queue.splice(0, MAX_BATCH)
     this.deps.emitBatch(
       batch.map((d) => toNetworkEvent(this.deps.environment, d, this.deps.sessionId))
     )
+  }
+
+  /** Start the ~8Hz flush interval (idempotent). */
+  start(intervalMs = 120): void {
+    if (this.timer) return
+    this.timer = setInterval(() => this.flush(), intervalMs)
+  }
+
+  /** Stop the flush interval and flush any still-pending requests. */
+  stop(): void {
+    if (this.timer) clearInterval(this.timer)
+    this.timer = null
+    this.flushIncomplete()
   }
 
   private sweepTimeouts(): void {

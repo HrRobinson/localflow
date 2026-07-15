@@ -6,7 +6,9 @@ import {
   type Page
 } from '@playwright/test'
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
+import type { AddressInfo } from 'node:net'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -413,4 +415,64 @@ test('resize + relaunch: height and open state are remembered', async () => {
   expect(configAfterRelaunch.console?.open).toBe(true)
 
   await app2.close()
+})
+
+test('network source: a browser pane page load fills the drawer with network rows', async () => {
+  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const server = createServer((req, res) => {
+    if (req.url === '/asset.js') {
+      res.writeHead(200, { 'Content-Type': 'application/javascript' })
+      res.end('/* asset */')
+      return
+    }
+    res.writeHead(200, { 'Content-Type': 'text/html' })
+    res.end('<!doctype html><script src="/asset.js"></script><p>net-test</p>')
+  })
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r))
+  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`
+  const app = await launchApp(userData)
+  const win = await app.firstWindow()
+  await expect(win.locator('.new-session')).toBeVisible()
+
+  const pane = await win.evaluate(
+    (u) =>
+      (
+        window as unknown as {
+          localflow: { createBrowserSession(x: string, e: number): Promise<{ id: string }> }
+        }
+      ).localflow.createBrowserSession(u, 1),
+    url
+  )
+  // The webview only registers its guest webContents while mounted in the
+  // environment grid (operator.spec.ts's pattern) — switch there first.
+  await win.getByRole('button', { name: 'Environment', exact: true }).click()
+  await expect(win.locator(`[data-pane-id="${pane!.id}"] .browser-view`)).toBeVisible()
+
+  await win.keyboard.press('Meta+/')
+  const drawer = win.locator('[data-console]')
+  await expect(drawer).toBeVisible()
+  const networkRows = drawer.locator('[data-console-row][data-source="network"]')
+
+  // The CDP debugger + Network.enable attach on the guest's `dom-ready`,
+  // which fires only once the webview mounts into the environment grid —
+  // shortly after `.browser-view` itself becomes visible, not before. A
+  // reload fired too early (before that attach lands) predates the tap, so
+  // retry it until a network row actually shows up.
+  await expect
+    .poll(
+      async () => {
+        await win.evaluate((id) => {
+          const view = document.querySelector(
+            `[data-pane-id="${id}"] .browser-view`
+          ) as unknown as { reload(): void }
+          view?.reload()
+        }, pane!.id)
+        return networkRows.count()
+      },
+      { timeout: 15_000 }
+    )
+    .toBeGreaterThan(0)
+
+  await app.close()
+  await new Promise<void>((r) => server.close(() => r()))
 })

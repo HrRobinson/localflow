@@ -4,6 +4,13 @@ import { normalizeHttpUrl } from '../shared/urls'
 import { BROWSER_PARTITION } from './webview-policy'
 import type { BrowserBridge } from './browser-bridge'
 import type { CaptureStore } from './capture-store'
+import { NetworkTap } from './network-tap'
+import type { ConsoleEventInput } from '../shared/console'
+
+export interface NetworkTapWiring {
+  emitBatch: (inputs: ConsoleEventInput[]) => void
+  environmentFor: (handle: string) => number
+}
 
 export interface BrowserControl {
   navigate(
@@ -46,11 +53,13 @@ export class WebviewBrowserControl implements BrowserControl {
     { url: string; method: string; status?: number; type?: string }[]
   >()
   private attached = new Set<string>()
+  private taps = new Map<string, NetworkTap>()
 
   constructor(
     private bridge: BrowserBridge,
     private captures: CaptureStore,
-    deps?: Partial<ElectronDeps>
+    deps?: Partial<ElectronDeps>,
+    private netTap?: NetworkTapWiring
   ) {
     this.deps = {
       fromId: deps?.fromId ?? ((id) => allWebContents.fromId(id)),
@@ -91,13 +100,34 @@ export class WebviewBrowserControl implements BrowserControl {
         const hit = [...buf].reverse().find((r) => r.url === res?.url && r.status === undefined)
         if (hit) hit.status = res?.status
       }
+      this.taps.get(handle)?.onMessage(method, p)
     })
     wc.debugger.sendCommand('Network.enable').catch(() => undefined)
+    if (this.netTap && !this.taps.has(handle)) {
+      const tap = new NetworkTap({
+        environment: this.netTap.environmentFor(handle),
+        sessionId: handle,
+        emitBatch: this.netTap.emitBatch
+      })
+      this.taps.set(handle, tap)
+      tap.start()
+    }
+    // Flush any in-flight rows as `incomplete` on a main-frame navigation so
+    // nothing from the previous page silently vanishes.
+    wc.on('did-navigate', () => this.taps.get(handle)?.flushIncomplete())
     // Detach cleanly when the guest goes away.
     wc.once('destroyed', () => {
       this.attached.delete(handle)
       this.netBuffers.delete(handle)
+      this.taps.get(handle)?.stop()
+      this.taps.delete(handle)
     })
+  }
+
+  /** Attach the tap eagerly (e.g. on browser:register) so an initial page load isn't missed. */
+  startNetworkTap(handle: string): void {
+    const wc = this.wc(handle)
+    if (wc) this.ensureNetwork(handle, wc)
   }
 
   async navigate(

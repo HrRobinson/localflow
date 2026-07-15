@@ -59,6 +59,7 @@ export function Console({
       setHeight(prefs.height)
       setSources(new Set(prefs.sources))
       setText(prefs.text)
+      setScopeMode(prefs.scope)
       hydrated.current = true
     })
     return () => {
@@ -66,14 +67,20 @@ export function Console({
     }
   }, [])
 
-  // Debounce-persist height/open/sources/text so dragging doesn't hammer disk.
+  // Debounce-persist height/open/sources/text/scope so dragging doesn't hammer disk.
   useEffect(() => {
     if (!hydrated.current) return
     const timer = setTimeout(() => {
-      window.localflow.setConsolePrefs({ height, open, sources: Array.from(sources), text })
+      window.localflow.setConsolePrefs({
+        height,
+        open,
+        sources: Array.from(sources),
+        text,
+        scope: scopeMode
+      })
     }, PERSIST_DEBOUNCE_MS)
     return () => clearTimeout(timer)
-  }, [height, open, sources, text])
+  }, [height, open, sources, text, scopeMode])
 
   // Snapshot on open + live subscription while mounted.
   useEffect(() => {

@@ -1,5 +1,6 @@
 import type { ActivityEntry, ActivityEventKind, SessionStatus } from './types'
 import type { ActivityEntry as OperatorActivityEntry, Capture } from './operator'
+import type { ConsoleScope } from './console-filter'
 
 // 'network' is reserved for v2 (browser-pane CDP). Do NOT produce it in v1.
 export type ConsoleSource = 'status' | 'operator' | 'capture' | 'network'
@@ -36,13 +37,15 @@ export interface ConsolePrefs {
   open: boolean
   sources: ConsoleSource[]
   text: string
+  scope: 'auto' | ConsoleScope
 }
 
 export const DEFAULT_CONSOLE_PREFS: ConsolePrefs = {
   height: 240,
   open: false,
   sources: [],
-  text: ''
+  text: '',
+  scope: 'auto'
 }
 
 export function toStatusEvent(

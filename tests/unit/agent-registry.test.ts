@@ -389,7 +389,8 @@ describe('console prefs config', () => {
       height: 320,
       open: true,
       sources: ['status', 'capture'],
-      text: 'needs-you'
+      text: 'needs-you',
+      scope: 'auto'
     }
     reg.setConsolePrefs(prefs)
     expect(reg.getConsolePrefs()).toEqual(prefs)
@@ -429,6 +430,19 @@ describe('console prefs config', () => {
     expect(loadAgentConfig(file).console).toEqual(DEFAULT_CONSOLE_PREFS)
   })
 
+  it('round-trips console scope and defaults a missing scope to auto', () => {
+    const file = tmpConfig()
+    saveAgentConfig(file, {
+      agentPaths: {},
+      console: { ...DEFAULT_CONSOLE_PREFS, scope: { kind: 'environment', environment: 2 } }
+    })
+    expect(loadAgentConfig(file).console?.scope).toEqual({ kind: 'environment', environment: 2 })
+
+    // A v1 blob predating the field loads as 'auto' (no schema break).
+    writeFileSync(file, JSON.stringify({ console: { height: 240, open: false, sources: [], text: '' } }))
+    expect(loadAgentConfig(file).console?.scope).toBe('auto')
+  })
+
   it('setConsolePrefs preserves other config keys and unknown top-level keys', () => {
     const file = tmpConfig()
     writeFileSync(
@@ -440,11 +454,11 @@ describe('console prefs config', () => {
       })
     )
     const reg = new AgentRegistry(file, async () => null)
-    reg.setConsolePrefs({ height: 400, open: false, sources: [], text: '' })
+    reg.setConsolePrefs({ height: 400, open: false, sources: [], text: '', scope: 'auto' })
     const onDisk = JSON.parse(readFileSync(file, 'utf8'))
     expect(onDisk.agentPaths).toEqual({ codex: '/opt/bin/codex' })
     expect(onDisk.theme).toBe('nord')
     expect(onDisk.myCustomKey).toEqual({ a: 1 })
-    expect(onDisk.console).toEqual({ height: 400, open: false, sources: [], text: '' })
+    expect(onDisk.console).toEqual({ height: 400, open: false, sources: [], text: '', scope: 'auto' })
   })
 })

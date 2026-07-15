@@ -11,7 +11,7 @@ import {
   type ConsoleFocus
 } from '../../../shared/console-filter'
 
-const SOURCES: ConsoleSource[] = ['status', 'operator', 'capture']
+const SOURCES: ConsoleSource[] = ['status', 'operator', 'capture', 'network']
 
 const MIN_HEIGHT = 120
 const MAX_HEIGHT = 600
@@ -145,6 +145,15 @@ export function Console({
     })
   }
 
+  function toggleMute(s: ConsoleSource): void {
+    setMuted((prev) => {
+      const next = new Set(prev)
+      if (next.has(s)) next.delete(s)
+      else next.add(s)
+      return next
+    })
+  }
+
   // Top-edge drag-resize: dragging up (clientY decreasing) grows the drawer.
   function onResizePointerDown(e: React.PointerEvent<HTMLDivElement>): void {
     e.preventDefault()
@@ -178,20 +187,38 @@ export function Console({
       <div className="flex items-center gap-2 px-3 py-1.5 text-[12px]">
         <div className="flex gap-1">
           {SOURCES.map((s) => (
-            <button
+            <span
               key={s}
-              data-console-source={s}
-              data-active={sources.size === 0 || sources.has(s)}
-              className={`cursor-pointer rounded border px-1.5 py-0.5 ${
-                sources.size === 0 || sources.has(s)
-                  ? 'border-white/40 text-white'
-                  : 'border-white/10 text-white/40'
+              data-console-chip={s}
+              data-muted={muted.has(s)}
+              className={`inline-flex items-center rounded border ${
+                muted.has(s)
+                  ? 'border-white/10 text-white/25'
+                  : sources.size === 0 || sources.has(s)
+                    ? 'border-white/40 text-white'
+                    : 'border-white/10 text-white/40'
               }`}
-              onClick={() => toggleSource(s)}
-              onMouseDown={(e) => e.preventDefault()}
             >
-              {s}
-            </button>
+              <button
+                data-console-source={s}
+                data-active={sources.size === 0 || sources.has(s)}
+                className={`cursor-pointer bg-transparent px-1.5 py-0.5 ${muted.has(s) ? 'line-through' : ''}`}
+                onClick={() => toggleSource(s)}
+                onMouseDown={(ev) => ev.preventDefault()}
+              >
+                {s}
+              </button>
+              <button
+                data-console-mute={s}
+                aria-label={`${muted.has(s) ? 'unmute' : 'mute'} ${s}`}
+                title={muted.has(s) ? `unmute ${s}` : `mute ${s}`}
+                className="cursor-pointer border-0 border-l border-white/10 bg-transparent px-1 py-0.5 text-white/40 hover:text-white"
+                onClick={() => toggleMute(s)}
+                onMouseDown={(ev) => ev.preventDefault()}
+              >
+                {muted.has(s) ? '🔇' : '×'}
+              </button>
+            </span>
           ))}
         </div>
         <div className="flex items-center gap-1">

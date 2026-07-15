@@ -450,7 +450,9 @@ test('expanding a capture row with a screenshot renders an inline thumbnail', as
 
   await win.keyboard.press('Meta+/')
   const drawer = win.locator('[data-console]')
-  const captureRow = drawer.locator('[data-console-row][data-source="capture"]', { hasText: wp!.id })
+  const captureRow = drawer.locator('[data-console-row][data-source="capture"]', {
+    hasText: wp!.id
+  })
   await expect(captureRow).toBeVisible()
   await captureRow.click()
   await expect(captureRow.locator('img[data-console-thumb]')).toBeVisible()
@@ -516,4 +518,49 @@ test('network source: a browser pane page load fills the drawer with network row
 
   await app.close()
   await new Promise<void>((r) => server.close(() => r()))
+})
+
+test('mute hides a source while others remain; scope selection survives reload', async () => {
+  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const app = await launchApp(userData)
+  const win = await app.firstWindow()
+  await expect(win.locator('.new-session')).toBeVisible()
+  const session = await createSessionIpc(win, userData)
+  await postHook(userData, session!.id, 'UserPromptSubmit')
+  const grant = await grantOperatorIpc(win, session!.environment)
+  const client = controlClient(grant.endpoint, grant.token)
+  await client.call('POST', `/panes/${session!.id}/prompt`, { text: 'keep-op' })
+
+  await win.keyboard.press('Meta+/')
+  const drawer = win.locator('[data-console]')
+  await expect(drawer).toBeVisible()
+  const statusRows = drawer.locator('[data-console-row][data-source="status"]')
+  const operatorRows = drawer.locator('[data-console-row][data-source="operator"]')
+  await expect(statusRows).not.toHaveCount(0)
+  await expect(operatorRows).not.toHaveCount(0)
+
+  // Mute status: its rows disappear, operator rows stay.
+  await drawer.locator('[data-console-mute="status"]').click()
+  await expect(statusRows).toHaveCount(0)
+  await expect(operatorRows).not.toHaveCount(0)
+
+  // Pin everywhere so the scope persists, then relaunch and confirm the pin held.
+  await drawer.locator('[data-console-scope="everywhere"]').click()
+  await expect(drawer.locator('[data-console-follow]')).toBeVisible()
+
+  // Prefs persist debounced (300ms, same as the resize+relaunch test) — poll
+  // the on-disk config rather than closing before the write lands.
+  const configFile = join(userData, 'config.json')
+  await expect
+    .poll(() => JSON.parse(readFileSync(configFile, 'utf8')).console?.scope?.kind)
+    .toBe('everywhere')
+  await app.close()
+
+  const app2 = await launchApp(userData)
+  const win2 = await app2.firstWindow()
+  await expect(win2.locator('.new-session')).toBeVisible()
+  const drawer2 = win2.locator('[data-console]')
+  await expect(drawer2).toBeVisible()
+  await expect(drawer2.locator('[data-console-follow]')).toBeVisible()
+  await app2.close()
 })

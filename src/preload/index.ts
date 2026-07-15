@@ -106,8 +106,7 @@ const api: LocalflowApi = {
   listConsole: () => ipcRenderer.invoke('console:list'),
   readScreenshot: (path: string) => ipcRenderer.invoke('console:readScreenshot', path),
   onConsoleEvent: (cb) => {
-    const listener = (_e: IpcRendererEvent, event: ConsoleEvent | ConsoleEvent[]): void =>
-      cb(event)
+    const listener = (_e: IpcRendererEvent, event: ConsoleEvent | ConsoleEvent[]): void => cb(event)
     ipcRenderer.on('console:event', listener)
     return () => ipcRenderer.removeListener('console:event', listener)
   },

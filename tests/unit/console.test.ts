@@ -100,7 +100,11 @@ describe('toNetworkEvent', () => {
       errorText: 'net::ERR_FAILED'
     })
     expect(e.label).toBe('POST ERR · /boom')
-    expect(e.detail).toMatchObject({ source: 'network', failed: true, errorText: 'net::ERR_FAILED' })
+    expect(e.detail).toMatchObject({
+      source: 'network',
+      failed: true,
+      errorText: 'net::ERR_FAILED'
+    })
   })
 
   it('labels an incomplete request with the hourglass and truncates a long url', () => {

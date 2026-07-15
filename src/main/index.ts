@@ -16,6 +16,7 @@ import { startHookServer } from './hook-server'
 import { SessionManager, type SpawnSpec } from './session-manager'
 import { loadSavedState, saveState } from './persistence'
 import { AgentRegistry, whichViaLoginShell } from './agent-registry'
+import { resolveGuardBinary } from './guard-binary'
 import { ensureThemesSeeded, listThemeNames, resolveTheme } from './theme-store'
 import { loadOrCreateKeybindings, writeKeybindings } from './keybindings-file'
 import { loadEnvironmentNames } from './environment-names'
@@ -175,10 +176,20 @@ app.whenReady().then(async () => {
     )
   }
 
+  const guardBin = resolveGuardBinary({
+    packaged: app.isPackaged,
+    repoRoot: join(__dirname, '..', '..'),
+    resourcesPath: process.resourcesPath
+  })
+  const guardAuditLog = join(userData, 'guard-audit.jsonl')
+  const guardProvider = (): import('./guard-hook').ResolvedGuard | null =>
+    guardBin ? { bin: guardBin, auditLog: guardAuditLog, packs: registry.getGuardPacks() } : null
+
   const manager = new SessionManager({
     settingsDir: userData,
     port: endpoint.port,
-    token: endpoint.token
+    token: endpoint.token,
+    guard: guardProvider
   })
   managerRef = manager
 

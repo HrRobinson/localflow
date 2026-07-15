@@ -7,7 +7,7 @@ import { buildHookInjection } from '../../src/main/hook-adapter'
 describe('buildHookInjection', () => {
   it("'settings-file' writes a Claude settings file and returns --settings args", () => {
     const dir = mkdtempSync(join(tmpdir(), 'localflow-hi-'))
-    const { args, env } = buildHookInjection('settings-file', dir, 'p1', 4242, 'tok')
+    const { args, env } = buildHookInjection('settings-file', dir, 'p1', 4242, 'tok', null)
     expect(args[0]).toBe('--settings')
     expect(existsSync(args[1])).toBe(true)
     expect(env).toEqual({})
@@ -15,7 +15,7 @@ describe('buildHookInjection', () => {
 
   it("'env-settings-file' writes a Gemini settings file and returns the env var, no args", () => {
     const dir = mkdtempSync(join(tmpdir(), 'localflow-hi-'))
-    const { args, env } = buildHookInjection('env-settings-file', dir, 'p1', 4242, 'tok')
+    const { args, env } = buildHookInjection('env-settings-file', dir, 'p1', 4242, 'tok', null)
     expect(args).toEqual([])
     expect(existsSync(env['GEMINI_CLI_SYSTEM_SETTINGS_PATH'])).toBe(true)
   })
@@ -26,16 +26,16 @@ describe('buildHookInjection', () => {
     // tests/unit/codex-hooks.test.ts for why these assertions target the
     // escaped form rather than a literal, unescaped substring.
     const dir = mkdtempSync(join(tmpdir(), 'localflow-hi-'))
-    const full = buildHookInjection('cli-args-full', dir, 'p1', 4242, 'tok')
+    const full = buildHookInjection('cli-args-full', dir, 'p1', 4242, 'tok', null)
     expect(full.env).toEqual({})
     expect(full.args.join(' ')).toContain('\\"event\\":\\"UserPromptSubmit\\"')
-    const notify = buildHookInjection('cli-args-notify', dir, 'p1', 4242, 'tok')
+    const notify = buildHookInjection('cli-args-notify', dir, 'p1', 4242, 'tok', null)
     expect(notify.args.join(' ')).toContain('\\"event\\":\\"Stop\\"')
     expect(notify.args.join(' ')).not.toContain('\\"event\\":\\"UserPromptSubmit\\"')
   })
 
   it("'none' returns no args and no env", () => {
     const dir = mkdtempSync(join(tmpdir(), 'localflow-hi-'))
-    expect(buildHookInjection('none', dir, 'p1', 4242, 'tok')).toEqual({ args: [], env: {} })
+    expect(buildHookInjection('none', dir, 'p1', 4242, 'tok', null)).toEqual({ args: [], env: {} })
   })
 })

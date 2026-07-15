@@ -64,6 +64,8 @@ interface Options {
   spawnFn?: SpawnFn
   /** Clock override for tests. */
   now?: () => number
+  /** Resolves the guard config at spawn time (null = no guard). */
+  guard?: () => import('./guard-hook').ResolvedGuard | null
 }
 
 interface Record_ {
@@ -297,7 +299,8 @@ export class SessionManager {
         this.opts.settingsDir,
         id,
         this.opts.port,
-        this.opts.token
+        this.opts.token,
+        this.opts.guard?.() ?? null
       )
       const resumeArgs = resume ? spec.resumeArgs : []
       pty = (this.opts.spawnFn ?? defaultSpawn)(

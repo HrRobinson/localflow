@@ -2,6 +2,7 @@ import type { HookAdapterKind } from '../shared/agents'
 import { removeHookSettings, writeHookSettings } from './hook-settings'
 import { buildCodexHookArgs } from './codex-hooks'
 import { removeGeminiHookSettings, writeGeminiHookSettings } from './gemini-hooks'
+import { type ResolvedGuard } from './guard-hook'
 
 export interface HookInjection {
   args: string[]
@@ -26,11 +27,12 @@ export function buildHookInjection(
   dir: string,
   paneId: string,
   port: number,
-  token: string
+  token: string,
+  guard: ResolvedGuard | null
 ): HookInjection {
   switch (kind) {
     case 'settings-file':
-      return { args: ['--settings', writeHookSettings(dir, paneId, port, token)], env: {} }
+      return { args: ['--settings', writeHookSettings(dir, paneId, port, token, guard)], env: {} }
     case 'env-settings-file':
       return {
         args: [],

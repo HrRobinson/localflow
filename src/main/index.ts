@@ -16,6 +16,7 @@ import { startHookServer } from './hook-server'
 import { SessionManager, type SpawnSpec } from './session-manager'
 import { loadSavedState, saveState } from './persistence'
 import { AgentRegistry, whichViaLoginShell } from './agent-registry'
+import { resolveGuardBinary } from './guard-binary'
 import { ensureThemesSeeded, listThemeNames, resolveTheme } from './theme-store'
 import { loadOrCreateKeybindings, writeKeybindings } from './keybindings-file'
 import { loadEnvironmentNames } from './environment-names'
@@ -41,8 +42,9 @@ import { WebviewBrowserControl } from './browser-control'
 import { CaptureStore } from './capture-store'
 import { WatchpointRegistry } from './watchpoints'
 import { ConsoleEventBus } from './console-bus'
-import { toStatusEvent, toOperatorEvent, toCaptureEvent } from '../shared/console'
+import { toStatusEvent, toOperatorEvent, toCaptureEvent, toGuardEvent } from '../shared/console'
 import type { ConsolePrefs } from '../shared/console'
+import { startGuardAuditTail } from './guard-audit-tail'
 import type { ActivityEntry, GrantInfo, OperatorStatus } from '../shared/operator'
 import type { Capabilities } from '../shared/git'
 import {
@@ -175,10 +177,20 @@ app.whenReady().then(async () => {
     )
   }
 
+  const guardBin = resolveGuardBinary({
+    packaged: app.isPackaged,
+    repoRoot: join(__dirname, '..', '..'),
+    resourcesPath: process.resourcesPath
+  })
+  const guardAuditLog = join(userData, 'guard-audit.jsonl')
+  const guardProvider = (): import('./guard-hook').ResolvedGuard | null =>
+    guardBin ? { bin: guardBin, auditLog: guardAuditLog, packs: registry.getGuardPacks() } : null
+
   const manager = new SessionManager({
     settingsDir: userData,
     port: endpoint.port,
-    token: endpoint.token
+    token: endpoint.token,
+    guard: guardProvider
   })
   managerRef = manager
 
@@ -240,8 +252,18 @@ app.whenReady().then(async () => {
     onCapture: (cap) => consoleBus.emit(toCaptureEvent(cap))
   })
   consoleBus.subscribe((event) => sendToWindow('console:event', event))
+  const stopGuardTail = startGuardAuditTail({
+    path: guardAuditLog,
+    onRecords: (records) => {
+      for (const r of records) {
+        const env = manager.list().find((s) => s.id === r.tag)?.environment ?? 1
+        consoleBus.emit(toGuardEvent(r, env))
+      }
+    }
+  })
   app.on('before-quit', () => {
     control.close()
+    stopGuardTail()
     // The scratch dir only holds handoff assets for live sessions; nothing in
     // it is meaningful across a restart (captures themselves are in-memory).
     captureStore.clear()
@@ -798,6 +820,9 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('console:getPrefs', () => registry.getConsolePrefs())
   ipcMain.on('console:setPrefs', (_e, prefs: ConsolePrefs) => registry.setConsolePrefs(prefs))
+
+  ipcMain.handle('guard:getPacks', () => registry.getGuardPacks())
+  ipcMain.on('guard:setPacks', (_e, packs: string[]) => registry.setGuardPacks(packs))
 
   createWindow()
 })

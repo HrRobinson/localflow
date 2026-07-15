@@ -1,4 +1,5 @@
 import type { HookEventName } from '../shared/types'
+import { guardHookCommand, type ResolvedGuard } from './guard-hook'
 
 export type CodexHookTier = 'full' | 'notify' | 'none'
 
@@ -63,22 +64,37 @@ export function buildCodexHookArgs(
   paneId: string,
   port: number,
   token: string,
-  tier: CodexHookTier
+  tier: CodexHookTier,
+  guard: ResolvedGuard | null
 ): string[] {
   assertSafeToken(paneId, 'paneId')
   assertSafeToken(token, 'token')
   assertValidPort(port)
-  if (tier === 'none') return []
+  const guardArgs = guard
+    ? [
+        '-c',
+        `hooks.PreToolUse=[{matcher="^Bash$",hooks=[{type="command",command=${JSON.stringify(guardHookCommand(guard, paneId))}}]}]`,
+        '--dangerously-bypass-hook-trust'
+      ]
+    : []
+  if (tier === 'none') return guardArgs
   if (tier === 'notify') {
-    return ['-c', `notify=["sh","-c",${JSON.stringify(notifyCommand(paneId, port, token))}]`]
+    return [
+      ...guardArgs,
+      '-c',
+      `notify=["sh","-c",${JSON.stringify(notifyCommand(paneId, port, token))}]`
+    ]
   }
   const table: [string, HookEventName][] = [
     ['UserPromptSubmit', 'UserPromptSubmit'],
     ['PermissionRequest', 'Notification'],
     ['Stop', 'Stop']
   ]
-  return table.flatMap(([codexEvent, canonical]) => [
-    '-c',
-    `hooks.${codexEvent}=[{command=["sh","-c",${JSON.stringify(curlCommand(paneId, port, token, canonical))}]}]`
-  ])
+  return [
+    ...guardArgs,
+    ...table.flatMap(([codexEvent, canonical]) => [
+      '-c',
+      `hooks.${codexEvent}=[{command=["sh","-c",${JSON.stringify(curlCommand(paneId, port, token, canonical))}]}]`
+    ])
+  ]
 }

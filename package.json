@@ -22,8 +22,9 @@
     "test": "vitest run",
     "e2e": "electron-vite build && playwright test",
     "check": "npm run lint && npm run typecheck && npm run test",
-    "package": "electron-vite build && electron-builder --dir",
-    "dist": "electron-vite build && electron-builder --mac --publish never",
+    "build:guard": "cargo build --release --manifest-path guard/Cargo.toml",
+    "package": "npm run build:guard && electron-vite build && electron-builder --dir",
+    "dist": "npm run build:guard && electron-vite build && electron-builder --mac --publish never",
     "postinstall": "electron-builder install-app-deps",
     "prepare": "husky"
   },

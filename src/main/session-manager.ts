@@ -64,6 +64,8 @@ interface Options {
   spawnFn?: SpawnFn
   /** Clock override for tests. */
   now?: () => number
+  /** Resolves the guard config at spawn time (null = no guard). */
+  guard?: () => import('./guard-hook').ResolvedGuard | null
 }
 
 interface Record_ {
@@ -76,6 +78,11 @@ interface Record_ {
   tail: string
   /** In-memory activity ring, last ACTIVITY_LIMIT entries; never persisted. */
   activity: ActivityEntry[]
+  /** True only when the guard rode this launch's CLI args (Codex
+   * cli-args-* adapters). Gates the fail-open relaunch in onExit: a wrong
+   * guard flag can make codex reject its own launch, and the retry (spawned
+   * with skipGuard) resets this to false so it can never loop. */
+  guardOnCli: boolean
   /** Set by closeTerminal() right before killing the pty; the
    * eventual real onExit event checks this to avoid re-running the
    * instant-exit message heuristic against a deliberate close, and
@@ -159,7 +166,15 @@ export class SessionManager {
       kind: 'terminal' as const
     }
     this.reconnectGroup(info, groupId)
-    this.sessions.set(id, { info, spec, pty: null, spawnedAt: 0, tail: '', activity: [] })
+    this.sessions.set(id, {
+      info,
+      spec,
+      pty: null,
+      spawnedAt: 0,
+      tail: '',
+      activity: [],
+      guardOnCli: false
+    })
     this.changedCbs.forEach((cb) => cb())
     return info
   }
@@ -185,7 +200,8 @@ export class SessionManager {
       pty: null,
       spawnedAt: 0,
       tail: '',
-      activity: []
+      activity: [],
+      guardOnCli: false
     })
     this.changedCbs.forEach((cb) => cb())
     this.recordActivity(info.id, 'created')
@@ -221,7 +237,8 @@ export class SessionManager {
       pty: null,
       spawnedAt: 0,
       tail: '',
-      activity: []
+      activity: [],
+      guardOnCli: false
     })
     this.changedCbs.forEach((cb) => cb())
     return info
@@ -274,7 +291,8 @@ export class SessionManager {
     spec: SpawnSpec,
     resume: boolean,
     name: string,
-    environment: number
+    environment: number,
+    skipGuard = false
   ): SessionInfo {
     // A restart replaces the pty (and the Record_), but the durable session's
     // activity history must survive — carry the existing ring forward.
@@ -290,6 +308,9 @@ export class SessionManager {
       environment,
       kind: 'terminal' as const
     }
+    // A relaunch after a guard-induced instant exit passes skipGuard=true so
+    // the retry runs unguarded (fail open). Otherwise resolve the guard now.
+    const guard = skipGuard ? null : (this.opts.guard?.() ?? null)
     let pty: PtyLike
     try {
       const injection = buildHookInjection(
@@ -297,7 +318,8 @@ export class SessionManager {
         this.opts.settingsDir,
         id,
         this.opts.port,
-        this.opts.token
+        this.opts.token,
+        guard
       )
       const resumeArgs = resume ? spec.resumeArgs : []
       pty = (this.opts.spawnFn ?? defaultSpawn)(
@@ -319,7 +341,15 @@ export class SessionManager {
       const message = `Could not start '${spec.command}'. Check the agent's path in the launcher.`
       info.status = 'exited'
       info.message = message
-      this.sessions.set(id, { info, spec, pty: null, spawnedAt: 0, tail: '', activity })
+      this.sessions.set(id, {
+        info,
+        spec,
+        pty: null,
+        spawnedAt: 0,
+        tail: '',
+        activity,
+        guardOnCli: false
+      })
       this.changedCbs.forEach((cb) => cb())
       this.dataCbs.forEach((cb) => cb(id, `\r\n${message}\r\n`))
       return info
@@ -332,7 +362,22 @@ export class SessionManager {
     // live pty (orphaning the resumed agent — unreachable by
     // write/delete/disposeAll) and forcing it back to exited with a bogus
     // "Exited right away" message.
-    const rec: Record_ = { info, spec, pty, spawnedAt: this.now(), tail: '', activity }
+    // Remember whether the guard rode the CLI (Codex cli-args-* adapters):
+    // only then can a bad guard flag brick the launch, and only then does the
+    // onExit fail-open relaunch fire. settings-file/env-settings-file agents
+    // inject via files and can never fail a launch on the guard.
+    const guardOnCli =
+      guard !== null &&
+      (spec.hookAdapter === 'cli-args-full' || spec.hookAdapter === 'cli-args-notify')
+    const rec: Record_ = {
+      info,
+      spec,
+      pty,
+      spawnedAt: this.now(),
+      tail: '',
+      activity,
+      guardOnCli
+    }
     this.sessions.set(id, rec)
     pty.onData((d) => {
       if (this.disposed) return
@@ -358,6 +403,25 @@ export class SessionManager {
         // own exit event arrived late (kill() is not synchronous) and
         // must not re-run the instant-exit message logic below.
         rec.closedByUser = false
+        return
+      }
+      // Codex-style CLI guard args can make the agent reject its own launch
+      // (unknown flag / bad -c grammar) → instant exit. Fail OPEN: relaunch
+      // this pane once without the guard rather than leave a dead pane.
+      // guardOnCli is only set when the guard rode the CLI (Codex); a
+      // settings-file agent never reaches here. The relaunch passes
+      // skipGuard=true, so the new record's guardOnCli is false and a second
+      // instant exit cannot loop back into another guard-relaunch.
+      if (rec.guardOnCli && this.now() - rec.spawnedAt < INSTANT_EXIT_MS) {
+        rec.pty = null
+        this.dataCbs.forEach((cb) =>
+          cb(
+            id,
+            '\r\nlfguard: the command guard hook was rejected by this agent; ' +
+              'relaunched without the guard (running unguarded).\r\n'
+          )
+        )
+        this.spawn(id, cwd, spec, resume, name, environment, true) // skipGuard = true
         return
       }
       rec.pty = null

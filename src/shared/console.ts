@@ -5,6 +5,20 @@ import type { ConsoleScope } from './console-filter'
 // 'network' is reserved for v2 (browser-pane CDP). Do NOT produce it in v1.
 export type ConsoleSource = 'status' | 'operator' | 'capture' | 'network'
 
+export interface NetworkDetailInput {
+  requestId: string
+  method: string
+  url: string
+  status?: number
+  type?: string
+  durationMs?: number
+  sizeBytes?: number
+  fromCache?: boolean
+  failed?: boolean
+  errorText?: string
+  incomplete?: boolean
+}
+
 export type ConsoleDetail =
   | { source: 'status'; kind: ActivityEventKind; status: SessionStatus }
   | { source: 'operator'; action: string; args?: string }
@@ -16,6 +30,7 @@ export type ConsoleDetail =
       screenshotPath?: string
       output?: string[]
     }
+  | ({ source: 'network' } & NetworkDetailInput)
 
 export interface ConsoleEvent {
   id: string
@@ -74,6 +89,25 @@ export function toOperatorEvent(
     sessionId: entry.handle,
     label: entry.detail ? `${entry.route} · ${entry.detail}` : entry.route,
     detail: { source: 'operator', action: entry.route, args: entry.detail }
+  }
+}
+
+function truncateUrl(url: string, max = 96): string {
+  return url.length > max ? `${url.slice(0, max)}…` : url
+}
+
+export function toNetworkEvent(
+  environment: number,
+  detail: NetworkDetailInput,
+  sessionId?: string
+): ConsoleEventInput {
+  const statusText = detail.status ?? (detail.incomplete ? '⏳' : 'ERR')
+  return {
+    source: 'network',
+    environment,
+    sessionId,
+    label: `${detail.method} ${statusText} · ${truncateUrl(detail.url)}`,
+    detail: { source: 'network', ...detail }
   }
 }
 

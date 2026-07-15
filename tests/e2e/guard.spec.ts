@@ -3,6 +3,7 @@ import {
   expect,
   _electron as electron,
   type ElectronApplication,
+  type Locator,
   type Page
 } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
@@ -107,6 +108,26 @@ function preToolUsePayload(command: string): string {
     tool_name: 'Bash',
     tool_input: { command }
   })
+}
+
+/**
+ * Open the bottom console drawer and return its locator. cmd+/ is a TOGGLE,
+ * and the first keypress is occasionally dropped on cold startup (the window
+ * isn't focused yet), so the drawer never appears — the pre-existing flake
+ * behind the drawer-visibility timeouts. Retry the press ONLY while the drawer
+ * element is absent, so an already-open drawer is never toggled back shut.
+ * Same "retry only while the precondition still holds" shape as the
+ * cold-startup click-retry hardening in #42.
+ */
+async function openConsoleDrawer(win: Page): Promise<Locator> {
+  const drawer = win.locator('[data-console]')
+  await expect(async () => {
+    if ((await drawer.count()) === 0) {
+      await win.keyboard.press('Meta+/')
+    }
+    await expect(drawer).toBeVisible({ timeout: 1_000 })
+  }).toPass({ timeout: 15_000 })
+  return drawer
 }
 
 test('claude: PreToolUse guard hook blocks rm -rf /, allows ls -la', async () => {
@@ -240,9 +261,7 @@ test('console: guard-blocked command appears as a guard row, expands to its reas
   const win = await app.firstWindow()
   await expect(win.locator('.new-session')).toBeVisible()
 
-  await win.keyboard.press('Meta+/')
-  const drawer = win.locator('[data-console]')
-  await expect(drawer).toBeVisible()
+  const drawer = await openConsoleDrawer(win)
 
   // Mimics a real deny record — the exact shape lfguard's --audit-log
   // writes (GuardAuditRecord, src/shared/console.ts) — appended to the file

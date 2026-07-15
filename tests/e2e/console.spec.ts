@@ -3,6 +3,7 @@ import {
   expect,
   _electron as electron,
   type ElectronApplication,
+  type Locator,
   type Page
 } from '@playwright/test'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
@@ -136,6 +137,26 @@ function controlClient(endpoint: string, token: string) {
   return { call }
 }
 
+/**
+ * Open the bottom console drawer and return its locator. cmd+/ is a TOGGLE,
+ * and the first keypress is occasionally dropped on cold startup (the window
+ * isn't focused yet), so the drawer never appears — the pre-existing flake
+ * behind the drawer-visibility timeouts. Retry the press ONLY while the drawer
+ * element is absent, so an already-open drawer is never toggled back shut.
+ * Same "retry only while the precondition still holds" shape as the
+ * cold-startup click-retry hardening in #42.
+ */
+async function openConsoleDrawer(win: Page): Promise<Locator> {
+  const drawer = win.locator('[data-console]')
+  await expect(async () => {
+    if ((await drawer.count()) === 0) {
+      await win.keyboard.press('Meta+/')
+    }
+    await expect(drawer).toBeVisible({ timeout: 1_000 })
+  }).toPass({ timeout: 15_000 })
+  return drawer
+}
+
 test('toggle drawer: cmd+/ default, then a remapped key survives relaunch', async () => {
   const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
   const app = await launchApp(userData)
@@ -179,9 +200,7 @@ test('three sources appear: status, operator, capture — capture expands to det
   const session = await createSessionIpc(win, userData)
   expect(session).not.toBeNull()
 
-  await win.keyboard.press('Meta+/')
-  const drawer = win.locator('[data-console]')
-  await expect(drawer).toBeVisible()
+  const drawer = await openConsoleDrawer(win)
 
   // 1. Status source: drive a hook event on the created session's pane.
   await postHook(userData, session!.id, 'UserPromptSubmit')
@@ -251,9 +270,7 @@ test('filters: source chips, text substring, everywhere scope pin', async () => 
     halted: false
   })
 
-  await win.keyboard.press('Meta+/')
-  const drawer = win.locator('[data-console]')
-  await expect(drawer).toBeVisible()
+  const drawer = await openConsoleDrawer(win)
 
   const allRows = drawer.locator('[data-console-row]')
   const statusRows = drawer.locator('[data-console-row][data-source="status"]')
@@ -316,9 +333,7 @@ test('scope follow + pin: enlarging a session narrows the timeline; pin sticks; 
   await postHook(userData, a!.id, 'UserPromptSubmit') // label: "UserPromptSubmit · working"
   await postHook(userData, b!.id, 'Notification') // label: "Notification · needs-you"
 
-  await win.keyboard.press('Meta+/')
-  const drawer = win.locator('[data-console]')
-  await expect(drawer).toBeVisible()
+  const drawer = await openConsoleDrawer(win)
   const rowA = drawer.locator('[data-console-row]', { hasText: 'UserPromptSubmit' })
   const rowB = drawer.locator('[data-console-row]', { hasText: 'Notification' })
 
@@ -362,9 +377,7 @@ test('resize + relaunch: height and open state are remembered', async () => {
   const win = await app.firstWindow()
   await expect(win.locator('.new-session')).toBeVisible()
 
-  await win.keyboard.press('Meta+/')
-  const drawer = win.locator('[data-console]')
-  await expect(drawer).toBeVisible()
+  const drawer = await openConsoleDrawer(win)
 
   const startHeight = await drawer.evaluate((el) => el.getBoundingClientRect().height)
 
@@ -448,8 +461,7 @@ test('expanding a capture row with a screenshot renders an inline thumbnail', as
     halted: false
   })
 
-  await win.keyboard.press('Meta+/')
-  const drawer = win.locator('[data-console]')
+  const drawer = await openConsoleDrawer(win)
   const captureRow = drawer.locator('[data-console-row][data-source="capture"]', {
     hasText: wp!.id
   })
@@ -491,9 +503,7 @@ test('network source: a browser pane page load fills the drawer with network row
   await win.getByRole('button', { name: 'Environment', exact: true }).click()
   await expect(win.locator(`[data-pane-id="${pane!.id}"] .browser-view`)).toBeVisible()
 
-  await win.keyboard.press('Meta+/')
-  const drawer = win.locator('[data-console]')
-  await expect(drawer).toBeVisible()
+  const drawer = await openConsoleDrawer(win)
   const networkRows = drawer.locator('[data-console-row][data-source="network"]')
 
   // The CDP debugger + Network.enable attach on the guest's `dom-ready`,
@@ -531,9 +541,7 @@ test('mute hides a source while others remain; scope selection survives reload',
   const client = controlClient(grant.endpoint, grant.token)
   await client.call('POST', `/panes/${session!.id}/prompt`, { text: 'keep-op' })
 
-  await win.keyboard.press('Meta+/')
-  const drawer = win.locator('[data-console]')
-  await expect(drawer).toBeVisible()
+  const drawer = await openConsoleDrawer(win)
   const statusRows = drawer.locator('[data-console-row][data-source="status"]')
   const operatorRows = drawer.locator('[data-console-row][data-source="operator"]')
   await expect(statusRows).not.toHaveCount(0)

@@ -26,7 +26,17 @@ function session(over: Partial<SessionInfo>): SessionInfo {
   }
 }
 
-function deps(): { deps: ControlDeps; grants: OperatorGrantStore; writes: string[] } {
+function deps(opts?: {
+  guard?: {
+    check: (command: string) => Promise<import('../../src/main/operator-guard').GuardVerdict>
+  }
+}): {
+  deps: ControlDeps
+  grants: OperatorGrantStore
+  writes: string[]
+  notices: { id: string; text: string }[]
+  blocks: { record: import('../../src/shared/console').GuardAuditRecord; environment: number }[]
+} {
   const sessions = [
     session({ id: 'a-term', environment: 1, name: 'termA' }),
     session({ id: 'b-term', environment: 2, name: 'termB' }),
@@ -47,13 +57,19 @@ function deps(): { deps: ControlDeps; grants: OperatorGrantStore; writes: string
   ]
   const grants = new OperatorGrantStore()
   const writes: string[] = []
+  const notices: { id: string; text: string }[] = []
+  const blocks: {
+    record: import('../../src/shared/console').GuardAuditRecord
+    environment: number
+  }[] = []
   let nextId = 0
   const manager = {
     list: () => sessions,
     get: (id: string) => sessions.find((s) => s.id === id) ?? null,
     write: (_id: string, data: string) => writes.push(data),
     peek: (_id: string, n = 5) => ['line1', 'line2'].slice(0, n),
-    getGroup: (id: string) => groups.find((g) => g.id === id) ?? null
+    getGroup: (id: string) => groups.find((g) => g.id === id) ?? null,
+    emitNotice: (id: string, text: string) => notices.push({ id, text })
   }
   // Fakes the same contract `index.ts`'s real `operatorCreatePane` upholds:
   // cwd for a terminal pane is derived from the group's members, never from
@@ -85,9 +101,18 @@ function deps(): { deps: ControlDeps; grants: OperatorGrantStore; writes: string
     }
   }
   return {
-    deps: { registry: new PaneRegistry(manager), grants, manager, panes },
+    deps: {
+      registry: new PaneRegistry(manager),
+      grants,
+      manager,
+      panes,
+      guard: opts?.guard,
+      onGuardBlock: (record, environment) => blocks.push({ record, environment })
+    },
     grants,
-    writes
+    writes,
+    notices,
+    blocks
   }
 }
 
@@ -187,6 +212,86 @@ describe('control-api router', () => {
     )
     expect(r.status).toBe(409)
     expect(writes).toEqual([])
+  })
+
+  it('prompt allowed by the guard writes to the pty and emits no block', async () => {
+    const {
+      deps: d,
+      grants,
+      writes,
+      notices,
+      blocks
+    } = deps({
+      guard: { check: async () => ({ allowed: true }) }
+    })
+    const token = grants.grant(1)
+    const r = await handleRequest(
+      d,
+      'POST',
+      '/panes/a-term/prompt',
+      token,
+      JSON.stringify({ text: 'ls' })
+    )
+    expect(r.status).toBe(200)
+    expect(writes).toEqual(['ls\r'])
+    expect(notices).toEqual([])
+    expect(blocks).toEqual([])
+  })
+
+  it('prompt denied by the guard returns 403, does not write, echoes the pane, emits a block', async () => {
+    const {
+      deps: d,
+      grants,
+      writes,
+      notices,
+      blocks
+    } = deps({
+      guard: {
+        check: async () => ({ allowed: false, reason: 'catastrophic rm', pack: 'core.filesystem' })
+      }
+    })
+    const token = grants.grant(1)
+    const r = await handleRequest(
+      d,
+      'POST',
+      '/panes/a-term/prompt',
+      token,
+      JSON.stringify({ text: 'rm -rf /' })
+    )
+    expect(r.status).toBe(403)
+    expect(r.json).toEqual({
+      error: 'blocked by command guard',
+      reason: 'catastrophic rm',
+      pack: 'core.filesystem'
+    })
+    expect(writes).toEqual([])
+    expect(notices).toEqual([{ id: 'a-term', text: '\r\n⛔ lfguard blocked: catastrophic rm\r\n' }])
+    expect(blocks).toEqual([
+      {
+        record: {
+          ts: expect.any(Number),
+          tag: 'a-term',
+          command: 'rm -rf /',
+          reason: 'catastrophic rm',
+          pack: 'core.filesystem'
+        },
+        environment: 1
+      }
+    ])
+  })
+
+  it('prompt with no guard configured writes as before (back-compatible)', async () => {
+    const { deps: d, grants, writes } = deps() // no guard injected
+    const token = grants.grant(1)
+    const r = await handleRequest(
+      d,
+      'POST',
+      '/panes/a-term/prompt',
+      token,
+      JSON.stringify({ text: 'do it' })
+    )
+    expect(r.status).toBe(200)
+    expect(writes).toEqual(['do it\r'])
   })
 
   it('output returns peeked lines, clamping maxLines', async () => {

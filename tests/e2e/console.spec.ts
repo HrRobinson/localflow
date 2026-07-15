@@ -5,7 +5,7 @@ import {
   type ElectronApplication,
   type Page
 } from '@playwright/test'
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import type { AddressInfo } from 'node:net'
@@ -415,6 +415,47 @@ test('resize + relaunch: height and open state are remembered', async () => {
   expect(configAfterRelaunch.console?.open).toBe(true)
 
   await app2.close()
+})
+
+test('expanding a capture row with a screenshot renders an inline thumbnail', async () => {
+  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const app = await launchApp(userData)
+  const win = await app.firstWindow()
+  await expect(win.locator('.new-session')).toBeVisible()
+  const session = await createSessionIpc(win, userData)
+
+  const grant = await grantOperatorIpc(win, session!.environment)
+  const client = controlClient(grant.endpoint, grant.token)
+  const wp = await registerWatchpointIpc(win, session!.environment, 'demo-workflow', 'demo-step', [
+    'screenshot'
+  ])
+  // A screenshot the operator captured, written under the store's env dir so
+  // the readScreenshot guard serves it.
+  const shotDir = join(userData, 'captures', `env-${session!.environment}`)
+  mkdirSync(shotDir, { recursive: true })
+  const shot = join(shotDir, 'shot-e2e.png')
+  // 1x1 transparent PNG.
+  writeFileSync(
+    shot,
+    Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+      'base64'
+    )
+  )
+  await client.call('POST', '/captures', {
+    watchpointId: wp!.id,
+    screenshotPath: shot,
+    halted: false
+  })
+
+  await win.keyboard.press('Meta+/')
+  const drawer = win.locator('[data-console]')
+  const captureRow = drawer.locator('[data-console-row][data-source="capture"]', { hasText: wp!.id })
+  await expect(captureRow).toBeVisible()
+  await captureRow.click()
+  await expect(captureRow.locator('img[data-console-thumb]')).toBeVisible()
+
+  await app.close()
 })
 
 test('network source: a browser pane page load fills the drawer with network rows', async () => {

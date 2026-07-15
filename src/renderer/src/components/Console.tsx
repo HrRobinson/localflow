@@ -46,6 +46,7 @@ export function Console({
   const [text, setText] = useState('')
   const [height, setHeight] = useState(DEFAULT_CONSOLE_PREFS.height)
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [previews, setPreviews] = useState<Map<string, string>>(new Map())
   const listRef = useRef<HTMLDivElement>(null)
   const stickToBottom = useRef(true)
   // Guards the persist effect from clobbering disk with defaults before the
@@ -101,6 +102,23 @@ export function Console({
       off()
     }
   }, [open])
+
+  // Lazy thumbnail fetch: only when a capture row with a screenshotPath is
+  // expanded, and only once per path (cached in `previews`).
+  useEffect(() => {
+    if (!expanded) return
+    const row = events.find((e) => e.id === expanded)
+    if (!row || row.detail.source !== 'capture') return
+    const path = row.detail.screenshotPath
+    if (!path || previews.has(path)) return
+    let alive = true
+    void window.localflow.readScreenshot(path).then((uri) => {
+      if (alive && uri) setPreviews((prev) => new Map(prev).set(path, uri))
+    })
+    return () => {
+      alive = false
+    }
+  }, [expanded, events, previews])
 
   const scope: ConsoleScope = scopeMode === 'auto' ? deriveConsoleScope(focus) : scopeMode
   const filter: ConsoleFilter = { sources, muted, scope, text }
@@ -239,6 +257,16 @@ export function Console({
             </button>
             {expanded === e.id && (
               <div className="py-1 pl-16">
+                {e.detail.source === 'capture' &&
+                  e.detail.screenshotPath &&
+                  previews.has(e.detail.screenshotPath) && (
+                    <img
+                      data-console-thumb
+                      src={previews.get(e.detail.screenshotPath)}
+                      alt="screenshot"
+                      className="mb-1 max-h-40 max-w-full rounded border border-white/10"
+                    />
+                  )}
                 <pre data-console-detail className="overflow-x-auto text-white/60">
                   {JSON.stringify(e.detail, null, 2)}
                 </pre>

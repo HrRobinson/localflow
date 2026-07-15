@@ -11,11 +11,13 @@ import type { WatchpointRegistry } from './watchpoints'
 import { CONTROL_MAX_BODY_BYTES, type ActivityEntry, type Capture } from '../shared/operator'
 import { VALID_AGENTS, type AgentId, type SessionInfo } from '../shared/types'
 import { normalizeHttpUrl } from '../shared/urls'
+import type { GuardVerdict } from './operator-guard'
+import type { GuardAuditRecord } from '../shared/console'
 
 export interface ControlDeps {
   registry: PaneRegistry
   grants: OperatorGrantStore
-  manager: Pick<SessionManager, 'write' | 'peek' | 'getGroup'>
+  manager: Pick<SessionManager, 'write' | 'peek' | 'getGroup' | 'emitNotice'>
   /** Operator-initiated pane creation (POST /panes) — see `OperatorPaneRequest`. */
   panes: {
     /** Create a pane inside `environment`. A set `groupId` is guaranteed by
@@ -26,6 +28,10 @@ export interface ControlDeps {
   }
   onActivity?: (environment: number, entry: ActivityEntry) => void
   onCapture?: (capture: Capture) => void
+  /** Guards operator prompt writes; when absent, writes pass straight through. */
+  guard?: { check(command: string): Promise<GuardVerdict> }
+  /** Called once per blocked write so the host can surface a `guard` console row. */
+  onGuardBlock?: (record: GuardAuditRecord, environment: number) => void
   // Wired in Layers 2 & 4; absent routes return 404 until then.
   browser?: BrowserControl
   captures?: CaptureStore
@@ -217,6 +223,18 @@ export async function handleRequest(
       if (session.status === 'exited') return json(409, { error: 'pane exited' })
       const b = readBody()
       if (typeof b.text !== 'string') return json(400, { error: 'text required' })
+      if (deps.guard) {
+        const v = await deps.guard.check(b.text)
+        if (!v.allowed) {
+          deps.manager.emitNotice(handle, `\r\n⛔ lfguard blocked: ${v.reason}\r\n`)
+          deps.onGuardBlock?.(
+            { ts: Date.now(), tag: handle, command: b.text, reason: v.reason, pack: v.pack },
+            environment
+          )
+          record('POST prompt blocked', handle, v.reason)
+          return json(403, { error: 'blocked by command guard', reason: v.reason, pack: v.pack })
+        }
+      }
       // Attachments are referenced by path in the prompt text by the operator;
       // v1 does not re-inject them separately (screenshot() already returns a
       // path the operator embeds). Write text + submit (carriage return).

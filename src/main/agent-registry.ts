@@ -25,6 +25,8 @@ export interface AgentConfig {
   theme?: string
   /** Bottom console drawer prefs: height, open state, last filter (M6). */
   console?: ConsolePrefs
+  /** Enabled command-guard packs, applied globally (lfguard G2). */
+  guard?: { packs: string[] }
   /**
    * Unknown top-level keys found in config.json, preserved verbatim so
    * hand-added config-as-code entries survive a save round-trip.
@@ -90,13 +92,22 @@ function parseConsolePrefs(raw: unknown): ConsolePrefs | null {
   return { height, open, sources: sources as ConsoleSource[], text }
 }
 
+/** Validates the guard-config shape at the config-file boundary; defaults to empty on any malformed field. */
+function parseGuardConfig(raw: unknown): { packs: string[] } {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return { packs: [] }
+  const packs = (raw as { packs?: unknown }).packs
+  if (!Array.isArray(packs) || !packs.every((p) => typeof p === 'string')) return { packs: [] }
+  return { packs: packs as string[] }
+}
+
 const KNOWN_TOP_LEVEL_KEYS = new Set([
   'agentPaths',
   'lastAgent',
   'defaultAgent',
   'agents',
   'theme',
-  'console'
+  'console',
+  'guard'
 ])
 
 export function loadAgentConfig(file: string): AgentConfig {
@@ -127,6 +138,7 @@ export function loadAgentConfig(file: string): AgentConfig {
     if (obj.console !== undefined) {
       config.console = parseConsolePrefs(obj.console) ?? DEFAULT_CONSOLE_PREFS
     }
+    if (obj.guard !== undefined) config.guard = parseGuardConfig(obj.guard)
     // Preserve any hand-added top-level keys (config-as-code) so they
     // survive a later saveAgentConfig call untouched.
     const extra: Record<string, unknown> = {}
@@ -304,6 +316,15 @@ export class AgentRegistry {
 
   setConsolePrefs(prefs: ConsolePrefs): void {
     this.config.console = parseConsolePrefs(prefs) ?? DEFAULT_CONSOLE_PREFS
+    saveAgentConfig(this.configFile, this.config)
+  }
+
+  getGuardPacks(): string[] {
+    return this.config.guard?.packs ?? []
+  }
+
+  setGuardPacks(packs: string[]): void {
+    this.config.guard = parseGuardConfig({ packs })
     saveAgentConfig(this.configFile, this.config)
   }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { AgentRegistry, loadAgentConfig, saveAgentConfig } from '../../src/main/agent-registry'
@@ -446,5 +446,25 @@ describe('console prefs config', () => {
     expect(onDisk.theme).toBe('nord')
     expect(onDisk.myCustomKey).toEqual({ a: 1 })
     expect(onDisk.console).toEqual({ height: 400, open: false, sources: [], text: '' })
+  })
+
+  it('guard packs: default empty, round-trips, malformed → empty, preserves other keys', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'lfg-reg-'))
+    const file = join(dir, 'config.json')
+    writeFileSync(file, JSON.stringify({ theme: 'light', myKey: 1 }))
+
+    const r1 = new AgentRegistry(file)
+    expect(r1.getGuardPacks()).toEqual([])
+
+    r1.setGuardPacks(['cloud.gcloud'])
+    const r2 = new AgentRegistry(file)
+    expect(r2.getGuardPacks()).toEqual(['cloud.gcloud'])
+    const saved = JSON.parse(readFileSync(file, 'utf8'))
+    expect(saved.theme).toBe('light')
+    expect(saved.myKey).toBe(1)
+
+    writeFileSync(file, JSON.stringify({ guard: { packs: 'nope' } }))
+    expect(new AgentRegistry(file).getGuardPacks()).toEqual([])
+    rmSync(dir, { recursive: true, force: true })
   })
 })

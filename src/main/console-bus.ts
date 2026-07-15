@@ -16,7 +16,13 @@ export class ConsoleEventBus {
     const event: ConsoleEvent = { ...input, id: `ce-${++this.seq}`, ts: this.now() }
     this.ring.push(event)
     if (this.ring.length > this.cap) this.ring.splice(0, this.ring.length - this.cap)
-    for (const sub of this.subs) sub(event)
+    for (const sub of this.subs) {
+      try {
+        sub(event)
+      } catch (err) {
+        console.error('console subscriber threw', err)
+      }
+    }
     return event
   }
 

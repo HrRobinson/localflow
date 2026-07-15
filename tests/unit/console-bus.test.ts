@@ -47,4 +47,15 @@ describe('ConsoleEventBus', () => {
     bus.emit(input('b'))
     expect(seen).toEqual(['a'])
   })
+
+  it('a throwing subscriber does not break emit or starve others', () => {
+    const bus = new ConsoleEventBus()
+    const seen: string[] = []
+    bus.subscribe(() => {
+      throw new Error('bad tap')
+    })
+    bus.subscribe((e) => seen.push(Array.isArray(e) ? 'batch' : e.label))
+    expect(() => bus.emit(input('a'))).not.toThrow()
+    expect(seen).toEqual(['a'])
+  })
 })

@@ -8,6 +8,7 @@ import {
   removeGeminiHookSettings,
   writeGeminiHookSettings
 } from '../../src/main/gemini-hooks'
+import type { ResolvedGuard } from '../../src/main/guard-hook'
 
 /**
  * The Notification command is itself wrapped in an outer `sh -c '...'`
@@ -33,7 +34,7 @@ function runNotificationCommand(command: string, stdinBody: string): string[] {
 
 describe('buildGeminiHookSettings', () => {
   it('maps BeforeAgent/AfterAgent to plain curl commands', () => {
-    const settings = buildGeminiHookSettings('p1', 4242, 'tok') as {
+    const settings = buildGeminiHookSettings('p1', 4242, 'tok', null) as {
       hooks: Record<string, { hooks: { type: string; command: string }[] }[]>
     }
     const before = settings.hooks.BeforeAgent[0].hooks[0].command
@@ -44,7 +45,7 @@ describe('buildGeminiHookSettings', () => {
   })
 
   it('gates Notification on a ToolPermission stdin payload', () => {
-    const settings = buildGeminiHookSettings('p1', 4242, 'tok') as {
+    const settings = buildGeminiHookSettings('p1', 4242, 'tok', null) as {
       hooks: { Notification: { hooks: { command: string }[] }[] }
     }
     const cmd = settings.hooks.Notification[0].hooks[0].command
@@ -56,7 +57,7 @@ describe('buildGeminiHookSettings', () => {
   })
 
   it('preserves the JSON payload intact through the outer sh -c parse when gated', () => {
-    const settings = buildGeminiHookSettings('p1', 4242, 'tok') as {
+    const settings = buildGeminiHookSettings('p1', 4242, 'tok', null) as {
       hooks: { Notification: { hooks: { command: string }[] }[] }
     }
     const cmd = settings.hooks.Notification[0].hooks[0].command
@@ -67,7 +68,7 @@ describe('buildGeminiHookSettings', () => {
   })
 
   it('does not invoke curl for a non-ToolPermission notification payload', () => {
-    const settings = buildGeminiHookSettings('p1', 4242, 'tok') as {
+    const settings = buildGeminiHookSettings('p1', 4242, 'tok', null) as {
       hooks: { Notification: { hooks: { command: string }[] }[] }
     }
     const cmd = settings.hooks.Notification[0].hooks[0].command
@@ -76,19 +77,47 @@ describe('buildGeminiHookSettings', () => {
   })
 
   it('throws on an unsafe paneId or token', () => {
-    expect(() => buildGeminiHookSettings("p'; rm -rf /", 4242, 'tok')).toThrow()
-    expect(() => buildGeminiHookSettings('p1', 4242, "tok'; rm -rf /")).toThrow()
+    expect(() => buildGeminiHookSettings("p'; rm -rf /", 4242, 'tok', null)).toThrow()
+    expect(() => buildGeminiHookSettings('p1', 4242, "tok'; rm -rf /", null)).toThrow()
   })
 
   it('throws on an invalid port', () => {
-    expect(() => buildGeminiHookSettings('p1', 0, 'tok')).toThrow()
+    expect(() => buildGeminiHookSettings('p1', 0, 'tok', null)).toThrow()
+  })
+})
+
+describe('buildGeminiHookSettings BeforeTool', () => {
+  const guard: ResolvedGuard = { bin: '/g/lfguard', auditLog: '/g/audit.jsonl', packs: [] }
+
+  it('adds a BeforeTool guard hook matched to run_shell_command', () => {
+    const s = buildGeminiHookSettings('pane1', 8080, 'tok', guard) as {
+      hooks: { BeforeTool?: Array<{ matcher: string; hooks: Array<{ command: string }> }> }
+    }
+    const entry = s.hooks.BeforeTool![0]
+    expect(entry.matcher).toBe('run_shell_command')
+    expect(entry.hooks[0].command).toContain('check --hook-exit')
+  })
+
+  it('omits BeforeTool when no guard', () => {
+    const s = buildGeminiHookSettings('pane1', 8080, 'tok', null) as { hooks: Record<string, unknown> }
+    expect(s.hooks.BeforeTool).toBeUndefined()
+  })
+
+  it('produces byte-identical output to the no-guard shape when guard is null', () => {
+    const withNull = buildGeminiHookSettings('pane1', 8080, 'tok', null)
+    expect(JSON.stringify(withNull)).not.toContain('BeforeTool')
+    expect(Object.keys((withNull as { hooks: object }).hooks)).toEqual([
+      'BeforeAgent',
+      'Notification',
+      'AfterAgent'
+    ])
   })
 })
 
 describe('writeGeminiHookSettings', () => {
   it('writes valid JSON with 0600 permissions and returns the path', () => {
     const dir = mkdtempSync(join(tmpdir(), 'localflow-test-'))
-    const file = writeGeminiHookSettings(dir, 'p2', 1234, 'tok2')
+    const file = writeGeminiHookSettings(dir, 'p2', 1234, 'tok2', null)
     expect(file).toBe(join(dir, 'localflow-gemini-hooks-p2.json'))
     const parsed = JSON.parse(readFileSync(file, 'utf8'))
     expect(parsed.hooks.AfterAgent).toBeDefined()
@@ -97,14 +126,14 @@ describe('writeGeminiHookSettings', () => {
 
   it('throws when paneId attempts path traversal', () => {
     const dir = mkdtempSync(join(tmpdir(), 'localflow-test-'))
-    expect(() => writeGeminiHookSettings(dir, '../escape', 1234, 'tok2')).toThrow()
+    expect(() => writeGeminiHookSettings(dir, '../escape', 1234, 'tok2', null)).toThrow()
   })
 })
 
 describe('removeGeminiHookSettings', () => {
   it('removes a previously written settings file and never throws', () => {
     const dir = mkdtempSync(join(tmpdir(), 'localflow-test-'))
-    const file = writeGeminiHookSettings(dir, 'p3', 1234, 'tok3')
+    const file = writeGeminiHookSettings(dir, 'p3', 1234, 'tok3', null)
     removeGeminiHookSettings(dir, 'p3')
     expect(existsSync(file)).toBe(false)
     expect(() => removeGeminiHookSettings(dir, 'never-written')).not.toThrow()

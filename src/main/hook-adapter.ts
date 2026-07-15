@@ -37,7 +37,7 @@ export function buildHookInjection(
       return {
         args: [],
         env: {
-          GEMINI_CLI_SYSTEM_SETTINGS_PATH: writeGeminiHookSettings(dir, paneId, port, token)
+          GEMINI_CLI_SYSTEM_SETTINGS_PATH: writeGeminiHookSettings(dir, paneId, port, token, guard)
         }
       }
     case 'cli-args-full':

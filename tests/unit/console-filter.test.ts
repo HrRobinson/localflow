@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest'
 import {
   visibleEvents,
   deriveConsoleScope,
+  appendConsoleEvents,
+  RENDERER_EVENT_CAP,
   type ConsoleFilter,
   type ConsoleScope
 } from '../../src/shared/console-filter'
@@ -14,9 +16,11 @@ function ev(
   label: string,
   sessionId?: string
 ): ConsoleEvent {
+  const n = ++seq
   return {
-    id: `e${++seq}`,
-    ts: seq,
+    id: `e${n}`,
+    seq: n,
+    ts: n,
     source,
     environment,
     sessionId,
@@ -28,7 +32,7 @@ function ev(
 const ALL = new Set<ConsoleSource>()
 const everywhere: ConsoleScope = { kind: 'everywhere' }
 function filter(over: Partial<ConsoleFilter> = {}): ConsoleFilter {
-  return { sources: ALL, scope: everywhere, text: '', ...over }
+  return { sources: ALL, scope: everywhere, text: '', muted: new Set(), ...over }
 }
 
 describe('visibleEvents', () => {
@@ -71,6 +75,13 @@ describe('visibleEvents', () => {
     })
     expect(visibleEvents(events, f).map((e) => e.label)).toEqual(['Stop idle'])
   })
+
+  it('muted sources are hidden even when the source set is all', () => {
+    const withNet = [...events, ev('network', 1, 'GET 200 · /x')]
+    const f = filter({ muted: new Set<ConsoleSource>(['network']) })
+    expect(visibleEvents(withNet, f).some((e) => e.source === 'network')).toBe(false)
+    expect(visibleEvents(withNet, f).length).toBe(3)
+  })
 })
 
 describe('deriveConsoleScope', () => {
@@ -95,5 +106,20 @@ describe('deriveConsoleScope', () => {
     expect(deriveConsoleScope({ view: 'home', enlarged: null, environment: 1 })).toEqual({
       kind: 'everywhere'
     })
+  })
+})
+
+describe('appendConsoleEvents', () => {
+  it('keeps only the last RENDERER_EVENT_CAP events', () => {
+    const seed = Array.from({ length: RENDERER_EVENT_CAP }, (_, i) => ev('status', 1, `s${i}`))
+    const result = appendConsoleEvents(seed, [ev('network', 1, 'newest')])
+    expect(result.length).toBe(RENDERER_EVENT_CAP)
+    expect(result[result.length - 1].label).toBe('newest')
+    expect(result[0].label).toBe('s1')
+  })
+
+  it('leaves a below-cap array untrimmed', () => {
+    const result = appendConsoleEvents([ev('status', 1, 'a')], [ev('status', 1, 'b')])
+    expect(result.map((e) => e.label)).toEqual(['a', 'b'])
   })
 })

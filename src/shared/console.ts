@@ -1,8 +1,23 @@
 import type { ActivityEntry, ActivityEventKind, SessionStatus } from './types'
 import type { ActivityEntry as OperatorActivityEntry, Capture } from './operator'
+import type { ConsoleScope } from './console-filter'
 
-// 'network' is reserved for v2 (browser-pane CDP). Do NOT produce it in v1.
+// 'guard' = lfguard deny (audit-log tail); 'network' = browser-pane CDP (Console v2).
 export type ConsoleSource = 'status' | 'operator' | 'capture' | 'guard' | 'network'
+
+export interface NetworkDetailInput {
+  requestId: string
+  method: string
+  url: string
+  status?: number
+  type?: string
+  durationMs?: number
+  sizeBytes?: number
+  fromCache?: boolean
+  failed?: boolean
+  errorText?: string
+  incomplete?: boolean
+}
 
 export type ConsoleDetail =
   | { source: 'status'; kind: ActivityEventKind; status: SessionStatus }
@@ -15,10 +30,12 @@ export type ConsoleDetail =
       screenshotPath?: string
       output?: string[]
     }
+  | ({ source: 'network' } & NetworkDetailInput)
   | { source: 'guard'; command: string; reason: string; pack: string }
 
 export interface ConsoleEvent {
   id: string
+  seq: number
   ts: number
   source: ConsoleSource
   environment: number
@@ -27,8 +44,8 @@ export interface ConsoleEvent {
   detail: ConsoleDetail
 }
 
-/** What a mapper returns; the bus assigns id + ts (main-process authority). */
-export type ConsoleEventInput = Omit<ConsoleEvent, 'id' | 'ts'>
+/** What a mapper returns; the bus assigns id + seq + ts (main-process authority). */
+export type ConsoleEventInput = Omit<ConsoleEvent, 'id' | 'ts' | 'seq'>
 
 /** Persisted drawer prefs (height, open state, last filter). */
 export interface ConsolePrefs {
@@ -36,13 +53,17 @@ export interface ConsolePrefs {
   open: boolean
   sources: ConsoleSource[]
   text: string
+  scope: 'auto' | ConsoleScope
+  muted: ConsoleSource[]
 }
 
 export const DEFAULT_CONSOLE_PREFS: ConsolePrefs = {
   height: 240,
   open: false,
   sources: [],
-  text: ''
+  text: '',
+  scope: 'auto',
+  muted: []
 }
 
 export function toStatusEvent(
@@ -69,6 +90,25 @@ export function toOperatorEvent(
     sessionId: entry.handle,
     label: entry.detail ? `${entry.route} · ${entry.detail}` : entry.route,
     detail: { source: 'operator', action: entry.route, args: entry.detail }
+  }
+}
+
+function truncateUrl(url: string, max = 96): string {
+  return url.length > max ? `${url.slice(0, max)}…` : url
+}
+
+export function toNetworkEvent(
+  environment: number,
+  detail: NetworkDetailInput,
+  sessionId?: string
+): ConsoleEventInput {
+  const statusText = detail.status ?? (detail.incomplete ? '⏳' : 'ERR')
+  return {
+    source: 'network',
+    environment,
+    sessionId,
+    label: `${detail.method} ${statusText} · ${truncateUrl(detail.url)}`,
+    detail: { source: 'network', ...detail }
   }
 }
 

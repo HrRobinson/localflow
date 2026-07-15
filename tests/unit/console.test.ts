@@ -3,6 +3,7 @@ import {
   toStatusEvent,
   toOperatorEvent,
   toCaptureEvent,
+  toNetworkEvent,
   toGuardEvent
 } from '../../src/shared/console'
 import type { ActivityEntry } from '../../src/shared/types'
@@ -78,5 +79,63 @@ describe('console mappers', () => {
       reason: 'catastrophic rm',
       pack: 'core.filesystem'
     })
+  })
+})
+
+describe('toNetworkEvent', () => {
+  it('maps a finished request to a network event with status in the label', () => {
+    const e = toNetworkEvent(
+      3,
+      {
+        requestId: 'r1',
+        method: 'GET',
+        url: 'https://x/api',
+        status: 200,
+        type: 'XHR',
+        durationMs: 120,
+        sizeBytes: 512,
+        fromCache: false
+      },
+      'pane-1'
+    )
+    expect(e.source).toBe('network')
+    expect(e.environment).toBe(3)
+    expect(e.sessionId).toBe('pane-1')
+    expect(e.label).toBe('GET 200 · https://x/api')
+    expect(e.detail).toEqual({
+      source: 'network',
+      requestId: 'r1',
+      method: 'GET',
+      url: 'https://x/api',
+      status: 200,
+      type: 'XHR',
+      durationMs: 120,
+      sizeBytes: 512,
+      fromCache: false
+    })
+  })
+
+  it('labels a failed request ERR and carries errorText', () => {
+    const e = toNetworkEvent(1, {
+      requestId: 'r2',
+      method: 'POST',
+      url: '/boom',
+      failed: true,
+      errorText: 'net::ERR_FAILED'
+    })
+    expect(e.label).toBe('POST ERR · /boom')
+    expect(e.detail).toMatchObject({
+      source: 'network',
+      failed: true,
+      errorText: 'net::ERR_FAILED'
+    })
+  })
+
+  it('labels an incomplete request with the hourglass and truncates a long url', () => {
+    const url = 'https://x/' + 'a'.repeat(200)
+    const e = toNetworkEvent(1, { requestId: 'r3', method: 'GET', url, incomplete: true })
+    expect(e.label.startsWith('GET ⏳ · https://x/')).toBe(true)
+    expect(e.label.endsWith('…')).toBe(true)
+    expect(e.label.length).toBeLessThan(url.length)
   })
 })

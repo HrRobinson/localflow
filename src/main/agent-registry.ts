@@ -12,6 +12,7 @@ import {
 import { splitArgs } from '../shared/args'
 import { RESERVED_ENV_KEYS } from './hook-adapter'
 import { DEFAULT_CONSOLE_PREFS, type ConsolePrefs, type ConsoleSource } from '../shared/console'
+import type { ConsoleScope } from '../shared/console-filter'
 
 export interface AgentConfig {
   /** User-configured absolute paths per agent, overriding PATH lookup. */
@@ -78,6 +79,20 @@ function parseAgents(raw: unknown): AgentConfig['agents'] | undefined {
 
 const CONSOLE_SOURCES: ConsoleSource[] = ['status', 'operator', 'capture', 'guard', 'network']
 
+function parseConsoleScope(raw: unknown): 'auto' | ConsoleScope {
+  if (raw === 'auto') return 'auto'
+  if (typeof raw === 'object' && raw !== null) {
+    const kind = (raw as { kind?: unknown }).kind
+    if (kind === 'everywhere') return { kind: 'everywhere' }
+    const env = (raw as { environment?: unknown }).environment
+    if (kind === 'environment' && typeof env === 'number')
+      return { kind: 'environment', environment: env }
+    const sid = (raw as { sessionId?: unknown }).sessionId
+    if (kind === 'session' && typeof sid === 'string') return { kind: 'session', sessionId: sid }
+  }
+  return 'auto'
+}
+
 /** Validates the console-prefs shape at the config-file boundary; null on any malformed field. */
 function parseConsolePrefs(raw: unknown): ConsolePrefs | null {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null
@@ -89,7 +104,20 @@ function parseConsolePrefs(raw: unknown): ConsolePrefs | null {
   if (typeof open !== 'boolean') return null
   if (!Array.isArray(sources) || !sources.every((s) => CONSOLE_SOURCES.includes(s))) return null
   if (typeof text !== 'string') return null
-  return { height, open, sources: sources as ConsoleSource[], text }
+  return {
+    height,
+    open,
+    sources: sources as ConsoleSource[],
+    text,
+    scope: parseConsoleScope((raw as { scope?: unknown }).scope),
+    muted: parseMutedSources((raw as { muted?: unknown }).muted)
+  }
+}
+
+function parseMutedSources(raw: unknown): ConsoleSource[] {
+  return Array.isArray(raw)
+    ? raw.filter((s): s is ConsoleSource => CONSOLE_SOURCES.includes(s as ConsoleSource))
+    : []
 }
 
 /** Validates the guard-config shape at the config-file boundary; defaults to empty on any malformed field. */

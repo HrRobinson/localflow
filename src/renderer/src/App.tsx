@@ -26,6 +26,7 @@ import {
 import { clampEnvironment, worstStatus } from '../../shared/environment'
 import { groupedOrder } from '../../shared/group-order'
 import { nextFocusAfterClose, nextEnlargedAfterGone } from '../../shared/close-focus'
+import { missingWatchpointNotice } from '../../shared/console-actions'
 import type {
   AddPaneRequest,
   AgentId,
@@ -110,6 +111,7 @@ export default function App(): React.JSX.Element {
   // pane-header editor button disables itself with a hint, like Changes'.
   const [caps, setCaps] = useState<Capabilities | null>(null)
   const [editorNotice, setEditorNotice] = useState<string | null>(null)
+  const [consoleNotice, setConsoleNotice] = useState<string | null>(null)
   useEffect(() => {
     void window.localflow.getCapabilities().then(setCaps)
   }, [])
@@ -401,8 +403,12 @@ export default function App(): React.JSX.Element {
     if (event.detail.source !== 'capture') return
     const watchpointId = event.detail.watchpointId
     const watchpoints = await window.localflow.listWatchpoints(event.environment)
-    const wp = watchpoints.find((w) => w.id === watchpointId)
-    if (!wp) return
+    const notice = missingWatchpointNotice(watchpoints, watchpointId)
+    if (notice) {
+      setConsoleNotice(notice)
+      return
+    }
+    const wp = watchpoints.find((w) => w.id === watchpointId)!
     await window.localflow.registerWatchpoint(event.environment, wp.workflow, wp.step, wp.capture)
   }
   // Switching environments re-scopes focus: the active/enlarged pane must be
@@ -760,6 +766,17 @@ export default function App(): React.JSX.Element {
             className="ml-3 cursor-pointer border-0 bg-transparent text-yellow-200/70 hover:text-white"
             onClick={() => setEditorNotice(null)}
             onMouseDown={(e) => e.preventDefault()}
+          >
+            dismiss
+          </button>
+        </div>
+      )}
+      {consoleNotice && (
+        <div className="console-notice fixed top-[5.5rem] left-1/2 z-50 -translate-x-1/2 rounded-md border border-yellow-500/50 bg-yellow-500/15 px-3 py-1.5 text-[12px] text-yellow-200">
+          {consoleNotice}
+          <button
+            className="ml-2 text-yellow-200/60 hover:text-yellow-100"
+            onClick={() => setConsoleNotice(null)}
           >
             dismiss
           </button>

@@ -5,12 +5,13 @@ import { rowActions } from '../../../shared/console-actions'
 import {
   visibleEvents,
   deriveConsoleScope,
+  appendConsoleEvents,
   type ConsoleFilter,
   type ConsoleScope,
   type ConsoleFocus
 } from '../../../shared/console-filter'
 
-const SOURCES: ConsoleSource[] = ['status', 'operator', 'capture', 'guard']
+const SOURCES: ConsoleSource[] = ['status', 'operator', 'capture', 'guard', 'network']
 
 const MIN_HEIGHT = 120
 const MAX_HEIGHT = 600
@@ -40,10 +41,12 @@ export function Console({
 }: ConsoleProps): React.JSX.Element | null {
   const [events, setEvents] = useState<ConsoleEvent[]>([])
   const [sources, setSources] = useState<Set<ConsoleSource>>(new Set())
+  const [muted, setMuted] = useState<Set<ConsoleSource>>(new Set())
   const [scopeMode, setScopeMode] = useState<'auto' | ConsoleScope>('auto')
   const [text, setText] = useState('')
   const [height, setHeight] = useState(DEFAULT_CONSOLE_PREFS.height)
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [previews, setPreviews] = useState<Map<string, string>>(new Map())
   const listRef = useRef<HTMLDivElement>(null)
   const stickToBottom = useRef(true)
   // Guards the persist effect from clobbering disk with defaults before the
@@ -58,7 +61,9 @@ export function Console({
       if (!alive) return
       setHeight(prefs.height)
       setSources(new Set(prefs.sources))
+      setMuted(new Set(prefs.muted))
       setText(prefs.text)
+      setScopeMode(prefs.scope)
       hydrated.current = true
     })
     return () => {
@@ -66,14 +71,21 @@ export function Console({
     }
   }, [])
 
-  // Debounce-persist height/open/sources/text so dragging doesn't hammer disk.
+  // Debounce-persist height/open/sources/text/scope so dragging doesn't hammer disk.
   useEffect(() => {
     if (!hydrated.current) return
     const timer = setTimeout(() => {
-      window.localflow.setConsolePrefs({ height, open, sources: Array.from(sources), text })
+      window.localflow.setConsolePrefs({
+        height,
+        open,
+        sources: Array.from(sources),
+        text,
+        scope: scopeMode,
+        muted: Array.from(muted)
+      })
     }, PERSIST_DEBOUNCE_MS)
     return () => clearTimeout(timer)
-  }, [height, open, sources, text])
+  }, [height, open, sources, text, scopeMode, muted])
 
   // Snapshot on open + live subscription while mounted.
   useEffect(() => {
@@ -82,15 +94,34 @@ export function Console({
     void window.localflow.listConsole().then((snap) => {
       if (alive) setEvents(snap)
     })
-    const off = window.localflow.onConsoleEvent((e) => setEvents((prev) => [...prev, e]))
+    const off = window.localflow.onConsoleEvent((e) =>
+      setEvents((prev) => appendConsoleEvents(prev, Array.isArray(e) ? e : [e]))
+    )
     return () => {
       alive = false
       off()
     }
   }, [open])
 
+  // Lazy thumbnail fetch: only when a capture row with a screenshotPath is
+  // expanded, and only once per path (cached in `previews`).
+  useEffect(() => {
+    if (!expanded) return
+    const row = events.find((e) => e.id === expanded)
+    if (!row || row.detail.source !== 'capture') return
+    const path = row.detail.screenshotPath
+    if (!path || previews.has(path)) return
+    let alive = true
+    void window.localflow.readScreenshot(path).then((uri) => {
+      if (alive && uri) setPreviews((prev) => new Map(prev).set(path, uri))
+    })
+    return () => {
+      alive = false
+    }
+  }, [expanded, events, previews])
+
   const scope: ConsoleScope = scopeMode === 'auto' ? deriveConsoleScope(focus) : scopeMode
-  const filter: ConsoleFilter = { sources, scope, text }
+  const filter: ConsoleFilter = { sources, muted, scope, text }
   const rows = visibleEvents(events, filter)
 
   // Auto-scroll to newest unless the user scrolled up.
@@ -107,6 +138,15 @@ export function Console({
 
   function toggleSource(s: ConsoleSource): void {
     setSources((prev) => {
+      const next = new Set(prev)
+      if (next.has(s)) next.delete(s)
+      else next.add(s)
+      return next
+    })
+  }
+
+  function toggleMute(s: ConsoleSource): void {
+    setMuted((prev) => {
       const next = new Set(prev)
       if (next.has(s)) next.delete(s)
       else next.add(s)
@@ -147,20 +187,38 @@ export function Console({
       <div className="flex items-center gap-2 px-3 py-1.5 text-[12px]">
         <div className="flex gap-1">
           {SOURCES.map((s) => (
-            <button
+            <span
               key={s}
-              data-console-source={s}
-              data-active={sources.size === 0 || sources.has(s)}
-              className={`cursor-pointer rounded border px-1.5 py-0.5 ${
-                sources.size === 0 || sources.has(s)
-                  ? 'border-white/40 text-white'
-                  : 'border-white/10 text-white/40'
+              data-console-chip={s}
+              data-muted={muted.has(s)}
+              className={`inline-flex items-center rounded border ${
+                muted.has(s)
+                  ? 'border-white/10 text-white/25'
+                  : sources.size === 0 || sources.has(s)
+                    ? 'border-white/40 text-white'
+                    : 'border-white/10 text-white/40'
               }`}
-              onClick={() => toggleSource(s)}
-              onMouseDown={(e) => e.preventDefault()}
             >
-              {s}
-            </button>
+              <button
+                data-console-source={s}
+                data-active={sources.size === 0 || sources.has(s)}
+                className={`cursor-pointer bg-transparent px-1.5 py-0.5 ${muted.has(s) ? 'line-through' : ''}`}
+                onClick={() => toggleSource(s)}
+                onMouseDown={(ev) => ev.preventDefault()}
+              >
+                {s}
+              </button>
+              <button
+                data-console-mute={s}
+                aria-label={`${muted.has(s) ? 'unmute' : 'mute'} ${s}`}
+                title={muted.has(s) ? `unmute ${s}` : `mute ${s}`}
+                className="cursor-pointer border-0 border-l border-white/10 bg-transparent px-1 py-0.5 text-white/40 hover:text-white"
+                onClick={() => toggleMute(s)}
+                onMouseDown={(ev) => ev.preventDefault()}
+              >
+                {muted.has(s) ? '🔇' : '×'}
+              </button>
+            </span>
           ))}
         </div>
         <div className="flex items-center gap-1">
@@ -226,6 +284,16 @@ export function Console({
             </button>
             {expanded === e.id && (
               <div className="py-1 pl-16">
+                {e.detail.source === 'capture' &&
+                  e.detail.screenshotPath &&
+                  previews.has(e.detail.screenshotPath) && (
+                    <img
+                      data-console-thumb
+                      src={previews.get(e.detail.screenshotPath)}
+                      alt="screenshot"
+                      className="mb-1 max-h-40 max-w-full rounded border border-white/10"
+                    />
+                  )}
                 <pre data-console-detail className="overflow-x-auto text-white/60">
                   {JSON.stringify(e.detail, null, 2)}
                 </pre>

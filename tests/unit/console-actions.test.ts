@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { rowActions } from '../../src/shared/console-actions'
+import { rowActions, missingWatchpointNotice } from '../../src/shared/console-actions'
 import type { ConsoleEvent } from '../../src/shared/console'
 
 function row(source: ConsoleEvent['source'], detail: ConsoleEvent['detail']): ConsoleEvent {
-  return { id: 'x', ts: 1, source, environment: 1, label: 'l', detail }
+  return { id: 'x', seq: 1, ts: 1, source, environment: 1, label: 'l', detail }
 }
 
 describe('rowActions', () => {
@@ -24,5 +24,16 @@ describe('rowActions', () => {
     expect(rowActions(row('operator', { source: 'operator', action: 'x' }))).toEqual([
       'open-source'
     ])
+  })
+})
+
+describe('missingWatchpointNotice', () => {
+  it('returns null when the watchpoint still exists', () => {
+    expect(missingWatchpointNotice([{ id: 'wp-1' }], 'wp-1')).toBeNull()
+  })
+  it('returns a message when the watchpoint is gone', () => {
+    expect(missingWatchpointNotice([{ id: 'wp-2' }], 'wp-1')).toBe(
+      'watchpoint wp-1 no longer exists'
+    )
   })
 })

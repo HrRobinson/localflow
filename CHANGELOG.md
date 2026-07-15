@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.5.0](https://github.com/HrRobinson/localflow/compare/v1.4.0...v1.5.0) (2026-07-15)
+
+
+### Features
+
+* bottom console activity drawer ([#70](https://github.com/HrRobinson/localflow/issues/70)) ([2311179](https://github.com/HrRobinson/localflow/commit/2311179c78f5c6c37b51a37a71d939d4be54264d))
+* grant openclaw panes on user creation ([#69](https://github.com/HrRobinson/localflow/issues/69)) ([c2f24d7](https://github.com/HrRobinson/localflow/commit/c2f24d724ca081cb3b832c3b1cbc4e6307737246))
+* lfguard guard engine (G1 slice) ([#66](https://github.com/HrRobinson/localflow/issues/66)) ([474c689](https://github.com/HrRobinson/localflow/commit/474c689be273adb9a87fe7b414015d52a8f6a6ec))
+
 ## [1.4.0](https://github.com/HrRobinson/localflow/compare/v1.3.1...v1.4.0) (2026-07-13)
 
 

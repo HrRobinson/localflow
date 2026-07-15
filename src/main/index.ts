@@ -810,6 +810,9 @@ app.whenReady().then(async () => {
   ipcMain.handle('console:getPrefs', () => registry.getConsolePrefs())
   ipcMain.on('console:setPrefs', (_e, prefs: ConsolePrefs) => registry.setConsolePrefs(prefs))
 
+  ipcMain.handle('guard:getPacks', () => registry.getGuardPacks())
+  ipcMain.on('guard:setPacks', (_e, packs: string[]) => registry.setGuardPacks(packs))
+
   createWindow()
 })
 

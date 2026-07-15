@@ -31,6 +31,7 @@ export default function Settings(): React.JSX.Element {
   const [themes, setThemes] = useState<string[]>([])
   const [themeName, setThemeName] = useState<string>('dark')
   const [themeError, setThemeError] = useState<string | null>(null)
+  const [guardPacks, setGuardPacks] = useState<string[]>([])
 
   useEffect(() => {
     let cancelled = false
@@ -48,6 +49,9 @@ export default function Settings(): React.JSX.Element {
         setThemeName(t.name)
         setThemeError(t.error ?? null)
       }
+    })
+    void window.localflow.getGuardPacks().then((p) => {
+      if (!cancelled) setGuardPacks(p)
     })
     return () => {
       cancelled = true
@@ -78,6 +82,13 @@ export default function Settings(): React.JSX.Element {
   const makeDefault = async (agentId: AgentId): Promise<void> => {
     const updated = await window.localflow.setDefaultAgent(agentId)
     if (updated) setAgents(updated)
+  }
+
+  const OPT_IN = ['cloud.gcloud', 'db.postgres'] as const
+  const togglePack = (id: string): void => {
+    const next = guardPacks.includes(id) ? guardPacks.filter((p) => p !== id) : [...guardPacks, id]
+    setGuardPacks(next)
+    window.localflow.setGuardPacks(next)
   }
 
   return (
@@ -219,6 +230,29 @@ export default function Settings(): React.JSX.Element {
           </button>
         </div>
         {themeError && <p className="theme-notice m-0 text-[13px] text-yellow-400">{themeError}</p>}
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h3>Command guard (lfguard)</h3>
+        <p className="text-[12px] opacity-70">
+          Blocks destructive commands agents try to run. Changes apply to newly-launched panes.
+        </p>
+        <label className="flex items-center gap-2 opacity-60">
+          <input type="checkbox" checked disabled /> core.filesystem (always on)
+        </label>
+        <label className="flex items-center gap-2 opacity-60">
+          <input type="checkbox" checked disabled /> core.git (always on)
+        </label>
+        {OPT_IN.map((id) => (
+          <label key={id} className="flex items-center gap-2" data-guard-pack={id}>
+            <input
+              type="checkbox"
+              checked={guardPacks.includes(id)}
+              onChange={() => togglePack(id)}
+            />
+            {id}
+          </label>
+        ))}
       </section>
     </div>
   )

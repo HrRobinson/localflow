@@ -42,8 +42,9 @@ import { WebviewBrowserControl } from './browser-control'
 import { CaptureStore } from './capture-store'
 import { WatchpointRegistry } from './watchpoints'
 import { ConsoleEventBus } from './console-bus'
-import { toStatusEvent, toOperatorEvent, toCaptureEvent } from '../shared/console'
+import { toStatusEvent, toOperatorEvent, toCaptureEvent, toGuardEvent } from '../shared/console'
 import type { ConsolePrefs } from '../shared/console'
+import { startGuardAuditTail } from './guard-audit-tail'
 import type { ActivityEntry, GrantInfo, OperatorStatus } from '../shared/operator'
 import type { Capabilities } from '../shared/git'
 import {
@@ -251,8 +252,18 @@ app.whenReady().then(async () => {
     onCapture: (cap) => consoleBus.emit(toCaptureEvent(cap))
   })
   consoleBus.subscribe((event) => sendToWindow('console:event', event))
+  const stopGuardTail = startGuardAuditTail({
+    path: guardAuditLog,
+    onRecords: (records) => {
+      for (const r of records) {
+        const env = manager.list().find((s) => s.id === r.tag)?.environment ?? 1
+        consoleBus.emit(toGuardEvent(r, env))
+      }
+    }
+  })
   app.on('before-quit', () => {
     control.close()
+    stopGuardTail()
     // The scratch dir only holds handoff assets for live sessions; nothing in
     // it is meaningful across a restart (captures themselves are in-memory).
     captureStore.clear()

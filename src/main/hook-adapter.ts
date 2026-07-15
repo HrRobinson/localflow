@@ -41,9 +41,9 @@ export function buildHookInjection(
         }
       }
     case 'cli-args-full':
-      return { args: buildCodexHookArgs(paneId, port, token, 'full'), env: {} }
+      return { args: buildCodexHookArgs(paneId, port, token, 'full', guard), env: {} }
     case 'cli-args-notify':
-      return { args: buildCodexHookArgs(paneId, port, token, 'notify'), env: {} }
+      return { args: buildCodexHookArgs(paneId, port, token, 'notify', guard), env: {} }
     case 'none':
       return { args: [], env: {} }
   }

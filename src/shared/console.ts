@@ -18,6 +18,7 @@ export type ConsoleDetail =
 
 export interface ConsoleEvent {
   id: string
+  seq: number
   ts: number
   source: ConsoleSource
   environment: number
@@ -26,8 +27,8 @@ export interface ConsoleEvent {
   detail: ConsoleDetail
 }
 
-/** What a mapper returns; the bus assigns id + ts (main-process authority). */
-export type ConsoleEventInput = Omit<ConsoleEvent, 'id' | 'ts'>
+/** What a mapper returns; the bus assigns id + seq + ts (main-process authority). */
+export type ConsoleEventInput = Omit<ConsoleEvent, 'id' | 'ts' | 'seq'>
 
 /** Persisted drawer prefs (height, open state, last filter). */
 export interface ConsolePrefs {

@@ -1,21 +1,39 @@
-import type { ConsoleEvent, ConsoleEventInput } from '../shared/console'
+import type { ConsoleEvent, ConsoleEventInput, ConsoleSource } from '../shared/console'
 
-const DEFAULT_CAP = 500
+const DEFAULT_CAPS: Record<ConsoleSource, number> = {
+  status: 500,
+  operator: 500,
+  capture: 300,
+  network: 2000
+}
+
+type ConsoleSubscriber = (e: ConsoleEvent) => void
 
 export class ConsoleEventBus {
-  private ring: ConsoleEvent[] = []
-  private subs = new Set<(e: ConsoleEvent) => void>()
+  private rings = new Map<ConsoleSource, ConsoleEvent[]>()
+  private subs = new Set<ConsoleSubscriber>()
   private seq = 0
+  private readonly caps: Record<ConsoleSource, number>
 
   constructor(
-    private readonly cap: number = DEFAULT_CAP,
+    caps: Partial<Record<ConsoleSource, number>> = {},
     private readonly now: () => number = Date.now
-  ) {}
+  ) {
+    this.caps = { ...DEFAULT_CAPS, ...caps }
+  }
 
-  emit(input: ConsoleEventInput): ConsoleEvent {
-    const event: ConsoleEvent = { ...input, id: `ce-${++this.seq}`, ts: this.now() }
-    this.ring.push(event)
-    if (this.ring.length > this.cap) this.ring.splice(0, this.ring.length - this.cap)
+  private append(input: ConsoleEventInput): ConsoleEvent {
+    const seq = ++this.seq
+    const event: ConsoleEvent = { ...input, id: `ce-${seq}`, seq, ts: this.now() }
+    const ring = this.rings.get(event.source) ?? []
+    ring.push(event)
+    const cap = this.caps[event.source]
+    if (ring.length > cap) ring.splice(0, ring.length - cap)
+    this.rings.set(event.source, ring)
+    return event
+  }
+
+  private fanOut(event: ConsoleEvent): void {
     for (const sub of this.subs) {
       try {
         sub(event)
@@ -23,14 +41,21 @@ export class ConsoleEventBus {
         console.error('console subscriber threw', err)
       }
     }
+  }
+
+  emit(input: ConsoleEventInput): ConsoleEvent {
+    const event = this.append(input)
+    this.fanOut(event)
     return event
   }
 
   snapshot(): ConsoleEvent[] {
-    return [...this.ring]
+    const all: ConsoleEvent[] = []
+    for (const ring of this.rings.values()) all.push(...ring)
+    return all.sort((a, b) => a.seq - b.seq)
   }
 
-  subscribe(cb: (e: ConsoleEvent) => void): () => void {
+  subscribe(cb: ConsoleSubscriber): () => void {
     this.subs.add(cb)
     return () => {
       this.subs.delete(cb)

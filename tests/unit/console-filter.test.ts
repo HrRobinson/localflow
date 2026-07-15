@@ -14,9 +14,11 @@ function ev(
   label: string,
   sessionId?: string
 ): ConsoleEvent {
+  const n = ++seq
   return {
-    id: `e${++seq}`,
-    ts: seq,
+    id: `e${n}`,
+    seq: n,
+    ts: n,
     source,
     environment,
     sessionId,

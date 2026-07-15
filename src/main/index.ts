@@ -748,6 +748,9 @@ app.whenReady().then(async () => {
     captureStore.list(clampEnvironment(environment))
   )
   ipcMain.handle('console:list', () => consoleBus.snapshot())
+  ipcMain.handle('console:readScreenshot', (_e, path: string) =>
+    typeof path === 'string' ? captureStore.readScreenshotDataUri(path) : null
+  )
   ipcMain.handle('operator:watchpoints', (_e, environment: number) =>
     watchpoints.list(clampEnvironment(environment))
   )

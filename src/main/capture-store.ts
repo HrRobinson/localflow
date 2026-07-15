@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { Capture } from '../shared/operator'
@@ -29,6 +29,21 @@ export class CaptureStore {
     const path = join(this.dirFor(environment), `shot-${randomUUID()}.png`)
     writeFileSync(path, png)
     return path
+  }
+
+  /**
+   * Serve a capture screenshot as a data URI for inline preview. The path
+   * arrives from the renderer, so only files inside this store's own dir are
+   * ever read (same guard pruneScreenshot uses); anything else → null.
+   */
+  readScreenshotDataUri(path: string): string | null {
+    const rel = relative(resolve(this.baseDir), resolve(path))
+    if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) return null
+    try {
+      return `data:image/png;base64,${readFileSync(path).toString('base64')}`
+    } catch {
+      return null
+    }
   }
 
   async ingest(

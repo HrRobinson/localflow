@@ -71,6 +71,16 @@ describe('CaptureStore', () => {
     }
   })
 
+  it('reads a screenshot inside the store as a data uri, rejects paths outside', () => {
+    const store = new CaptureStore(base)
+    const path = store.writeScreenshot(1, Buffer.from([0x89, 0x50, 0x4e, 0x47]))
+    const uri = store.readScreenshotDataUri(path)
+    expect(uri).not.toBeNull()
+    expect(uri!.startsWith('data:image/png;base64,')).toBe(true)
+    expect(store.readScreenshotDataUri('/etc/hosts')).toBeNull()
+    expect(store.readScreenshotDataUri(join(base, 'missing.png'))).toBeNull()
+  })
+
   it('clear removes the whole scratch dir', () => {
     const store = new CaptureStore(base)
     store.writeScreenshot(1, Buffer.from('A'))

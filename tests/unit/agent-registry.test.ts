@@ -399,6 +399,23 @@ describe('console prefs config', () => {
     expect(reg2.getConsolePrefs()).toEqual(prefs)
   })
 
+  it('accepts a persisted "guard" source instead of rejecting it', () => {
+    const file = tmpConfig()
+    writeFileSync(
+      file,
+      JSON.stringify({
+        agentPaths: {},
+        console: { height: 300, open: true, sources: ['guard'], text: '' }
+      })
+    )
+    expect(loadAgentConfig(file).console).toEqual({
+      height: 300,
+      open: true,
+      sources: ['guard'],
+      text: ''
+    })
+  })
+
   it('loadAgentConfig falls back to defaults on a malformed console shape', () => {
     const file = tmpConfig()
     writeFileSync(

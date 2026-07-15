@@ -76,7 +76,7 @@ function parseAgents(raw: unknown): AgentConfig['agents'] | undefined {
   return Object.keys(out).length > 0 ? out : undefined
 }
 
-const CONSOLE_SOURCES: ConsoleSource[] = ['status', 'operator', 'capture', 'network']
+const CONSOLE_SOURCES: ConsoleSource[] = ['status', 'operator', 'capture', 'guard', 'network']
 
 /** Validates the console-prefs shape at the config-file boundary; null on any malformed field. */
 function parseConsolePrefs(raw: unknown): ConsolePrefs | null {

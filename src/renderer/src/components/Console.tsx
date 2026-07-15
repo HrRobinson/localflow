@@ -41,6 +41,7 @@ export function Console({
 }: ConsoleProps): React.JSX.Element | null {
   const [events, setEvents] = useState<ConsoleEvent[]>([])
   const [sources, setSources] = useState<Set<ConsoleSource>>(new Set())
+  const [muted, setMuted] = useState<Set<ConsoleSource>>(new Set())
   const [scopeMode, setScopeMode] = useState<'auto' | ConsoleScope>('auto')
   const [text, setText] = useState('')
   const [height, setHeight] = useState(DEFAULT_CONSOLE_PREFS.height)
@@ -59,6 +60,7 @@ export function Console({
       if (!alive) return
       setHeight(prefs.height)
       setSources(new Set(prefs.sources))
+      setMuted(new Set(prefs.muted))
       setText(prefs.text)
       setScopeMode(prefs.scope)
       hydrated.current = true
@@ -77,11 +79,12 @@ export function Console({
         open,
         sources: Array.from(sources),
         text,
-        scope: scopeMode
+        scope: scopeMode,
+        muted: Array.from(muted)
       })
     }, PERSIST_DEBOUNCE_MS)
     return () => clearTimeout(timer)
-  }, [height, open, sources, text, scopeMode])
+  }, [height, open, sources, text, scopeMode, muted])
 
   // Snapshot on open + live subscription while mounted.
   useEffect(() => {
@@ -100,7 +103,7 @@ export function Console({
   }, [open])
 
   const scope: ConsoleScope = scopeMode === 'auto' ? deriveConsoleScope(focus) : scopeMode
-  const filter: ConsoleFilter = { sources, scope, text }
+  const filter: ConsoleFilter = { sources, muted, scope, text }
   const rows = visibleEvents(events, filter)
 
   // Auto-scroll to newest unless the user scrolled up.

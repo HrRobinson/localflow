@@ -32,7 +32,7 @@ function ev(
 const ALL = new Set<ConsoleSource>()
 const everywhere: ConsoleScope = { kind: 'everywhere' }
 function filter(over: Partial<ConsoleFilter> = {}): ConsoleFilter {
-  return { sources: ALL, scope: everywhere, text: '', ...over }
+  return { sources: ALL, scope: everywhere, text: '', muted: new Set(), ...over }
 }
 
 describe('visibleEvents', () => {
@@ -74,6 +74,13 @@ describe('visibleEvents', () => {
       text: 'stop'
     })
     expect(visibleEvents(events, f).map((e) => e.label)).toEqual(['Stop idle'])
+  })
+
+  it('muted sources are hidden even when the source set is all', () => {
+    const withNet = [...events, ev('network', 1, 'GET 200 · /x')]
+    const f = filter({ muted: new Set<ConsoleSource>(['network']) })
+    expect(visibleEvents(withNet, f).some((e) => e.source === 'network')).toBe(false)
+    expect(visibleEvents(withNet, f).length).toBe(3)
   })
 })
 

@@ -83,7 +83,8 @@ function parseConsoleScope(raw: unknown): 'auto' | ConsoleScope {
     const kind = (raw as { kind?: unknown }).kind
     if (kind === 'everywhere') return { kind: 'everywhere' }
     const env = (raw as { environment?: unknown }).environment
-    if (kind === 'environment' && typeof env === 'number') return { kind: 'environment', environment: env }
+    if (kind === 'environment' && typeof env === 'number')
+      return { kind: 'environment', environment: env }
     const sid = (raw as { sessionId?: unknown }).sessionId
     if (kind === 'session' && typeof sid === 'string') return { kind: 'session', sessionId: sid }
   }
@@ -106,8 +107,15 @@ function parseConsolePrefs(raw: unknown): ConsolePrefs | null {
     open,
     sources: sources as ConsoleSource[],
     text,
-    scope: parseConsoleScope((raw as { scope?: unknown }).scope)
+    scope: parseConsoleScope((raw as { scope?: unknown }).scope),
+    muted: parseMutedSources((raw as { muted?: unknown }).muted)
   }
+}
+
+function parseMutedSources(raw: unknown): ConsoleSource[] {
+  return Array.isArray(raw)
+    ? raw.filter((s): s is ConsoleSource => CONSOLE_SOURCES.includes(s as ConsoleSource))
+    : []
 }
 
 const KNOWN_TOP_LEVEL_KEYS = new Set([

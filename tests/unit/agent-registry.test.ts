@@ -390,7 +390,8 @@ describe('console prefs config', () => {
       open: true,
       sources: ['status', 'capture'],
       text: 'needs-you',
-      scope: 'auto'
+      scope: 'auto',
+      muted: ['operator']
     }
     reg.setConsolePrefs(prefs)
     expect(reg.getConsolePrefs()).toEqual(prefs)
@@ -439,7 +440,10 @@ describe('console prefs config', () => {
     expect(loadAgentConfig(file).console?.scope).toEqual({ kind: 'environment', environment: 2 })
 
     // A v1 blob predating the field loads as 'auto' (no schema break).
-    writeFileSync(file, JSON.stringify({ console: { height: 240, open: false, sources: [], text: '' } }))
+    writeFileSync(
+      file,
+      JSON.stringify({ console: { height: 240, open: false, sources: [], text: '' } })
+    )
     expect(loadAgentConfig(file).console?.scope).toBe('auto')
   })
 
@@ -454,11 +458,40 @@ describe('console prefs config', () => {
       })
     )
     const reg = new AgentRegistry(file, async () => null)
-    reg.setConsolePrefs({ height: 400, open: false, sources: [], text: '', scope: 'auto' })
+    reg.setConsolePrefs({
+      height: 400,
+      open: false,
+      sources: [],
+      text: '',
+      scope: 'auto',
+      muted: []
+    })
     const onDisk = JSON.parse(readFileSync(file, 'utf8'))
     expect(onDisk.agentPaths).toEqual({ codex: '/opt/bin/codex' })
     expect(onDisk.theme).toBe('nord')
     expect(onDisk.myCustomKey).toEqual({ a: 1 })
-    expect(onDisk.console).toEqual({ height: 400, open: false, sources: [], text: '', scope: 'auto' })
+    expect(onDisk.console).toEqual({
+      height: 400,
+      open: false,
+      sources: [],
+      text: '',
+      scope: 'auto',
+      muted: []
+    })
+  })
+
+  it('round-trips console mute and defaults a missing set to empty', () => {
+    const file = tmpConfig()
+    saveAgentConfig(file, {
+      agentPaths: {},
+      console: { ...DEFAULT_CONSOLE_PREFS, muted: ['network'] }
+    })
+    expect(loadAgentConfig(file).console?.muted).toEqual(['network'])
+
+    writeFileSync(
+      file,
+      JSON.stringify({ console: { height: 240, open: false, sources: [], text: '' } })
+    )
+    expect(loadAgentConfig(file).console?.muted).toEqual([])
   })
 })

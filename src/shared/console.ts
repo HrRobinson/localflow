@@ -38,6 +38,7 @@ export interface ConsolePrefs {
   sources: ConsoleSource[]
   text: string
   scope: 'auto' | ConsoleScope
+  muted: ConsoleSource[]
 }
 
 export const DEFAULT_CONSOLE_PREFS: ConsolePrefs = {
@@ -45,7 +46,8 @@ export const DEFAULT_CONSOLE_PREFS: ConsolePrefs = {
   open: false,
   sources: [],
   text: '',
-  scope: 'auto'
+  scope: 'auto',
+  muted: []
 }
 
 export function toStatusEvent(

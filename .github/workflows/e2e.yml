@@ -5,10 +5,12 @@ on:
       [
         'src/**',
         'tests/**',
+        'guard/**',
         'package.json',
         'package-lock.json',
         'electron.vite.config.ts',
-        'playwright.config.ts'
+        'playwright.config.ts',
+        '.github/workflows/e2e.yml'
       ]
   push:
     branches: [main]
@@ -16,10 +18,12 @@ on:
       [
         'src/**',
         'tests/**',
+        'guard/**',
         'package.json',
         'package-lock.json',
         'electron.vite.config.ts',
-        'playwright.config.ts'
+        'playwright.config.ts',
+        '.github/workflows/e2e.yml'
       ]
 
 permissions:
@@ -33,6 +37,11 @@ jobs:
       - uses: actions/setup-node@v6
         with: { node-version: 20, cache: npm }
       - run: npm ci
+      # The guard e2e tests exercise the REAL lfguard binary, which the app
+      # resolves at runtime from guard/target/release/lfguard (unpackaged).
+      # `npm run e2e` builds only the Electron app, so build the Rust binary
+      # first — same step `npm run package` runs in the ci build job.
+      - run: npm run build:guard
       - run: npm run e2e
       - uses: actions/upload-artifact@v7
         if: failure()

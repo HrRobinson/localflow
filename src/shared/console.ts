@@ -2,7 +2,7 @@ import type { ActivityEntry, ActivityEventKind, SessionStatus } from './types'
 import type { ActivityEntry as OperatorActivityEntry, Capture } from './operator'
 
 // 'network' is reserved for v2 (browser-pane CDP). Do NOT produce it in v1.
-export type ConsoleSource = 'status' | 'operator' | 'capture' | 'network'
+export type ConsoleSource = 'status' | 'operator' | 'capture' | 'guard' | 'network'
 
 export type ConsoleDetail =
   | { source: 'status'; kind: ActivityEventKind; status: SessionStatus }
@@ -15,6 +15,7 @@ export type ConsoleDetail =
       screenshotPath?: string
       output?: string[]
     }
+  | { source: 'guard'; command: string; reason: string; pack: string }
 
 export interface ConsoleEvent {
   id: string
@@ -68,6 +69,24 @@ export function toOperatorEvent(
     sessionId: entry.handle,
     label: entry.detail ? `${entry.route} · ${entry.detail}` : entry.route,
     detail: { source: 'operator', action: entry.route, args: entry.detail }
+  }
+}
+
+export interface GuardAuditRecord {
+  ts: number
+  tag: string | null
+  command: string
+  reason: string
+  pack: string
+}
+
+export function toGuardEvent(record: GuardAuditRecord, environment: number): ConsoleEventInput {
+  return {
+    source: 'guard',
+    environment,
+    sessionId: record.tag ?? undefined,
+    label: `blocked: ${record.command}`,
+    detail: { source: 'guard', command: record.command, reason: record.reason, pack: record.pack }
   }
 }
 

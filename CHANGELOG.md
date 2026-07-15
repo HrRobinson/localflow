@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.6.0](https://github.com/HrRobinson/localflow/compare/v1.5.0...v1.6.0) (2026-07-15)
+
+
+### Features
+
+* console v2 network source and previews ([#75](https://github.com/HrRobinson/localflow/issues/75)) ([f4a381d](https://github.com/HrRobinson/localflow/commit/f4a381d6476c864d830d280b59fa8c65bc5f5933))
+* wire lfguard guard into agent hooks ([#73](https://github.com/HrRobinson/localflow/issues/73)) ([a98b966](https://github.com/HrRobinson/localflow/commit/a98b96634158efb40fffbdfa106bd849bf7a78f9))
+
 ## [1.5.0](https://github.com/HrRobinson/localflow/compare/v1.4.0...v1.5.0) (2026-07-15)
 
 

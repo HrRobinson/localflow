@@ -1,5 +1,19 @@
-import { describe, it, expect } from 'vitest'
-import { parseAuditLines } from '../../src/main/guard-audit-tail'
+import { describe, it, expect, vi } from 'vitest'
+import { EventEmitter } from 'node:events'
+import { parseAuditLines, startGuardAuditTail } from '../../src/main/guard-audit-tail'
+
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>()
+  return {
+    ...actual,
+    watch: vi.fn(() => {
+      const fake = new EventEmitter() as unknown as ReturnType<typeof actual.watch>
+      // FSWatcher exposes close(); the tail's stop() calls watcher?.close().
+      Object.assign(fake, { close: () => {} })
+      return fake
+    })
+  }
+})
 
 describe('parseAuditLines', () => {
   it('parses valid JSONL deny records, skips blanks and junk', () => {
@@ -29,5 +43,19 @@ describe('parseAuditLines', () => {
   it('drops records missing required fields', () => {
     const text = JSON.stringify({ ts: 1, command: 'x' }) // no reason/pack
     expect(parseAuditLines(text)).toEqual([])
+  })
+})
+
+describe('startGuardAuditTail', () => {
+  it('survives the watcher emitting an error (fail-open, never crash)', async () => {
+    const { watch } = await import('node:fs')
+    const stop = startGuardAuditTail({
+      path: '/nonexistent/guard-audit-tail-test.log',
+      onRecords: () => {}
+    })
+    const fakeWatcher = vi.mocked(watch).mock.results[0]?.value as EventEmitter
+    expect(fakeWatcher).toBeInstanceOf(EventEmitter)
+    expect(() => fakeWatcher.emit('error', new Error('ENOENT: simulated'))).not.toThrow()
+    stop()
   })
 })

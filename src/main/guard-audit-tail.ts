@@ -71,6 +71,10 @@ export function startGuardAuditTail(opts: AuditTailOptions): () => void {
   const arm = (): void => {
     try {
       watcher = watch(opts.path, () => readNew())
+      // FSWatcher is an EventEmitter; an unhandled 'error' event throws by
+      // default (e.g. on log rotation/deletion on some platforms). Swallow
+      // it to preserve the fail-open, never-crash-main guarantee.
+      watcher.on('error', () => {})
     } catch {
       /* file not present yet; a later arm() retry covers it */
     }

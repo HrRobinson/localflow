@@ -82,7 +82,9 @@ export function Console({
     void window.localflow.listConsole().then((snap) => {
       if (alive) setEvents(snap)
     })
-    const off = window.localflow.onConsoleEvent((e) => setEvents((prev) => [...prev, e]))
+    const off = window.localflow.onConsoleEvent((e) =>
+      setEvents((prev) => [...prev, ...(Array.isArray(e) ? e : [e])])
+    )
     return () => {
       alive = false
       off()

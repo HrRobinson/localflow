@@ -146,8 +146,8 @@ export interface LocalflowApi {
   onOperatorActivity(cb: (environment: number, entry: OperatorActivityEntry) => void): () => void
   /** Snapshot of the console event ring (bottom console drawer). */
   listConsole(): Promise<ConsoleEvent[]>
-  /** New console events pushed as they happen. */
-  onConsoleEvent(cb: (event: ConsoleEvent) => void): () => void
+  /** New console events pushed as they happen (singular from emit, array from emitBatch). */
+  onConsoleEvent(cb: (event: ConsoleEvent | ConsoleEvent[]) => void): () => void
   /** Persisted drawer prefs: height, open state, last filter. */
   getConsolePrefs(): Promise<ConsolePrefs>
   /** Persists drawer prefs (fire-and-forget; debounced by the caller). */

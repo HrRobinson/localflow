@@ -105,7 +105,8 @@ const api: LocalflowApi = {
   },
   listConsole: () => ipcRenderer.invoke('console:list'),
   onConsoleEvent: (cb) => {
-    const listener = (_e: IpcRendererEvent, event: ConsoleEvent): void => cb(event)
+    const listener = (_e: IpcRendererEvent, event: ConsoleEvent | ConsoleEvent[]): void =>
+      cb(event)
     ipcRenderer.on('console:event', listener)
     return () => ipcRenderer.removeListener('console:event', listener)
   },

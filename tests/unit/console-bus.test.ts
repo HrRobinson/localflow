@@ -66,4 +66,22 @@ describe('ConsoleEventBus', () => {
     expect(() => bus.emit(input('a'))).not.toThrow()
     expect(seen).toEqual(['a'])
   })
+
+  it('emitBatch appends all inputs and fans out once with the array', () => {
+    const bus = new ConsoleEventBus()
+    const shapes: number[] = []
+    bus.subscribe((e) => shapes.push(Array.isArray(e) ? e.length : 1))
+    const out = bus.emitBatch([input('a', 'network'), input('b', 'network'), input('c', 'network')])
+    expect(out.map((e) => e.label)).toEqual(['a', 'b', 'c'])
+    expect(bus.snapshot().map((e) => e.label)).toEqual(['a', 'b', 'c'])
+    expect(shapes).toEqual([3])
+  })
+
+  it('emitBatch on an empty array does not fan out', () => {
+    const bus = new ConsoleEventBus()
+    let calls = 0
+    bus.subscribe(() => (calls += 1))
+    expect(bus.emitBatch([])).toEqual([])
+    expect(calls).toBe(0)
+  })
 })

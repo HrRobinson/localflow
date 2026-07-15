@@ -7,7 +7,7 @@ const DEFAULT_CAPS: Record<ConsoleSource, number> = {
   network: 2000
 }
 
-type ConsoleSubscriber = (e: ConsoleEvent) => void
+type ConsoleSubscriber = (e: ConsoleEvent | ConsoleEvent[]) => void
 
 export class ConsoleEventBus {
   private rings = new Map<ConsoleSource, ConsoleEvent[]>()
@@ -33,10 +33,10 @@ export class ConsoleEventBus {
     return event
   }
 
-  private fanOut(event: ConsoleEvent): void {
+  private fanOut(payload: ConsoleEvent | ConsoleEvent[]): void {
     for (const sub of this.subs) {
       try {
-        sub(event)
+        sub(payload)
       } catch (err) {
         console.error('console subscriber threw', err)
       }
@@ -47,6 +47,12 @@ export class ConsoleEventBus {
     const event = this.append(input)
     this.fanOut(event)
     return event
+  }
+
+  emitBatch(inputs: ConsoleEventInput[]): ConsoleEvent[] {
+    const events = inputs.map((i) => this.append(i))
+    if (events.length > 0) this.fanOut(events)
+    return events
   }
 
   snapshot(): ConsoleEvent[] {

@@ -17,6 +17,7 @@ import { SessionManager, type SpawnSpec } from './session-manager'
 import { loadSavedState, saveState } from './persistence'
 import { AgentRegistry, whichViaLoginShell } from './agent-registry'
 import { resolveGuardBinary } from './guard-binary'
+import { makeOperatorGuard } from './operator-guard'
 import { ensureThemesSeeded, listThemeNames, resolveTheme } from './theme-store'
 import { loadOrCreateKeybindings, writeKeybindings } from './keybindings-file'
 import { loadEnvironmentNames } from './environment-names'
@@ -185,6 +186,10 @@ app.whenReady().then(async () => {
   const guardAuditLog = join(userData, 'guard-audit.jsonl')
   const guardProvider = (): import('./guard-hook').ResolvedGuard | null =>
     guardBin ? { bin: guardBin, auditLog: guardAuditLog, packs: registry.getGuardPacks() } : null
+  const operatorGuard = makeOperatorGuard({
+    resolveBinary: () => guardBin, // resolved once at line 180; null when none bundled
+    getPacks: () => registry.getGuardPacks() // AgentRegistry — same source G2 hooks use
+  })
 
   const manager = new SessionManager({
     settingsDir: userData,
@@ -252,7 +257,9 @@ app.whenReady().then(async () => {
     captures: captureStore,
     watchpoints,
     onActivity: pushActivity,
-    onCapture: (cap) => consoleBus.emit(toCaptureEvent(cap))
+    onCapture: (cap) => consoleBus.emit(toCaptureEvent(cap)),
+    guard: operatorGuard,
+    onGuardBlock: (r, env) => consoleBus.emit(toGuardEvent(r, env))
   })
   consoleBus.subscribe((event) => sendToWindow('console:event', event))
   const stopGuardTail = startGuardAuditTail({

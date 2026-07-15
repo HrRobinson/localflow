@@ -5,6 +5,7 @@ import { rowActions } from '../../../shared/console-actions'
 import {
   visibleEvents,
   deriveConsoleScope,
+  appendConsoleEvents,
   type ConsoleFilter,
   type ConsoleScope,
   type ConsoleFocus
@@ -90,7 +91,7 @@ export function Console({
       if (alive) setEvents(snap)
     })
     const off = window.localflow.onConsoleEvent((e) =>
-      setEvents((prev) => [...prev, ...(Array.isArray(e) ? e : [e])])
+      setEvents((prev) => appendConsoleEvents(prev, Array.isArray(e) ? e : [e]))
     )
     return () => {
       alive = false

@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest'
 import {
   visibleEvents,
   deriveConsoleScope,
+  appendConsoleEvents,
+  RENDERER_EVENT_CAP,
   type ConsoleFilter,
   type ConsoleScope
 } from '../../src/shared/console-filter'
@@ -97,5 +99,20 @@ describe('deriveConsoleScope', () => {
     expect(deriveConsoleScope({ view: 'home', enlarged: null, environment: 1 })).toEqual({
       kind: 'everywhere'
     })
+  })
+})
+
+describe('appendConsoleEvents', () => {
+  it('keeps only the last RENDERER_EVENT_CAP events', () => {
+    const seed = Array.from({ length: RENDERER_EVENT_CAP }, (_, i) => ev('status', 1, `s${i}`))
+    const result = appendConsoleEvents(seed, [ev('network', 1, 'newest')])
+    expect(result.length).toBe(RENDERER_EVENT_CAP)
+    expect(result[result.length - 1].label).toBe('newest')
+    expect(result[0].label).toBe('s1')
+  })
+
+  it('leaves a below-cap array untrimmed', () => {
+    const result = appendConsoleEvents([ev('status', 1, 'a')], [ev('status', 1, 'b')])
+    expect(result.map((e) => e.label)).toEqual(['a', 'b'])
   })
 })

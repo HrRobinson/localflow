@@ -44,3 +44,15 @@ export function deriveConsoleScope(focus: ConsoleFocus): ConsoleScope {
   if (focus.view === 'environment') return { kind: 'environment', environment: focus.environment }
   return { kind: 'everywhere' }
 }
+
+export const RENDERER_EVENT_CAP = 3000
+
+/** Renderer live-append: concatenate a batch, keep only the last `cap` (P1.2). */
+export function appendConsoleEvents(
+  prev: ConsoleEvent[],
+  incoming: ConsoleEvent[],
+  cap = RENDERER_EVENT_CAP
+): ConsoleEvent[] {
+  const next = [...prev, ...incoming]
+  return next.length > cap ? next.slice(next.length - cap) : next
+}

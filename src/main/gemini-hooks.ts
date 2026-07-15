@@ -52,7 +52,9 @@ export function buildGeminiHookSettings(
   assertValidPort(port)
   const hooks: Record<string, unknown> = {
     BeforeAgent: [
-      { hooks: [{ type: 'command', command: curlCommand(paneId, port, token, 'UserPromptSubmit') }] }
+      {
+        hooks: [{ type: 'command', command: curlCommand(paneId, port, token, 'UserPromptSubmit') }]
+      }
     ],
     Notification: [
       { hooks: [{ type: 'command', command: notificationCommand(paneId, port, token) }] }
@@ -83,9 +85,13 @@ export function writeGeminiHookSettings(
   assertSafeToken(token, 'token')
   assertValidPort(port)
   const file = join(dir, `localflow-gemini-hooks-${paneId}.json`)
-  writeFileSync(file, JSON.stringify(buildGeminiHookSettings(paneId, port, token, guard), null, 2), {
-    mode: 0o600
-  })
+  writeFileSync(
+    file,
+    JSON.stringify(buildGeminiHookSettings(paneId, port, token, guard), null, 2),
+    {
+      mode: 0o600
+    }
+  )
   return file
 }
 

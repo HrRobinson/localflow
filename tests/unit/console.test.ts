@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { toStatusEvent, toOperatorEvent, toCaptureEvent, toGuardEvent } from '../../src/shared/console'
+import {
+  toStatusEvent,
+  toOperatorEvent,
+  toCaptureEvent,
+  toGuardEvent
+} from '../../src/shared/console'
 import type { ActivityEntry } from '../../src/shared/types'
 import type { ActivityEntry as OperatorActivityEntry, Capture } from '../../src/shared/operator'
 
@@ -54,7 +59,13 @@ describe('console mappers', () => {
 
   it('maps a guard audit record to a guard console event', () => {
     const e = toGuardEvent(
-      { ts: 1, tag: 'pane1', command: 'rm -rf /', reason: 'catastrophic rm', pack: 'core.filesystem' },
+      {
+        ts: 1,
+        tag: 'pane1',
+        command: 'rm -rf /',
+        reason: 'catastrophic rm',
+        pack: 'core.filesystem'
+      },
       3
     )
     expect(e.source).toBe('guard')

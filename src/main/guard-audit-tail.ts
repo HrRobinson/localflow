@@ -22,7 +22,13 @@ export function parseAuditLines(text: string): GuardAuditRecord[] {
       typeof r.pack === 'string' &&
       (r.tag === null || typeof r.tag === 'string')
     ) {
-      out.push({ ts: r.ts, tag: (r.tag as string | null) ?? null, command: r.command, reason: r.reason, pack: r.pack })
+      out.push({
+        ts: r.ts,
+        tag: (r.tag as string | null) ?? null,
+        command: r.command,
+        reason: r.reason,
+        pack: r.pack
+      })
     }
   }
   return out

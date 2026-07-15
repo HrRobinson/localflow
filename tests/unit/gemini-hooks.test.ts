@@ -99,7 +99,9 @@ describe('buildGeminiHookSettings BeforeTool', () => {
   })
 
   it('omits BeforeTool when no guard', () => {
-    const s = buildGeminiHookSettings('pane1', 8080, 'tok', null) as { hooks: Record<string, unknown> }
+    const s = buildGeminiHookSettings('pane1', 8080, 'tok', null) as {
+      hooks: Record<string, unknown>
+    }
     expect(s.hooks.BeforeTool).toBeUndefined()
   })
 

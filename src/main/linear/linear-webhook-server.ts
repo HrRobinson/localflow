@@ -63,6 +63,10 @@ function sha256(input: Buffer): Buffer {
  */
 export function verifyLinearSignature(rawBody: Buffer, provided: unknown, secret: string): boolean {
   if (typeof provided !== 'string' || provided.length === 0) return false
+  // An empty signing secret makes the HMAC forgeable by anyone who knows the
+  // body — refuse it outright rather than "verify" against nothing (the secret
+  // is keychain-sourced and non-empty by construction, but guard the boundary).
+  if (secret.length === 0) return false
   const expected = createHmac('sha256', secret).update(rawBody).digest()
   const providedBuf = Buffer.from(provided, 'hex')
   return timingSafeEqual(sha256(expected), sha256(providedBuf))

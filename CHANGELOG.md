@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0](https://github.com/HrRobinson/localflow/compare/v1.6.0...v1.7.0) (2026-07-16)
+
+
+### Features
+
+* guard operator prompt writes (lfguard G2 gap) ([#76](https://github.com/HrRobinson/localflow/issues/76)) ([c8129f3](https://github.com/HrRobinson/localflow/commit/c8129f3d01b851cba1e440d57d41e043e7922c02))
+
 ## [1.6.0](https://github.com/HrRobinson/localflow/compare/v1.5.0...v1.6.0) (2026-07-15)
 
 

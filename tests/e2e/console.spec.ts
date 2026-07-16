@@ -489,6 +489,18 @@ test('network source: a browser pane page load fills the drawer with network row
   const win = await app.firstWindow()
   await expect(win.locator('.new-session')).toBeVisible()
 
+  // Open the drawer BEFORE the browser pane exists and steals keyboard
+  // focus. Console.tsx renders unconditionally alongside the view switcher
+  // (not nested under a `view === 'environment'` branch), so it stays
+  // mounted across the Environment switch below — but Meta+/ only reaches
+  // the app's window-level keydown handler while focus is still in the host
+  // document. Once `.browser-view` mounts, focus lands inside the
+  // <webview>'s guest process, which swallows every keypress before
+  // openConsoleDrawer's retry loop can land one (the flake this ordering
+  // sidesteps, rather than fighting from inside the webview).
+  const drawer = await openConsoleDrawer(win)
+  const networkRows = drawer.locator('[data-console-row][data-source="network"]')
+
   const pane = await win.evaluate(
     (u) =>
       (
@@ -502,9 +514,6 @@ test('network source: a browser pane page load fills the drawer with network row
   // environment grid (operator.spec.ts's pattern) — switch there first.
   await win.getByRole('button', { name: 'Environment', exact: true }).click()
   await expect(win.locator(`[data-pane-id="${pane!.id}"] .browser-view`)).toBeVisible()
-
-  const drawer = await openConsoleDrawer(win)
-  const networkRows = drawer.locator('[data-console-row][data-source="network"]')
 
   // The CDP debugger + Network.enable attach on the guest's `dom-ready`,
   // which fires only once the webview mounts into the environment grid —

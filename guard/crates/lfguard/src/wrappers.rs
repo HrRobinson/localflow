@@ -18,9 +18,10 @@
 //! `sudo` (skipping leading `VAR=val` assignments and its own options,
 //! including arg-taking ones like `-u root`/`--user root`/`--user=root`),
 //! `time` (`-p` and GNU `-o`/`-f` value options), and the positional-skip
-//! wrappers `timeout` (options + one duration positional), `chroot` (options
-//! + one NEWROOT positional), and `flock` (options + one lockfile positional,
-//! prefix form only). Full-path invocations (`/usr/bin/time`) are recognized.
+//! wrappers `timeout` (options then one duration positional), `chroot`
+//! (options then one NEWROOT positional), and `flock` (options then one
+//! lockfile positional, prefix form only). Full-path invocations
+//! (`/usr/bin/time`) are recognized.
 //!
 //! Two more wrappers are handled *elsewhere*, not as transparent prefixes:
 //! `su -c '…'` and `watch …` route through `crate::payload` and the engine's

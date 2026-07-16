@@ -73,3 +73,61 @@ describe('startGuardSeenWatch (mocked fs)', () => {
     vi.resetModules()
   })
 })
+
+describe('startGuardSeenWatch (self-heals dropped fs.watch events)', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.doUnmock('node:fs')
+    vi.resetModules()
+  })
+
+  it('sweeps the dir on each poll tick and reports a marker the watch callback missed', async () => {
+    vi.resetModules()
+    vi.useFakeTimers()
+    const fakeWatcher = new EventEmitter() as unknown as EventEmitter & { close: () => void }
+    fakeWatcher.close = () => {}
+    let entries: string[] = []
+    const readdirSync = vi.fn(() => entries)
+    vi.doMock('node:fs', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('node:fs')>()
+      // watch() never invokes its callback here, simulating an fs.watch event
+      // the OS silently dropped/coalesced.
+      return { ...actual, watch: vi.fn(() => fakeWatcher), mkdirSync: vi.fn(), readdirSync }
+    })
+    const { startGuardSeenWatch: start } = await import('../../src/main/guard-seen-watch')
+    const seen: string[] = []
+    const stop = start({ dir: '/whatever', onSeen: (tag) => seen.push(tag) })
+
+    // Marker lands on disk, but the fs.watch callback is never fired.
+    entries = ['pane-dropped']
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(seen).toEqual(['pane-dropped'])
+
+    // Marker is still present on the next tick; already reported, so the
+    // sweep must not invoke onSeen again for it.
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(seen).toEqual(['pane-dropped'])
+
+    stop()
+  })
+
+  it('a missing/unreadable dir during the sweep is fail-open (no throw)', async () => {
+    vi.resetModules()
+    vi.useFakeTimers()
+    const fakeWatcher = new EventEmitter() as unknown as EventEmitter & { close: () => void }
+    fakeWatcher.close = () => {}
+    const readdirSync = vi.fn(() => {
+      throw new Error('ENOENT: simulated')
+    })
+    vi.doMock('node:fs', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('node:fs')>()
+      return { ...actual, watch: vi.fn(() => fakeWatcher), mkdirSync: vi.fn(), readdirSync }
+    })
+    const { startGuardSeenWatch: start } = await import('../../src/main/guard-seen-watch')
+    const seen: string[] = []
+    const stop = start({ dir: '/whatever', onSeen: (tag) => seen.push(tag) })
+    await expect(vi.advanceTimersByTimeAsync(1000)).resolves.not.toThrow()
+    expect(seen).toEqual([])
+    stop()
+  })
+})

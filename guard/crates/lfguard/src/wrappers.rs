@@ -141,13 +141,21 @@ pub fn unwrap_transparent_prefix(seg: &[Word]) -> &[Word] {
                 );
             }
             "chroot" => {
-                // `chroot [OPTIONS] NEWROOT [CMD]` — GNU chroot's options are
-                // all attached long forms (`--userspec=`, `--groups=`,
-                // `--skip-chdir`), so none take a separate value token; then
-                // exactly one NEWROOT positional precedes the command. (A
-                // recursive wipe of the chroot's own root is still the
-                // catastrophe class we block — see the design's DECISION 5.)
-                rest = skip_options_then_positionals(rest, &[], &[], 1, None);
+                // `chroot [OPTIONS] NEWROOT [CMD]` — GNU chroot's `--userspec`
+                // and `--groups` accept their value either attached
+                // (`--userspec=root:root`) or as a separate following token
+                // (`--userspec root:root`); BSD/macOS chroot additionally has
+                // short value options `-u`/`-g`/`-G`/`-U`. Then exactly one
+                // NEWROOT positional precedes the command. (A recursive wipe
+                // of the chroot's own root is still the catastrophe class we
+                // block — see the design's DECISION 5.)
+                rest = skip_options_then_positionals(
+                    rest,
+                    &['u', 'g', 'G', 'U'],
+                    &["userspec", "groups"],
+                    1,
+                    None,
+                );
             }
             "flock" => {
                 // `flock [OPTIONS] <LOCKFILE|DIR|FD> CMD` (the dominant prefix
@@ -658,6 +666,80 @@ mod tests {
         );
         // NEWROOT only, no command -> nothing to judge.
         assert!(unwrap_transparent_prefix(&[w("chroot"), w("/mnt")]).is_empty());
+    }
+
+    #[test]
+    fn unwraps_chroot_separate_value_long_options() {
+        // GNU `--userspec VALUE` / `--groups VALUE` in separate-token form.
+        assert_eq!(
+            texts(unwrap_transparent_prefix(&[
+                w("chroot"),
+                w("--userspec"),
+                w("root:root"),
+                w("/mnt"),
+                w("rm"),
+                w("-rf"),
+                w("/")
+            ])),
+            vec!["rm", "-rf", "/"]
+        );
+        assert_eq!(
+            texts(unwrap_transparent_prefix(&[
+                w("chroot"),
+                w("--groups"),
+                w("wheel"),
+                w("/mnt"),
+                w("rm"),
+                w("-rf"),
+                w("/")
+            ])),
+            vec!["rm", "-rf", "/"]
+        );
+    }
+
+    #[test]
+    fn unwraps_chroot_bsd_short_value_options() {
+        // BSD/macOS chroot short value options: -u, -g, -G, -U.
+        for flag in ["-u", "-g", "-G", "-U"] {
+            let seg = vec![
+                w("chroot"),
+                w(flag),
+                w("root"),
+                w("/mnt"),
+                w("rm"),
+                w("-rf"),
+                w("/"),
+            ];
+            assert_eq!(
+                texts(unwrap_transparent_prefix(&seg)),
+                vec!["rm", "-rf", "/"],
+                "flag {flag}"
+            );
+        }
+    }
+
+    #[test]
+    fn chroot_separate_value_options_benign_still_allow_shaped() {
+        assert_eq!(
+            texts(unwrap_transparent_prefix(&[
+                w("chroot"),
+                w("--userspec"),
+                w("root:root"),
+                w("/mnt"),
+                w("ls")
+            ])),
+            vec!["ls"]
+        );
+        assert_eq!(
+            texts(unwrap_transparent_prefix(&[
+                w("chroot"),
+                w("-u"),
+                w("root"),
+                w("/mnt"),
+                w("ls")
+            ])),
+            vec!["ls"]
+        );
     }
 
     #[test]

@@ -133,6 +133,36 @@ fn chroot_benign_still_allows() {
     assert_all_allow(&default_engine(), &["chroot /mnt/root ls", "chroot /mnt"]);
 }
 
+// I-1: chroot separate-value options (`--userspec VALUE`, `--groups VALUE`,
+// and BSD short forms `-u`/`-g`/`-G`/`-U`) previously bypassed unwrapping
+// because the value token was left in place and misread as NEWROOT.
+#[test]
+fn chroot_separate_value_options_bypass_now_denies() {
+    assert_all_deny(
+        &default_engine(),
+        &[
+            "chroot --userspec root:root /mnt rm -rf /",
+            "chroot --groups wheel /mnt rm -rf /",
+            "chroot -u root /mnt rm -rf /",
+            "chroot -g wheel /mnt rm -rf /",
+            "chroot -G wheel /mnt rm -rf /",
+            "chroot -U root /mnt rm -rf /",
+        ],
+    );
+}
+
+#[test]
+fn chroot_separate_value_options_benign_still_allows() {
+    assert_all_allow(
+        &default_engine(),
+        &[
+            "chroot --userspec root:root /mnt ls",
+            "chroot --groups wheel /mnt ls",
+            "chroot -u root /mnt ls",
+        ],
+    );
+}
+
 // ---- flock ---------------------------------------------------------------
 
 #[test]

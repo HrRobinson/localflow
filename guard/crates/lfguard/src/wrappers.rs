@@ -160,6 +160,87 @@ fn skip_sudo_options(mut rest: &[Word]) -> &[Word] {
     }
 }
 
+/// Skip a wrapper's leading options and then up to `positionals` operand
+/// tokens, returning the slice starting at the effective wrapped command.
+///
+/// Shared by the positional-skip wrappers (`timeout`, `chroot`, `flock`) and
+/// the pure option-skip case (`time`, with `positionals = 0`). The option
+/// phase consumes `-`-prefixed tokens, taking a *separate* following value
+/// token for the listed value-taking short (`value_shorts`) and long
+/// (`value_longs`) options; attached forms (`-w5`, `--timeout=5`) are a single
+/// token and need no special casing. A bare `--` ends the option phase; a
+/// bare `-` is treated as the start of the operands. The positional phase then
+/// consumes up to `positionals` non-option tokens, each gated by the optional
+/// `positional_shape` predicate — if a slot's token fails the predicate it is
+/// *not* skipped and the phase stops (used for `timeout`'s duration-shape
+/// guard, the sole theoretical false-positive path for a positional skip).
+///
+/// Bounded by `rest`'s length: every branch consumes at least one token.
+fn skip_options_then_positionals<'a>(
+    mut rest: &'a [Word],
+    value_shorts: &[char],
+    value_longs: &[&str],
+    positionals: usize,
+    positional_shape: Option<fn(&str) -> bool>,
+) -> &'a [Word] {
+    // Option phase.
+    loop {
+        let Some(w) = rest.first() else { return rest };
+        let tok = w.text.as_str();
+
+        if tok == "--" {
+            // End of options: the operands (and then the command) follow.
+            rest = &rest[1..];
+            break;
+        }
+        if let Some(long) = tok.strip_prefix("--") {
+            // `long` is non-empty (bare "--" handled above).
+            let name = long.split('=').next().unwrap_or(long);
+            if long.contains('=') || !value_longs.contains(&name) {
+                // Attached value (`--timeout=5`) or a boolean/unrecognized
+                // long flag: one token either way.
+                rest = &rest[1..];
+            } else {
+                // `--timeout 5`: consume the flag and its separate value.
+                rest = &rest[1..];
+                if !rest.is_empty() {
+                    rest = &rest[1..];
+                }
+            }
+            continue;
+        }
+        if let Some(short) = tok.strip_prefix('-') {
+            if short.is_empty() {
+                break; // bare "-": start of operands, not an option.
+            }
+            let first = short.chars().next().unwrap();
+            rest = &rest[1..];
+            if short.len() == 1 && value_shorts.contains(&first) {
+                // `-w 5`: the value is a separate token. Bundled booleans and
+                // attached values (`-w5`) are the single token already
+                // consumed above.
+                if !rest.is_empty() {
+                    rest = &rest[1..];
+                }
+            }
+            continue;
+        }
+        break; // not an option: the operands begin here.
+    }
+
+    // Positional phase: skip up to `positionals` operand tokens.
+    for _ in 0..positionals {
+        let Some(w) = rest.first() else { break };
+        if let Some(pred) = positional_shape {
+            if !pred(&w.text) {
+                break; // shape guard: leave a non-matching token in place.
+            }
+        }
+        rest = &rest[1..];
+    }
+    rest
+}
+
 /// True if `tok` looks like a `NAME=value` shell-assignment word (`env`'s
 /// leading-assignment syntax), not merely any token containing `=`.
 fn is_env_assignment(tok: &str) -> bool {
@@ -173,6 +254,30 @@ fn is_env_assignment(tok: &str) -> bool {
                 .unwrap_or(false)
                 && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
         }
+    }
+}
+
+/// True if `tok` looks like a GNU `timeout` DURATION: an integer or decimal
+/// with an optional `s`/`m`/`h`/`d` unit suffix (`300`, `5s`, `1.5h`).
+/// Matches `^\d+(\.\d+)?[smhd]?$`. Used as `timeout`'s positional-shape guard
+/// so a malformed `timeout rm …` (no duration) never skips a real command
+/// word — the sole theoretical false-positive path for a positional skip.
+fn is_duration_shape(tok: &str) -> bool {
+    let body = match tok.chars().last() {
+        Some(c @ ('s' | 'm' | 'h' | 'd')) => &tok[..tok.len() - c.len_utf8()],
+        _ => tok,
+    };
+    if body.is_empty() {
+        return false;
+    }
+    let mut parts = body.splitn(2, '.');
+    let int = parts.next().unwrap_or("");
+    if int.is_empty() || !int.chars().all(|c| c.is_ascii_digit()) {
+        return false;
+    }
+    match parts.next() {
+        None => true,
+        Some(frac) => !frac.is_empty() && frac.chars().all(|c| c.is_ascii_digit()),
     }
 }
 
@@ -197,6 +302,99 @@ mod tests {
 
     fn texts(seg: &[Word]) -> Vec<&str> {
         seg.iter().map(|w| w.text.as_str()).collect()
+    }
+
+    #[test]
+    fn helper_skips_boolean_options_only() {
+        let seg = vec![w("-x"), w("-n"), w("rm"), w("-rf"), w("/")];
+        assert_eq!(
+            texts(skip_options_then_positionals(&seg, &[], &[], 0, None)),
+            vec!["rm", "-rf", "/"]
+        );
+    }
+
+    #[test]
+    fn helper_skips_value_taking_short_separate() {
+        let seg = vec![w("-w"), w("5"), w("cmd")];
+        assert_eq!(
+            texts(skip_options_then_positionals(&seg, &['w'], &[], 0, None)),
+            vec!["cmd"]
+        );
+    }
+
+    #[test]
+    fn helper_attached_short_value_is_one_token() {
+        let seg = vec![w("-w5"), w("cmd")];
+        assert_eq!(
+            texts(skip_options_then_positionals(&seg, &['w'], &[], 0, None)),
+            vec!["cmd"]
+        );
+    }
+
+    #[test]
+    fn helper_skips_value_taking_long_separate_and_attached() {
+        let sep = vec![w("--timeout"), w("5"), w("cmd")];
+        assert_eq!(
+            texts(skip_options_then_positionals(&sep, &[], &["timeout"], 0, None)),
+            vec!["cmd"]
+        );
+        let att = vec![w("--timeout=5"), w("cmd")];
+        assert_eq!(
+            texts(skip_options_then_positionals(&att, &[], &["timeout"], 0, None)),
+            vec!["cmd"]
+        );
+    }
+
+    #[test]
+    fn helper_double_dash_ends_options() {
+        let seg = vec![w("-x"), w("--"), w("cmd"), w("-rf")];
+        assert_eq!(
+            texts(skip_options_then_positionals(&seg, &[], &[], 0, None)),
+            vec!["cmd", "-rf"]
+        );
+    }
+
+    #[test]
+    fn helper_skips_one_positional() {
+        let seg = vec![w("-x"), w("/tmp/lock"), w("rm"), w("-rf"), w("/")];
+        assert_eq!(
+            texts(skip_options_then_positionals(&seg, &[], &[], 1, None)),
+            vec!["rm", "-rf", "/"]
+        );
+    }
+
+    #[test]
+    fn helper_positional_shape_guard_leaves_non_matching_token() {
+        // A positional that fails the shape predicate is NOT skipped.
+        let seg = vec![w("rm"), w("-rf"), w("/")];
+        assert_eq!(
+            texts(skip_options_then_positionals(
+                &seg,
+                &[],
+                &[],
+                1,
+                Some(is_duration_shape)
+            )),
+            vec!["rm", "-rf", "/"]
+        );
+        // A matching one is skipped.
+        let seg = vec![w("300"), w("rm"), w("-rf"), w("/")];
+        assert_eq!(
+            texts(skip_options_then_positionals(
+                &seg,
+                &[],
+                &[],
+                1,
+                Some(is_duration_shape)
+            )),
+            vec!["rm", "-rf", "/"]
+        );
+    }
+
+    #[test]
+    fn helper_no_command_after_options_yields_empty() {
+        let seg = vec![w("-x"), w("-n")];
+        assert!(skip_options_then_positionals(&seg, &[], &[], 0, None).is_empty());
     }
 
     #[test]

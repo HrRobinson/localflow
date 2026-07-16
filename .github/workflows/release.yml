@@ -35,6 +35,13 @@ jobs:
       - uses: actions/setup-node@v6
         with: { node-version: 20, cache: npm }
       - run: npm ci
+      # The guard binary is bundled via electron-builder's extraResources
+      # (electron-builder.yml) from guard/target/release/lfguard, which only
+      # `npm run build:guard` (cargo build) produces — `npm run build` alone
+      # (electron-vite) does not. Without this step electron-builder logs a
+      # non-fatal "file source doesn't exist" warning and ships with no
+      # guard binary, silently disabling the command guard in production.
+      - run: npm run build:guard
       # Both mac architectures from the one arm64 runner: electron-builder
       # rebuilds native deps (node-pty) per target arch, and macOS clang
       # cross-compiles x64 on arm64. Artifact names stay distinct — the
@@ -56,6 +63,9 @@ jobs:
         with: { node-version: 20, cache: npm }
       - run: sudo apt-get update && sudo apt-get install -y build-essential python3
       - run: npm ci
+      # See the mac-artifacts job above: build:guard produces the lfguard
+      # binary that electron-builder's extraResources step bundles.
+      - run: npm run build:guard
       - run: npm run build && npx electron-builder --linux --publish never
       - run: gh release upload "$TAG" dist/*.AppImage dist/*.deb --clobber
         env:

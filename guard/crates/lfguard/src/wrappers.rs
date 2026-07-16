@@ -66,12 +66,19 @@ pub fn unwrap_transparent_prefix(seg: &[Word]) -> &[Word] {
         let Some(head) = rest.first() else {
             return rest;
         };
-        let name = head.text.to_ascii_lowercase();
-        if !TRANSPARENT_PREFIXES.contains(&name.as_str()) {
+        // Strip any leading directory (`/usr/bin/time` -> `time`) and
+        // case-fold before matching — the same canonicalization
+        // `normalize::build_argv` applies to argv[0], but done here because
+        // unwrapping runs on the raw segment *before* that normalization.
+        // Skip-only, so this can only ever catch more, never manufacture a
+        // false positive.
+        let lowered = head.text.to_ascii_lowercase();
+        let name = strip_program_dir(&lowered);
+        if !TRANSPARENT_PREFIXES.contains(&name) {
             return rest;
         }
         rest = &rest[1..];
-        match name.as_str() {
+        match name {
             "env" => {
                 // `env FOO=bar -i rm -rf /` — skip leading assignments and
                 // env's own flags to reach the real command.
@@ -304,6 +311,16 @@ fn is_env_assignment(tok: &str) -> bool {
     }
 }
 
+/// Strip a leading directory from a program token (`/usr/bin/time` ->
+/// `time`, `time` -> `time`). Mirrors `normalize::strip_program_dir`, applied
+/// here so a full-path wrapper invocation is recognized before matching.
+fn strip_program_dir(program: &str) -> &str {
+    match program.rfind('/') {
+        Some(idx) => &program[idx + 1..],
+        None => program,
+    }
+}
+
 /// True if `tok` looks like a GNU `timeout` DURATION: an integer or decimal
 /// with an optional `s`/`m`/`h`/`d` unit suffix (`300`, `5s`, `1.5h`).
 /// Matches `^\d+(\.\d+)?[smhd]?$`. Used as `timeout`'s positional-shape guard
@@ -484,6 +501,35 @@ mod tests {
             texts(unwrap_transparent_prefix(&[
                 w("time"),
                 w("--output=out.txt"),
+                w("rm"),
+                w("-rf"),
+                w("/")
+            ])),
+            vec!["rm", "-rf", "/"]
+        );
+    }
+
+    #[test]
+    fn unwraps_full_path_wrappers() {
+        // Full-path invocation must be recognized the same as the bare name.
+        assert_eq!(
+            texts(unwrap_transparent_prefix(&[
+                w("/usr/bin/time"),
+                w("-v"),
+                w("rm"),
+                w("-rf"),
+                w("/")
+            ])),
+            vec!["rm", "-rf", "/"]
+        );
+        assert_eq!(
+            texts(unwrap_transparent_prefix(&[w("/usr/bin/sudo"), w("rm"), w("-rf"), w("/")])),
+            vec!["rm", "-rf", "/"]
+        );
+        assert_eq!(
+            texts(unwrap_transparent_prefix(&[
+                w("/usr/bin/timeout"),
+                w("5"),
                 w("rm"),
                 w("-rf"),
                 w("/")

@@ -37,11 +37,21 @@ jobs:
       - run: npm ci
       # The guard binary is bundled via electron-builder's extraResources
       # (electron-builder.yml) from guard/target/release/lfguard, which only
-      # `npm run build:guard` (cargo build) produces — `npm run build` alone
-      # (electron-vite) does not. Without this step electron-builder logs a
+      # a cargo build produces — `npm run build` alone (electron-vite) does
+      # not. Without a binary at that path electron-builder logs a
       # non-fatal "file source doesn't exist" warning and ships with no
       # guard binary, silently disabling the command guard in production.
-      - run: npm run build:guard
+      #
+      # This runner is arm64 and builds BOTH mac dmgs (see the comment
+      # below), but a plain `npm run build:guard` only produces a
+      # host-arch (arm64) binary — the x64 dmg would silently ship an
+      # arm64 lfguard that can't execute on Intel Macs, failing the guard
+      # open on every x64 install. Build both Apple targets and `lipo`
+      # them into one universal binary at the same path electron-builder
+      # already expects, so both dmgs get a binary that runs natively.
+      - run: rustup target add x86_64-apple-darwin aarch64-apple-darwin
+      - run: cargo build --release --manifest-path guard/Cargo.toml --target x86_64-apple-darwin --target aarch64-apple-darwin
+      - run: lipo -create -output guard/target/release/lfguard guard/target/x86_64-apple-darwin/release/lfguard guard/target/aarch64-apple-darwin/release/lfguard
       # Both mac architectures from the one arm64 runner: electron-builder
       # rebuilds native deps (node-pty) per target arch, and macOS clang
       # cross-compiles x64 on arm64. Artifact names stay distinct — the

@@ -12,13 +12,13 @@ import type { ResolvedGuard } from '../../src/main/guard-hook'
 
 class FakePty implements PtyLike {
   dataCb: ((d: string) => void) | null = null
-  exitCb: ((exitCode: number, signal?: number) => void) | null = null
+  exitCb: ((exitCode?: number, signal?: number) => void) | null = null
   written: string[] = []
   killed = false
   onData(cb: (d: string) => void): void {
     this.dataCb = cb
   }
-  onExit(cb: (exitCode: number, signal?: number) => void): void {
+  onExit(cb: (exitCode?: number, signal?: number) => void): void {
     this.exitCb = cb
   }
   write(d: string): void {

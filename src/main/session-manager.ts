@@ -21,8 +21,10 @@ import { ANSI_RE, extractPeekLines } from './peek'
 export interface PtyLike {
   onData(cb: (d: string) => void): void
   /** node-pty's real exit payload — carried through so instant-exit messages
-   * can name the actual exit code/signal instead of going silent on it. */
-  onExit(cb: (exitCode: number, signal?: number) => void): void
+   * can name the actual exit code/signal instead of going silent on it.
+   * Both params are optional so test doubles can invoke the callback with
+   * zero args (a bare "it exited" signal) without a synthetic exit code. */
+  onExit(cb: (exitCode?: number, signal?: number) => void): void
   write(d: string): void
   resize(cols: number, rows: number): void
   kill(): void
@@ -450,15 +452,20 @@ export class SessionManager {
       // "No conversation found" when --continue has nothing to resume).
       if (!rec.info.message && this.now() - rec.spawnedAt < INSTANT_EXIT_MS) {
         const tail = rec.tail.replace(ANSI_RE, '').replace(/\s+/g, ' ').trim().slice(-160)
-        const code = `exit code ${exitCode}${signal ? `, signal ${signal}` : ''}`
+        // exitCode is optional on the callback type (test doubles may fire
+        // a bare 0-arg exit) — node-pty itself always supplies a real
+        // number, so 'unknown' only ever shows up from a synthetic test
+        // exit, never in production.
+        const code = `exit code ${exitCode ?? 'unknown'}${signal ? `, signal ${signal}` : ''}`
         // The "failed to start" claim is only warranted when the evidence
         // actually supports it: a nonzero exit with no signal. A signal
         // means node-pty saw a process that WAS running get killed
-        // (SIGKILL/OOM, SIGSEGV, ...), and a clean exitCode 0 isn't a
-        // failure at all (e.g. an agent that validates a flag and exits
-        // 0) — asserting a cause in either case would contradict the very
+        // (SIGKILL/OOM, SIGSEGV, ...), a clean exitCode 0 isn't a failure at
+        // all (e.g. an agent that validates a flag and exits 0), and a
+        // missing exitCode is simply no evidence at all — asserting a cause
+        // in any of those cases would contradict (or outrun) the very
         // evidence shown alongside it, so stay neutral instead.
-        const impliesLaunchFailure = !signal && exitCode !== 0
+        const impliesLaunchFailure = !signal && exitCode !== undefined && exitCode !== 0
         rec.info.message = tail
           ? `Exited right away (${code}) — last output: \u201c${tail}\u201d`
           : impliesLaunchFailure

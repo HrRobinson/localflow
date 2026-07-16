@@ -265,12 +265,22 @@ One pass, dcg-inspired, each stage cheap before the expensive one:
   prefix baked into each pack's own deny patterns — which only matched a
   bare `sudo <cmd>`; any option in between bypassed every pack (fixed by
   this unwrapping; the old regex prefixes remain in pack files as harmless
-  dead weight). **Not unwrapped**, and explicitly out of scope for this
-  slice: `xargs`, `timeout`, `watch`, `time`, `chroot`, `su -c`, `flock`,
-  and similar wrappers that change execution semantics (batching,
-  deferral, a sub-environment) rather than merely passing the command
-  through unchanged. A destructive command wrapped in one of these still
-  evades every rule today.
+  dead weight). **Update (2026-07-16 wrapper-hardening slice):** `time`,
+  `timeout`, `chroot`, and `flock` (prefix form) are now unwrapped too — via
+  a shared option-skip-plus-N-positional helper — and `su -c '…'` and
+  `watch …` are recursed through the inline-payload path (`su` deliberately
+  is *not* a transparent prefix: its first operand is a username, so
+  `su rm`/`su root` stay ALLOW; the wrapped command is only ever the `-c`
+  string). Full-path invocations (`/usr/bin/time`) are recognized. So
+  `timeout 300 rm -rf /`, `time rm -rf /`, `chroot /mnt rm -rf /`,
+  `flock /tmp/lock rm -rf /`, `su -c 'rm -rf /'`, and `watch rm -rf /` are
+  all caught now. See `docs/superpowers/specs/2026-07-16-lfguard-wrapper-hardening-design.md`.
+  **Still not unwrapped, accepted limitations:** `xargs` (its catastrophic
+  operand arrives on stdin from the producer — `find / | xargs rm -rf` — and
+  is invisible to any static scan; unwrapping it would catch almost nothing
+  the packs can act on) and the `flock … -c 'STRING'` sub-form (rarer; the
+  `-c` interleaves after the positional and is a small follow-up). A
+  destructive command hidden in one of those two still evades every rule.
 - **Substitution recursion now covers every `$(...)`/`` `...` `` the lexer
   recognizes as one, in any position — not just the shapes a real shell
   evaluates eagerly on their own in command position.** Originally (G1

@@ -11,16 +11,27 @@
 //! harmless dead weight now that unwrapping is authoritative — it only ever
 //! matches the `sudo <cmd>` shape unwrapping already peels off.)
 //!
-//! Handled: `command`, `env` (skipping leading `VAR=val` assignments and
+//! Handled here (transparent prefixes, returning a sub-slice of the same
+//! segment): `command`, `env` (skipping leading `VAR=val` assignments and
 //! flags), `nohup`, `nice` (skipping an optional `-n VALUE` or `-VALUE`
 //! niceness flag), `stdbuf`, `ionice` (skipping leading `-`-prefixed flags),
 //! `sudo` (skipping leading `VAR=val` assignments and its own options,
-//! including arg-taking ones like `-u root`/`--user root`/`--user=root`).
+//! including arg-taking ones like `-u root`/`--user root`/`--user=root`),
+//! `time` (`-p` and GNU `-o`/`-f` value options), and the positional-skip
+//! wrappers `timeout` (options + one duration positional), `chroot` (options
+//! + one NEWROOT positional), and `flock` (options + one lockfile positional,
+//! prefix form only). Full-path invocations (`/usr/bin/time`) are recognized.
 //!
-//! Deliberately not exhaustive — a broader class of wrapper commands change
-//! or defer execution in ways this module does not attempt to unwrap:
-//! `xargs`, `timeout`, `watch`, `time`, `chroot`, `su -c`, `flock`, and
-//! similar. See the design doc's "Known limitations".
+//! Two more wrappers are handled *elsewhere*, not as transparent prefixes:
+//! `su -c '…'` and `watch …` route through `crate::payload` and the engine's
+//! inline-payload recursion, because the wrapped command is a string the
+//! shell re-parses rather than a leading sub-slice (and `su`'s first operand
+//! is a username, which a blind prefix-skip would misread).
+//!
+//! Deliberately not exhaustive — two documented gaps remain: `xargs` (its
+//! catastrophic operand arrives on stdin from the producer, invisible to a
+//! static scan) and the `flock … -c 'STRING'` sub-form. See the design doc's
+//! "Known limitations".
 
 use crate::lexer::Word;
 

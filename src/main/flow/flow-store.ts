@@ -1,14 +1,20 @@
 import { readFileSync, writeFileSync, renameSync } from 'node:fs'
 import type { FlowGraph } from '../../shared/flows'
-import { parseFlowGraphResult } from './flow-model'
+import { isFlowGraph } from '../../shared/flows'
 
 /**
  * Persistence for `flows.json` — the flow definitions, stored config-as-code in
- * userData. Every flow is validated through `parseFlowGraph` at the READ
- * boundary (the `persistence.ts` / `loadSavedState` discipline): an invalid
- * flow is DISABLED with a loud, specific notice naming the offending field, and
- * the valid flows still load. A corrupt file loads empty with a notice. Reads
- * and writes never throw.
+ * userData. Every flow is validated at the READ boundary (the `persistence.ts`
+ * / `loadSavedState` discipline), but LENIENTLY: the STRUCTURAL check
+ * (`isFlowGraph`) is all that gates loading, so a draft with semantic warnings
+ * (an unreachable-from-trigger node, a missing trigger, …) still loads and
+ * stays listed/editable — drafts save freely and round-trip, per the spec.
+ * Only a genuinely malformed (non-`FlowGraph`-shaped) entry is DISABLED with a
+ * loud, specific notice. The STRICT semantic gate (`parseFlowGraphResult`,
+ * exactly-one-trigger / full reachability / known integration ids) is applied
+ * at RUN time instead (`FlowEngine.run` / `FlowEngine.start`), not here — see
+ * flow-engine.ts. A corrupt file loads empty with a notice. Reads and writes
+ * never throw.
  */
 
 export type SaveFlowsResult = { ok: true } | { ok: false; error: string }
@@ -54,9 +60,14 @@ export function loadFlows(file: string): LoadedFlows {
   const flows: FlowGraph[] = []
   const notices: string[] = []
   for (const rawFlow of list) {
-    const res = parseFlowGraphResult(rawFlow)
-    if (res.ok) flows.push(res.flow)
-    else notices.push(`Flow disabled — ${res.error}. Fix flows.json.`)
+    if (isFlowGraph(rawFlow)) {
+      flows.push(rawFlow)
+      continue
+    }
+    const id = isObject(rawFlow) && typeof rawFlow.id === 'string' ? rawFlow.id : 'unknown'
+    notices.push(
+      `Flow '${id}' disabled — malformed (an unknown node type, a non-object config, or an arrow pointing at a missing node). Fix flows.json.`
+    )
   }
   return { flows, notices }
 }

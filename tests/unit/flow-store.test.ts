@@ -61,6 +61,31 @@ describe('flow-store', () => {
     expect(res.notices[0]).toMatch(/disabled/i)
   })
 
+  it('loads a draft with an unreachable-from-trigger node — structurally valid drafts round-trip', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'lf-fs-'))
+    const file = join(dir, 'flows.json')
+    const draft: FlowGraph = {
+      id: 'draft',
+      name: 'Draft',
+      nodes: [
+        {
+          id: 't',
+          type: 'trigger',
+          integration: 'email',
+          ref: 'inbound',
+          config: {},
+          position: { x: 0, y: 0 }
+        },
+        { id: 'orphan', type: 'agent', ref: 'claude', config: {}, position: { x: 1, y: 0 } }
+      ],
+      edges: [] // 'orphan' has no inbound edge from the trigger — a warning, not an error
+    }
+    writeFileSync(file, JSON.stringify({ flows: [draft] }))
+    const res = loadFlows(file)
+    expect(res.flows.map((f) => f.id)).toEqual(['draft'])
+    expect(res.notices).toEqual([])
+  })
+
   it('a corrupt flows.json loads empty with a notice, never throws', () => {
     const dir = mkdtempSync(join(tmpdir(), 'lf-fs-'))
     const file = join(dir, 'flows.json')

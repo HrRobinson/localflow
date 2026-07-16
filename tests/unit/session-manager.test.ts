@@ -693,6 +693,48 @@ describe('SessionManager', () => {
   })
 
   describe('per-agent spawn overrides', () => {
+    it('a fresh (create) openclaw session launches with `chat`, extraArgs after', () => {
+      const calls: { args: string[] }[] = []
+      const spawnFn: SpawnFn = (_bin, args) => {
+        calls.push({ args })
+        return new FakePty()
+      }
+      const m = new SessionManager({
+        settingsDir: mkdtempSync(join(tmpdir(), 'localflow-oc-fresh-')),
+        port: 1,
+        token: 't',
+        spawnFn
+      })
+      const spec: SpawnSpec = {
+        agentId: 'openclaw',
+        command: 'fake-openclaw',
+        resumeArgs: [],
+        startArgs: ['chat'],
+        hookAdapter: 'none',
+        extraArgs: ['--verbose']
+      }
+      m.create('/tmp', spec, 1)
+      expect(calls[0].args).toEqual(['chat', '--verbose'])
+    })
+
+    it('a fresh session with no startArgs launches with no preset args', () => {
+      const calls: { args: string[] }[] = []
+      const spawnFn: SpawnFn = (_bin, args) => {
+        calls.push({ args })
+        return new FakePty()
+      }
+      const m = new SessionManager({
+        settingsDir: mkdtempSync(join(tmpdir(), 'localflow-custom-fresh-')),
+        port: 1,
+        token: 't',
+        spawnFn
+      })
+      // noAdapterSpec has no hook adapter (no injected args) and no
+      // startArgs, so a fresh launch should carry no args at all.
+      m.create('/tmp', noAdapterSpec, 1)
+      expect(calls[0].args).toEqual([])
+    })
+
     it('appends extraArgs after resume args and merges env last', () => {
       const calls: { args: string[]; env: NodeJS.ProcessEnv }[] = []
       const spawnFn: SpawnFn = (_bin, args, opts) => {

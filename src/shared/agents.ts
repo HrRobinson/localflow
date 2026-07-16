@@ -14,6 +14,14 @@ export interface AgentPreset {
   /** Args appended when resuming a dead session in the same folder. */
   resumeArgs: string[]
   /**
+   * Args appended on a fresh (non-resume) launch, before any
+   * user-configured Settings extra args. Omitted (implicitly `[]`) for
+   * every preset except openclaw: `openclaw` with no subcommand just
+   * prints help and exits, so a fresh session must default to `chat` to
+   * open a working operator TUI.
+   */
+  startArgs?: string[]
+  /**
    * Which hook-injection mechanism/tier localflow uses for this agent's
    * status feed. 'cli-args-notify' (not the optimistic 'cli-args-full')
    * is Codex's shipped default — see
@@ -50,6 +58,7 @@ export const AGENT_PRESETS: AgentPreset[] = [
     label: 'OpenClaw',
     bin: 'openclaw',
     resumeArgs: [],
+    startArgs: ['chat'],
     hookAdapter: 'none'
   },
   {

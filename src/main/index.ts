@@ -256,6 +256,7 @@ app.whenReady().then(async () => {
     agentId,
     command: registry.commandFor(agentId, customCommand),
     resumeArgs: registry.argsFor(agentId, true),
+    startArgs: registry.argsFor(agentId, false),
     hookAdapter: registry.hookAdapter(agentId),
     extraArgs: registry.extraArgsFor(agentId),
     env: registry.envFor(agentId)

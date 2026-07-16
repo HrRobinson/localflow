@@ -301,7 +301,7 @@ export class AgentRegistry {
   }
 
   argsFor(agentId: AgentId, resume: boolean): string[] {
-    if (!resume) return []
+    if (!resume) return presetFor(agentId)?.startArgs ?? []
     return presetFor(agentId)?.resumeArgs ?? []
   }
 

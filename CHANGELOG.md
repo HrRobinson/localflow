@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.8.0](https://github.com/HrRobinson/localflow/compare/v1.7.0...v1.8.0) (2026-07-16)
+
+
+### Features
+
+* console v2 hardening (per-source caps) ([#84](https://github.com/HrRobinson/localflow/issues/84)) ([a3ef90c](https://github.com/HrRobinson/localflow/commit/a3ef90cf932e5e50b70c56f5006120738f81e719))
+* lfguard unwraps timeout/su/watch/etc ([#85](https://github.com/HrRobinson/localflow/issues/85)) ([da65afd](https://github.com/HrRobinson/localflow/commit/da65afd9bf303802780a53bde60b419091917acd))
+
 ## [1.7.0](https://github.com/HrRobinson/localflow/compare/v1.6.0...v1.7.0) (2026-07-16)
 
 

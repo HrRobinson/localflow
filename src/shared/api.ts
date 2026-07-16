@@ -5,6 +5,7 @@ import type {
   AgentInfo,
   AgentOverride,
   AgentOverrideResult,
+  AgentPathTypedResult,
   GuardPacksResult,
   LastAgent,
   SessionGroup,
@@ -119,10 +120,14 @@ export interface LocalflowApi {
   /**
    * Sets an agent binary's path from typed/pasted text instead of the
    * picker (only surfaced in the UI when allowTypedPaths is on). Validated
-   * as a non-empty absolute (or `~`-prefixed) path; null on rejection or an
-   * unknown/'custom' agentId. Returns the refreshed list, like setAgentPath.
+   * as a non-empty absolute (or `~`-prefixed) path; `{ok:false, reason}`
+   * when main's authoritative `expandTypedPath` rejects a value the
+   * renderer's looser pre-check accepted (e.g. `~otheruser/proj`), so the
+   * caller can surface why instead of silently doing nothing. Null only for
+   * a malformed call (unknown/'custom' agentId, non-string path) — a caller
+   * bug, not a user-facing rejection.
    */
-  setAgentPathTyped(agentId: AgentId, path: string): Promise<AgentInfo[] | null>
+  setAgentPathTyped(agentId: AgentId, path: string): Promise<AgentPathTypedResult | null>
   /** Sets the launcher's default agent; returns the refreshed list. */
   setDefaultAgent(agentId: AgentId): Promise<AgentInfo[] | null>
   /**

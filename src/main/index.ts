@@ -9,6 +9,7 @@ import {
   type AgentId,
   type AgentOverride,
   type AgentOverrideResult,
+  type AgentPathTypedResult,
   type GuardPacksResult,
   type SessionInfo
 } from '../shared/types'
@@ -1009,14 +1010,29 @@ app.whenReady().then(async () => {
     registry.setPath(agentId, result.filePaths[0])
     return registry.list()
   })
-  ipcMain.handle('agents:setPathTyped', async (_e, agentId: AgentId, path: string) => {
-    if (!VALID_AGENTS.includes(agentId) || agentId === 'custom') return null
-    if (typeof path !== 'string') return null
-    const expanded = expandTypedPath(path, homedir())
-    if (!expanded) return null
-    registry.setPath(agentId, expanded)
-    return registry.list()
-  })
+  ipcMain.handle(
+    'agents:setPathTyped',
+    async (_e, agentId: AgentId, path: string): Promise<AgentPathTypedResult | null> => {
+      if (!VALID_AGENTS.includes(agentId) || agentId === 'custom') return null
+      if (typeof path !== 'string') return null
+      const expanded = expandTypedPath(path, homedir())
+      if (!expanded) {
+        // The renderer's looksLikeTypedPath is a looser syntactic pre-check
+        // (it enables the "Use path" button); this authoritative check can
+        // still reject something it accepted — e.g. ~otheruser/proj (no
+        // portable way to resolve another user's home) or a typo missing
+        // the leading / or ~. Name the real reason instead of returning
+        // null and leaving the renderer to silently do nothing.
+        return {
+          ok: false,
+          reason:
+            "That isn't a valid absolute path — use /… or ~/… (another user's ~ isn't supported)."
+        }
+      }
+      registry.setPath(agentId, expanded)
+      return { ok: true, agents: await registry.list() }
+    }
+  )
   ipcMain.handle('operator:grant', (_e, environment: number): GrantInfo => {
     const env = clampEnvironment(environment)
     const token = grantOperator(env)

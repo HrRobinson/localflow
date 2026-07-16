@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { AgentId, AgentInfo } from '../../../shared/types'
 import { looksLikeTypedPath } from '../../../shared/paths'
+import { applyTypedPathResult } from './settingsLogic'
 import KeybindingsEditor from './KeybindingsEditor'
 
 const card =
@@ -38,6 +39,11 @@ export default function Settings(): React.JSX.Element {
   // Per-agent typed-path input drafts (Paths section, opt-in). Controlled so
   // the "Use path" button can be disabled until the draft looks like a path.
   const [typedPathDrafts, setTypedPathDrafts] = useState<Partial<Record<AgentId, string>>>({})
+  // Main's authoritative expandTypedPath check rejected a draft the
+  // renderer's looser looksLikeTypedPath pre-check accepted (e.g.
+  // ~otheruser/proj, a typo) — the reason surfaces here instead of the
+  // "Use path" click silently doing nothing.
+  const [typedPathErrors, setTypedPathErrors] = useState<Partial<Record<AgentId, string>>>({})
 
   useEffect(() => {
     let cancelled = false
@@ -75,11 +81,13 @@ export default function Settings(): React.JSX.Element {
   const setPathTyped = async (agentId: AgentId): Promise<void> => {
     const draft = typedPathDrafts[agentId] ?? ''
     if (!looksLikeTypedPath(draft)) return
-    const updated = await window.localflow.setAgentPathTyped(agentId, draft)
-    if (updated) {
-      setAgents(updated)
-      setTypedPathDrafts((prev) => ({ ...prev, [agentId]: '' }))
-    }
+    const result = await window.localflow.setAgentPathTyped(agentId, draft)
+    const applied = applyTypedPathResult(result)
+    if (applied.agents) setAgents(applied.agents)
+    // Keep the draft in place on rejection so the user can fix it in place,
+    // rather than clearing (or leaving stuck-but-unexplained) input.
+    setTypedPathErrors((prev) => ({ ...prev, [agentId]: applied.error ?? undefined }))
+    if (applied.clearDraft) setTypedPathDrafts((prev) => ({ ...prev, [agentId]: '' }))
   }
 
   const toggleAllowTypedPaths = (): void => {
@@ -201,26 +209,38 @@ export default function Settings(): React.JSX.Element {
                 </button>
               </div>
               {allowTypedPaths && (
-                <div className="flex items-center gap-2">
-                  <input
-                    className="agent-path-typed bg-surface min-w-0 flex-1 rounded-md border border-white/[0.14] px-2.5 py-1.5 font-mono text-[11px] text-gray-200 outline-none focus:border-white/40"
-                    placeholder="e.g. ~/.volta/bin/openclaw"
-                    value={typedPathDrafts[agent.id] ?? ''}
-                    onChange={(e) =>
-                      setTypedPathDrafts((prev) => ({ ...prev, [agent.id]: e.target.value }))
-                    }
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') void setPathTyped(agent.id)
-                    }}
-                  />
-                  <button
-                    className={`${rowBtn} disabled:cursor-default disabled:opacity-[0.45]`}
-                    disabled={!looksLikeTypedPath(typedPathDrafts[agent.id] ?? '')}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => void setPathTyped(agent.id)}
-                  >
-                    Use path
-                  </button>
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2">
+                    <input
+                      className="agent-path-typed bg-surface min-w-0 flex-1 rounded-md border border-white/[0.14] px-2.5 py-1.5 font-mono text-[11px] text-gray-200 outline-none focus:border-white/40"
+                      placeholder="e.g. ~/.volta/bin/openclaw"
+                      value={typedPathDrafts[agent.id] ?? ''}
+                      onChange={(e) => {
+                        const value = e.target.value
+                        setTypedPathDrafts((prev) => ({ ...prev, [agent.id]: value }))
+                        // Editing after a rejection clears the stale error —
+                        // it re-appears (with a fresh reason, if any) only
+                        // after the next "Use path" attempt.
+                        setTypedPathErrors((prev) => ({ ...prev, [agent.id]: undefined }))
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') void setPathTyped(agent.id)
+                      }}
+                    />
+                    <button
+                      className={`${rowBtn} disabled:cursor-default disabled:opacity-[0.45]`}
+                      disabled={!looksLikeTypedPath(typedPathDrafts[agent.id] ?? '')}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => void setPathTyped(agent.id)}
+                    >
+                      Use path
+                    </button>
+                  </div>
+                  {typedPathErrors[agent.id] && (
+                    <p className="agent-path-typed-error m-0 text-[11px] text-red-400">
+                      {typedPathErrors[agent.id]}
+                    </p>
+                  )}
                 </div>
               )}
               <label className="flex items-center gap-2 text-[12px] text-gray-400">

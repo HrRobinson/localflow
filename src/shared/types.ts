@@ -183,3 +183,13 @@ export type AgentOverrideResult =
  * isn't.
  */
 export type GuardPacksResult = { ok: true; packs: string[] } | { ok: false; reason: string }
+
+/**
+ * Result of an `agents:setPathTyped` write (mirrors `GuardPacksResult`): the
+ * renderer's `looksLikeTypedPath` is a cheap syntactic pre-check (enables the
+ * "Use path" button), but main's `expandTypedPath` is authoritative and can
+ * still reject a value the renderer accepted (e.g. `~otheruser/proj`, a
+ * typo) — that reason must reach the user instead of the call silently
+ * doing nothing.
+ */
+export type AgentPathTypedResult = { ok: true; agents: AgentInfo[] } | { ok: false; reason: string }

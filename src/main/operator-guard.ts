@@ -37,7 +37,9 @@ const defaultRunner: GuardRunner = (bin, args, opts) =>
           return resolve({ code: null, stderr: stderr ?? '', timedOut: true })
         }
         // On a normal non-zero exit, `err.code` is the numeric exit code.
-        // On a spawn failure (ENOENT, EACCES) it is a string errno → treat as null.
+        // On a spawn failure (ENOENT, EACCES, or E2BIG/ENAMETOOLONG when the
+        // command exceeds the OS ARG_MAX) it is a string errno, not a numeric
+        // exit code → treat as null, which makes the guard fail open (allow).
         const code = typeof err.code === 'number' ? err.code : null
         return resolve({ code, stderr: stderr ?? '', timedOut: false })
       }

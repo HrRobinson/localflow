@@ -132,6 +132,13 @@ describe('makeOperatorGuard', () => {
     expect(calls[0].timeout).toBe(2000)
   })
 
+  it('forwards a non-default timeoutMs to the runner', async () => {
+    const { runner, calls } = fakeRunner({ code: 0, stderr: '', timedOut: false })
+    const g = makeOperatorGuard({ ...base, runner, timeoutMs: 500 })
+    await g.check('ls')
+    expect(calls[0].timeout).toBe(500)
+  })
+
   it('fails open if the runner itself throws', async () => {
     const runner: GuardRunner = async () => {
       throw new Error('boom')

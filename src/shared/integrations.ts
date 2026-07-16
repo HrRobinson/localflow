@@ -1,9 +1,9 @@
 /**
  * Integrations Hub — the pinned cross-project contract (sub-project #1 of the
  * visual-flows pilot). This file is the SOLE authority for the
- * `IntegrationDescriptor` / `IntegrationRegistry` shapes; sub-project #2 (Flow
- * Engine) and #3 (Flow Canvas) reconcile against it. No I/O — shared by main
- * and renderer.
+ * `IntegrationDescriptor` / `IntegrationRegistry` shapes; the Flow Engine (#2)
+ * and Flow Canvas (#3) reconcile against it. No I/O — shared by main and
+ * renderer.
  */
 
 // ── Pinned contract (verbatim; #2/#3 consume these names) ────────────────────
@@ -24,12 +24,18 @@ export interface IntegrationDescriptor {
   configFields: IntegrationConfigField[]
   triggers: { id: string; label: string }[]
   actions: { id: string; label: string }[]
-  status(): 'connected' | 'needs-config' | 'error'
+  status(): IntegrationStatus
 }
 
 export interface IntegrationRegistry {
   descriptors(): IntegrationDescriptor[]
   get(id: IntegrationId): IntegrationDescriptor | undefined
+  /**
+   * Invoke an integration action. **Failure convention:** an action signals
+   * failure by REJECTING the returned promise (throwing) — a resolved promise
+   * (any value, including `undefined`) is treated as success by the engine's
+   * action-runner. This matches the pinned `invokeAction(): Promise<unknown>`.
+   */
   invokeAction(
     id: IntegrationId,
     actionId: string,
@@ -40,8 +46,13 @@ export interface IntegrationRegistry {
 
 // ── Additions this sub-project owns (internal + UI DTOs) ─────────────────────
 
-/** The synchronous presence-derived state the pinned `status()` returns. */
-export type IntegrationStatus = 'connected' | 'needs-config' | 'error'
+/**
+ * The synchronous presence-derived state the pinned `status()` returns.
+ * `'disabled'` = a config entry exists for the integration but is not enabled;
+ * the engine refuses any non-`'connected'` integration, so opt-in is
+ * enforceable (a configured-but-disabled integration is NOT `'connected'`).
+ */
+export type IntegrationStatus = 'connected' | 'needs-config' | 'error' | 'disabled'
 
 /** Stable order for `descriptors()` / the tabs — the contract 2/3 rely on. */
 export const INTEGRATION_IDS: readonly IntegrationId[] = ['linear', 'email', 'cloud']
@@ -118,6 +129,26 @@ export type SetFieldResult = { ok: true; view: IntegrationView } | { ok: false; 
 
 /** setSecret returns presence-derived status only — the value is inbound-only. */
 export type SetSecretResult =
-  { ok: true; status: IntegrationStatus } | { ok: false; reason: string }
+  | { ok: true; status: IntegrationStatus }
+  | { ok: false; reason: string }
 
 export type ClearSecretResult = { ok: true; view: IntegrationView } | { ok: false; reason: string }
+
+// ── Canvas transport shape (#3) — a resolved descriptor over IPC ─────────────
+
+/**
+ * `status()` is a method on the descriptor (§8), but a method cannot survive
+ * structured-clone across the IPC boundary. The renderer therefore receives the
+ * descriptor with `status` already RESOLVED to a value at fetch time. Both
+ * `flow-palette.ts` and `flow-validate.ts` accept this resolved shape.
+ */
+export type ResolvedIntegrationDescriptor = Omit<IntegrationDescriptor, 'status'> & {
+  status: IntegrationStatus
+}
+
+/** Resolve each descriptor's `status()` method to a plain value for transport. */
+export function resolveDescriptors(
+  descriptors: IntegrationDescriptor[]
+): ResolvedIntegrationDescriptor[] {
+  return descriptors.map(({ status, ...rest }) => ({ ...rest, status: status() }))
+}

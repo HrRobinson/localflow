@@ -20,6 +20,9 @@ import { runAgent } from './node-runners/agent-runner'
 import { runGate } from './node-runners/gate-runner'
 import { runRouter } from './node-runners/router-runner'
 import { subscribeTriggers, type SeedEvent } from './trigger-subscriber'
+import { parseFlowGraphResult } from './flow-model'
+
+export type RunFlowResult = { ok: true; runId: string } | { ok: false; error: string }
 
 export interface FlowEngineDeps {
   flows: FlowGraph[]
@@ -64,13 +67,38 @@ export class FlowEngine {
 
   constructor(private deps: FlowEngineDeps) {}
 
-  /** Subscribes trigger streams for every enabled flow. Opt-in: with the flows
-   *  block disabled the engine never starts (localflow's no-config guarantee). */
+  /** Subscribes trigger streams for every enabled, RUNNABLE flow. Opt-in: with
+   *  the flows block disabled the engine never starts (localflow's no-config
+   *  guarantee). Listing/editing is lenient (a draft with an unreachable node,
+   *  a missing trigger, etc. still loads and stays editable — flow-store.ts),
+   *  but going LIVE is the strict gate: a flow that fails the STRICT
+   *  `parseFlowGraphResult` here is skipped — it stays listed/editable, it
+   *  just never subscribes, so it can't silently misfire. */
   start(): void {
     if (!this.deps.config.enabled || this.unsubscribe) return
-    this.unsubscribe = subscribeTriggers(this.deps.registry, this.deps.flows, (flow, event) =>
+    const runnable = this.deps.flows.filter((flow) => {
+      const res = parseFlowGraphResult(flow)
+      if (!res.ok) {
+        console.warn(`flow-engine: not subscribing '${flow.id}' — ${res.error}`)
+        return false
+      }
+      return true
+    })
+    this.unsubscribe = subscribeTriggers(this.deps.registry, runnable, (flow, event) =>
       this.startRun(flow, event)
     )
+  }
+
+  /** The single strict RUN-TIME gate: validates `graph` through the STRICT
+   *  parser and starts a run only if it passes. Nothing is dispatched for an
+   *  unrunnable graph — the caller (the `flow:run` IPC handler) gets back a
+   *  legible, actionable reason instead. */
+  run(graph: FlowGraph, event: SeedEvent): RunFlowResult {
+    const res = parseFlowGraphResult(graph)
+    if (!res.ok) {
+      return { ok: false, error: `Can't run this flow — ${res.error}. Fix it in the builder.` }
+    }
+    return { ok: true, runId: this.startRun(res.flow, event) }
   }
 
   stop(): void {

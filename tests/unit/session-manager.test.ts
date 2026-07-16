@@ -119,11 +119,35 @@ describe('SessionManager', () => {
     expect(mgr.list().find((s) => s.id === info.id)?.message).toContain('Exited right away')
   })
 
+  it('instant exit with a clean exit code and no output stays neutral (no failure claim)', () => {
+    // exitCode 0, no signal, no output: nothing in the evidence supports a
+    // "binary failed to start" claim (e.g. an agent that validates a flag
+    // and exits 0) — the message must not assert a cause it can't back up.
+    const info = mgr.create('/p', claudeSpec, 1)
+    ptys[0].exitCb?.(0)
+    const msg = mgr.list().find((s) => s.id === info.id)?.message
+    expect(msg).toContain('exit code 0')
+    expect(msg).not.toContain('failed to start')
+    expect(msg).not.toContain('Settings')
+  })
+
   it('instant exit with no output names the real exit code and the command', () => {
     const info = mgr.create('/p', claudeSpec, 1)
     ptys[0].exitCb?.(127)
     const msg = mgr.list().find((s) => s.id === info.id)?.message
     expect(msg).toContain('exit code 127')
+    expect(msg).toContain('fake-claude')
+    expect(msg).toContain('Settings')
+  })
+
+  it('instant exit with a nonzero exit code, no signal, and no output blames the binary', () => {
+    // The one shape the evidence actually supports: a nonzero exit, no
+    // signal, and nothing printed — a real launch/binary failure.
+    const info = mgr.create('/p', claudeSpec, 1)
+    ptys[0].exitCb?.(1)
+    const msg = mgr.list().find((s) => s.id === info.id)?.message
+    expect(msg).toContain('exit code 1')
+    expect(msg).toContain('failed to start')
     expect(msg).toContain('fake-claude')
     expect(msg).toContain('Settings')
   })
@@ -134,6 +158,17 @@ describe('SessionManager', () => {
     const msg = mgr.list().find((s) => s.id === info.id)?.message
     expect(msg).toContain('exit code 0')
     expect(msg).toContain('signal 9')
+  })
+
+  it('instant exit with a signal present stays neutral (no failure claim)', () => {
+    // node-pty only reports a signal for a process that WAS running and got
+    // killed (SIGKILL/OOM, SIGSEGV, ...) — "failed to start" would
+    // contradict that evidence, so the message must stay neutral.
+    const info = mgr.create('/p', claudeSpec, 1)
+    ptys[0].exitCb?.(0, 9)
+    const msg = mgr.list().find((s) => s.id === info.id)?.message
+    expect(msg).not.toContain('failed to start')
+    expect(msg).not.toContain('Settings')
   })
 
   it('instant exit with output names the exit code alongside the last output', () => {

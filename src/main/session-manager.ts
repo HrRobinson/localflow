@@ -444,10 +444,20 @@ export class SessionManager {
       if (!rec.info.message && this.now() - rec.spawnedAt < INSTANT_EXIT_MS) {
         const tail = rec.tail.replace(ANSI_RE, '').replace(/\s+/g, ' ').trim().slice(-160)
         const code = `exit code ${exitCode}${signal ? `, signal ${signal}` : ''}`
+        // The "failed to start" claim is only warranted when the evidence
+        // actually supports it: a nonzero exit with no signal. A signal
+        // means node-pty saw a process that WAS running get killed
+        // (SIGKILL/OOM, SIGSEGV, ...), and a clean exitCode 0 isn't a
+        // failure at all (e.g. an agent that validates a flag and exits
+        // 0) — asserting a cause in either case would contradict the very
+        // evidence shown alongside it, so stay neutral instead.
+        const impliesLaunchFailure = !signal && exitCode !== 0
         rec.info.message = tail
           ? `Exited right away (${code}) — last output: \u201c${tail}\u201d`
-          : `Exited right away (${code}) with no output — likely the agent binary failed ` +
-            `to start. Check '${spec.command}' in Settings → Agents.`
+          : impliesLaunchFailure
+            ? `Exited right away (${code}) with no output — likely the agent binary failed ` +
+              `to start. Check '${spec.command}' in Settings → Agents.`
+            : `Exited right away (${code}) with no output.`
         // Only a resume attempt that died instantly implicates the resumed
         // conversation itself — a fresh start's instant exit is some other
         // launch failure and must not steer the user away from resuming.

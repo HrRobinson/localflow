@@ -52,6 +52,36 @@ export function formatApprovalAudit(record: ApprovalAuditRecord): string {
 }
 
 /**
+ * Redact token-/credential-shaped substrings from a free-text error message so
+ * no secret can ride out through an error we throw (§6, §9). Deliberately mirrors
+ * the token-shape families the never-send secret-scan test asserts against, so a
+ * message that would trip that scan is scrubbed here first.
+ */
+function scrubSecretShapes(text: string): string {
+  return text
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer <redacted>')
+    .replace(/ya29\.[A-Za-z0-9._-]+/g, '<redacted>')
+    .replace(
+      /\b(access_token|refresh_token|client_secret|id_token)\b\s*[=:]\s*"?[A-Za-z0-9._~+/=-]+"?/gi,
+      '$1=<redacted>'
+    )
+    .replace(/\b[A-Za-z0-9_-]{40,}\b/g, '<redacted>')
+}
+
+/**
+ * Reduce an underlying send failure to a SAFE cause: its human-useful message
+ * with any token-/credential-shaped material scrubbed, wrapped in a fresh Error.
+ * We deliberately do NOT attach the raw error — a provider/HTTP error can carry
+ * `Authorization: Bearer …` headers, the request config, or token fields on
+ * `.config` / `.response`, none of which may ride out through `cause` (§6). The
+ * real, legible error text survives; only the secret shapes are redacted.
+ */
+function toSafeCause(err: unknown): Error {
+  const raw = err instanceof Error ? err.message : String(err)
+  return new Error(scrubSecretShapes(raw))
+}
+
+/**
  * The single, gated send entrypoint. Records the human-approval audit record,
  * then sends the already-created draft. Reachable ONLY from the approval IPC
  * handler.
@@ -73,10 +103,14 @@ export async function approveAndSend(
   try {
     return await deps.provider.sendDraft(account, draft)
   } catch (err) {
+    // Deliberate: the raw provider error can carry `Authorization: Bearer …` / config
+    // objects and must NOT ride out verbatim (§6). `toSafeCause` preserves the legible
+    // message with secrets scrubbed — hence the preserve-caught-error suppression below.
     throw new Error(
       `Send failed for the approved reply on thread ${draft.threadId} — the draft is ` +
         `preserved in the mailbox and nothing was sent. Approve again to retry.`,
-      { cause: err }
+      // eslint-disable-next-line preserve-caught-error -- see note above: cause is sanitized
+      { cause: toSafeCause(err) }
     )
   }
 }

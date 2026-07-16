@@ -1,0 +1,123 @@
+/**
+ * Integrations Hub — the pinned cross-project contract (sub-project #1 of the
+ * visual-flows pilot). This file is the SOLE authority for the
+ * `IntegrationDescriptor` / `IntegrationRegistry` shapes; sub-project #2 (Flow
+ * Engine) and #3 (Flow Canvas) reconcile against it. No I/O — shared by main
+ * and renderer.
+ */
+
+// ── Pinned contract (verbatim; #2/#3 consume these names) ────────────────────
+
+export type IntegrationId = 'linear' | 'email' | 'cloud'
+
+export interface IntegrationConfigField {
+  key: string
+  label: string
+  secret: boolean
+  required: boolean
+  placeholder?: string
+}
+
+export interface IntegrationDescriptor {
+  id: IntegrationId
+  label: string
+  configFields: IntegrationConfigField[]
+  triggers: { id: string; label: string }[]
+  actions: { id: string; label: string }[]
+  status(): 'connected' | 'needs-config' | 'error'
+}
+
+export interface IntegrationRegistry {
+  descriptors(): IntegrationDescriptor[]
+  get(id: IntegrationId): IntegrationDescriptor | undefined
+  invokeAction(
+    id: IntegrationId,
+    actionId: string,
+    params: Record<string, unknown>
+  ): Promise<unknown>
+  subscribe(id: IntegrationId, triggerId: string, handler: (event: unknown) => void): () => void
+}
+
+// ── Additions this sub-project owns (internal + UI DTOs) ─────────────────────
+
+/** The synchronous presence-derived state the pinned `status()` returns. */
+export type IntegrationStatus = 'connected' | 'needs-config' | 'error'
+
+/** Stable order for `descriptors()` / the tabs — the contract 2/3 rely on. */
+export const INTEGRATION_IDS: readonly IntegrationId[] = ['linear', 'email', 'cloud']
+
+/**
+ * The value type a non-secret config field carries in config.json. Drives
+ * validate-at-the-boundary (§8) — secret fields never appear here.
+ */
+export type FieldType = 'string' | 'string[]' | 'number'
+
+/**
+ * The static descriptor field spec. Extends the pinned `IntegrationConfigField`
+ * with an internal `type` used only for config validation/coercion; because it
+ * is a superset, a `IntegrationConfigFieldSpec[]` satisfies the pinned
+ * `configFields: IntegrationConfigField[]` for 2/3.
+ */
+export interface IntegrationConfigFieldSpec extends IntegrationConfigField {
+  type: FieldType
+}
+
+/**
+ * The static half of a descriptor (everything but `status()`), authored in
+ * `src/main/integrations/descriptors/*.ts`. The registry composes the full
+ * `IntegrationDescriptor` by attaching a presence-derived `status()` closure.
+ */
+export interface IntegrationDescriptorDef {
+  id: IntegrationId
+  label: string
+  configFields: IntegrationConfigFieldSpec[]
+  triggers: { id: string; label: string }[]
+  actions: { id: string; label: string }[]
+}
+
+// ── Config-as-code shape (non-secret refs only; §6, §8) ──────────────────────
+
+export type IntegrationFieldValue = string | string[] | number
+
+export interface IntegrationConfigEntry {
+  enabled: boolean
+  values: Record<string, IntegrationFieldValue>
+}
+
+export type IntegrationsConfig = Partial<Record<IntegrationId, IntegrationConfigEntry>>
+
+// ── Renderer DTOs — secret VALUES excluded by construction (§4.5) ────────────
+
+export interface IntegrationFieldView {
+  key: string
+  label: string
+  secret: boolean
+  required: boolean
+  placeholder?: string
+  /** For secret fields: presence only — never the value. */
+  hasValue: boolean
+  /** For NON-secret fields only (read back from config.json). */
+  value?: string
+}
+
+export interface IntegrationView {
+  id: IntegrationId
+  label: string
+  enabled: boolean
+  fields: IntegrationFieldView[]
+  status: IntegrationStatus
+  /** Legible error text when `status === 'error'`. */
+  statusDetail?: string
+}
+
+// ── IPC result shapes (§4.6) — no handler ever echoes a secret value ─────────
+
+export type SetEnabledResult = { ok: true; view: IntegrationView } | { ok: false; reason: string }
+
+export type SetFieldResult = { ok: true; view: IntegrationView } | { ok: false; reason: string }
+
+/** setSecret returns presence-derived status only — the value is inbound-only. */
+export type SetSecretResult =
+  { ok: true; status: IntegrationStatus } | { ok: false; reason: string }
+
+export type ClearSecretResult = { ok: true; view: IntegrationView } | { ok: false; reason: string }

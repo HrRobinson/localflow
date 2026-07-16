@@ -29,6 +29,13 @@ export interface AgentConfig {
   /** Enabled command-guard packs, applied globally (lfguard G2). */
   guard?: { packs: string[] }
   /**
+   * When true, every Finder-picker-only path input (agent "Set path…",
+   * new-session working directory) also offers a typed/pasted-path text
+   * input. Default false — off means no UI change from before this setting
+   * existed.
+   */
+  allowTypedPaths?: boolean
+  /**
    * Unknown top-level keys found in config.json, preserved verbatim so
    * hand-added config-as-code entries survive a save round-trip.
    */
@@ -135,7 +142,8 @@ const KNOWN_TOP_LEVEL_KEYS = new Set([
   'agents',
   'theme',
   'console',
-  'guard'
+  'guard',
+  'allowTypedPaths'
 ])
 
 export function loadAgentConfig(file: string): AgentConfig {
@@ -167,6 +175,7 @@ export function loadAgentConfig(file: string): AgentConfig {
       config.console = parseConsolePrefs(obj.console) ?? DEFAULT_CONSOLE_PREFS
     }
     if (obj.guard !== undefined) config.guard = parseGuardConfig(obj.guard)
+    if (typeof obj.allowTypedPaths === 'boolean') config.allowTypedPaths = obj.allowTypedPaths
     // Preserve any hand-added top-level keys (config-as-code) so they
     // survive a later saveAgentConfig call untouched.
     const extra: Record<string, unknown> = {}
@@ -394,6 +403,15 @@ export class AgentRegistry {
 
   setGuardPacks(packs: string[]): void {
     this.config.guard = parseGuardConfig({ packs })
+    saveAgentConfig(this.configFile, this.config)
+  }
+
+  getAllowTypedPaths(): boolean {
+    return this.config.allowTypedPaths ?? false
+  }
+
+  setAllowTypedPaths(allow: boolean): void {
+    this.config.allowTypedPaths = allow
     saveAgentConfig(this.configFile, this.config)
   }
 

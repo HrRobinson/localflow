@@ -48,6 +48,8 @@ const api: LocalflowApi = {
   peekSession: (id: string, maxLines?: number) => ipcRenderer.invoke('session:peek', id, maxLines),
   listAgents: () => ipcRenderer.invoke('agents:list'),
   setAgentPath: (agentId: AgentId) => ipcRenderer.invoke('agents:setPath', agentId),
+  setAgentPathTyped: (agentId: AgentId, path: string) =>
+    ipcRenderer.invoke('agents:setPathTyped', agentId, path),
   setDefaultAgent: (agentId: AgentId) => ipcRenderer.invoke('agents:setDefaultAgent', agentId),
   setAgentOverride: (agentId: AgentId, override: AgentOverride) =>
     ipcRenderer.invoke('agents:setOverride', agentId, override),
@@ -122,6 +124,10 @@ const api: LocalflowApi = {
   setConsolePrefs: (prefs: ConsolePrefs) => ipcRenderer.send('console:setPrefs', prefs),
   getGuardPacks: () => ipcRenderer.invoke('guard:getPacks'),
   setGuardPacks: (packs: string[]) => ipcRenderer.invoke('guard:setPacks', packs),
+  getAllowTypedPaths: () => ipcRenderer.invoke('settings:getAllowTypedPaths'),
+  setAllowTypedPaths: (allow: boolean) => ipcRenderer.send('settings:setAllowTypedPaths', allow),
+  getDefaultCwd: () => ipcRenderer.invoke('session:defaultCwd'),
+  chooseFolder: () => ipcRenderer.invoke('session:chooseFolder'),
   gitStatus: (id: string) => ipcRenderer.invoke('git:status', id),
   gitDiff: (id: string, path: string, staged: boolean) =>
     ipcRenderer.invoke('git:diff', id, path, staged),

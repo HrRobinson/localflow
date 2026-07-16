@@ -223,13 +223,12 @@ export default function App(): React.JSX.Element {
     }
   }, [refresh])
 
-  const createSession = async (agentId: AgentId, customCommand?: string): Promise<void> => {
-    const created = await window.localflow.createSession(
-      agentId,
-      undefined,
-      customCommand,
-      environment
-    )
+  const createSession = async (
+    agentId: AgentId,
+    customCommand?: string,
+    cwd?: string
+  ): Promise<void> => {
+    const created = await window.localflow.createSession(agentId, cwd, customCommand, environment)
     if (created) {
       setView('environment')
       // A pane enlarged before we left the environment view would otherwise
@@ -997,7 +996,7 @@ export default function App(): React.JSX.Element {
         ) : (
           <Landing
             sessions={sessions}
-            onCreate={(agentId, cmd) => void createSession(agentId, cmd)}
+            onCreate={(agentId, cmd, cwd) => void createSession(agentId, cmd, cwd)}
             onCreateBrowser={(url) => void createBrowser(url)}
             onCreateTemplate={(name) => void createTemplate(name)}
             onLaunchWorker={(flowId) => void launchWorker(flowId)}

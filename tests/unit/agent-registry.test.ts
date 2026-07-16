@@ -555,6 +555,29 @@ describe('console prefs config', () => {
     expect(new AgentRegistry(file).getGuardPacks()).toEqual([])
     rmSync(dir, { recursive: true, force: true })
   })
+
+  it('allowTypedPaths: default false, round-trips, malformed → false, preserves other keys', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'lfg-reg-'))
+    const file = join(dir, 'config.json')
+    writeFileSync(file, JSON.stringify({ theme: 'light', myKey: 1 }))
+
+    const r1 = new AgentRegistry(file)
+    expect(r1.getAllowTypedPaths()).toBe(false)
+
+    r1.setAllowTypedPaths(true)
+    const r2 = new AgentRegistry(file)
+    expect(r2.getAllowTypedPaths()).toBe(true)
+    const saved = JSON.parse(readFileSync(file, 'utf8'))
+    expect(saved.theme).toBe('light')
+    expect(saved.myKey).toBe(1)
+
+    r2.setAllowTypedPaths(false)
+    expect(new AgentRegistry(file).getAllowTypedPaths()).toBe(false)
+
+    writeFileSync(file, JSON.stringify({ allowTypedPaths: 'nope' }))
+    expect(new AgentRegistry(file).getAllowTypedPaths()).toBe(false)
+    rmSync(dir, { recursive: true, force: true })
+  })
 })
 
 describe('whichViaLoginShell PATH-probe diagnostics', () => {

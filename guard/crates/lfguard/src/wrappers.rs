@@ -29,7 +29,7 @@ use crate::lexer::Word;
 /// applied to argv[0] elsewhere in the pipeline (macOS's case-insensitive
 /// filesystem means `COMMAND rm -rf /` finds the same binary as `command`).
 const TRANSPARENT_PREFIXES: &[&str] =
-    &["command", "env", "nohup", "nice", "stdbuf", "ionice", "sudo", "time"];
+    &["command", "env", "nohup", "nice", "stdbuf", "ionice", "sudo", "time", "timeout"];
 
 /// `sudo` short options that take a value, e.g. `-u root`. Bundled/attached
 /// forms (`-uroot`) are also handled — see `unwrap_transparent_prefix`.
@@ -104,6 +104,19 @@ pub fn unwrap_transparent_prefix(seg: &[Word]) -> &[Word] {
                 // `--output`/`--format` long forms; no positionals precede
                 // the command.
                 rest = skip_options_then_positionals(rest, &['o', 'f'], &["output", "format"], 0, None);
+            }
+            "timeout" => {
+                // `timeout [OPTIONS] DURATION CMD` — value-taking
+                // `-s SIGNAL`/`-k DURATION` (and `--signal`/`--kill-after`),
+                // then exactly one DURATION positional gated by a duration
+                // shape so a malformed `timeout rm …` never eats a command.
+                rest = skip_options_then_positionals(
+                    rest,
+                    &['s', 'k'],
+                    &["signal", "kill-after"],
+                    1,
+                    Some(is_duration_shape),
+                );
             }
             _ => {}
         }
@@ -457,6 +470,72 @@ mod tests {
         assert_eq!(
             texts(unwrap_transparent_prefix(&[w("time"), w("-p"), w("make")])),
             vec!["make"]
+        );
+    }
+
+    #[test]
+    fn unwraps_timeout_duration_and_command() {
+        assert_eq!(
+            texts(unwrap_transparent_prefix(&[
+                w("timeout"),
+                w("300"),
+                w("rm"),
+                w("-rf"),
+                w("/")
+            ])),
+            vec!["rm", "-rf", "/"]
+        );
+        // Suffixed duration.
+        assert_eq!(
+            texts(unwrap_transparent_prefix(&[w("timeout"), w("5s"), w("rm"), w("-rf"), w("/")])),
+            vec!["rm", "-rf", "/"]
+        );
+    }
+
+    #[test]
+    fn unwraps_timeout_with_value_options() {
+        for opt in [
+            vec![w("-s"), w("KILL"), w("10")],
+            vec![w("--signal=KILL"), w("10")],
+            vec![w("-k"), w("5"), w("10")],
+            vec![w("--kill-after"), w("5"), w("10")],
+        ] {
+            let mut seg = vec![w("timeout")];
+            seg.extend(opt);
+            seg.extend([w("rm"), w("-rf"), w("/")]);
+            assert_eq!(
+                texts(unwrap_transparent_prefix(&seg)),
+                vec!["rm", "-rf", "/"],
+                "opts {:?}",
+                texts(&seg)
+            );
+        }
+    }
+
+    #[test]
+    fn timeout_benign_command_left_intact() {
+        assert_eq!(
+            texts(unwrap_transparent_prefix(&[w("timeout"), w("5"), w("ls")])),
+            vec!["ls"]
+        );
+    }
+
+    #[test]
+    fn timeout_no_command_fails_open_without_panic() {
+        // bare `timeout`, and `timeout 300` with no command: nothing to run.
+        assert!(unwrap_transparent_prefix(&[w("timeout")]).is_empty()
+            || texts(unwrap_transparent_prefix(&[w("timeout")])) == vec!["timeout"]);
+        assert!(unwrap_transparent_prefix(&[w("timeout"), w("300")]).is_empty());
+    }
+
+    #[test]
+    fn timeout_non_duration_positional_is_not_skipped() {
+        // Malformed `timeout rm -rf /` — `rm` is not duration-shaped, so the
+        // duration slot is not consumed; `rm` stays at argv[0] (still caught
+        // as a real command by the pack, but proves the shape guard works).
+        assert_eq!(
+            texts(unwrap_transparent_prefix(&[w("timeout"), w("rm"), w("-rf"), w("/")])),
+            vec!["rm", "-rf", "/"]
         );
     }
 

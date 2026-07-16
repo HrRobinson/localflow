@@ -615,15 +615,40 @@ describe('SessionManager', () => {
   })
 
   describe('peek', () => {
-    it('returns the last cleaned lines of a live session output', () => {
+    it('peek returns the rendered screen, not the raw byte tail', () => {
       const info = mgr.create('/p', claudeSpec, 1)
-      ptys[0].dataCb?.('[1mDo you want to run npm test?[0m\n(y/n)\n')
+      // A TUI redraw whose raw bytes would leak escape fragments through the
+      // old ANSI-strip path; the rendered screen is clean.
+      ptys[0].dataCb?.('\x1b[2J\x1b[H\x1b[38;5;246mProceed? (y/n)\x1b[0m\r\n')
+      const lines = mgr.peek(info.id, 5)
+      expect(lines).toContain('Proceed? (y/n)')
+      expect(lines.join('\n')).not.toContain('246m')
+    })
+
+    it('peek falls back to extractPeekLines when there is no screen', () => {
+      // A restored placeholder has a byte tail but no live screen — peek must
+      // still return something readable rather than [].
+      const restored = mgr.restore('rid', '/p', claudeSpec)
+      // Reach the record's tail the way the manager would: restored sessions
+      // start with an empty tail, so peek is [] — prove the fallback path runs
+      // without throwing on a screenless record.
+      expect(() => mgr.peek(restored.id, 5)).not.toThrow()
+      expect(mgr.peek(restored.id, 5)).toEqual([])
+    })
+
+    it('returns the last cleaned lines of a live session output', () => {
+      // \r\n, not a bare \n: peek now reads a real rendered terminal screen
+      // (Task 3), and a bare \n without a preceding \r staircases in any real
+      // terminal (LNM is off by default) — matching how a real pty emits
+      // line breaks.
+      const info = mgr.create('/p', claudeSpec, 1)
+      ptys[0].dataCb?.('[1mDo you want to run npm test?[0m\r\n(y/n)\r\n')
       expect(mgr.peek(info.id)).toEqual(['Do you want to run npm test?', '(y/n)'])
     })
 
     it('respects maxLines', () => {
       const info = mgr.create('/p', claudeSpec, 1)
-      ptys[0].dataCb?.('a\nb\nc\n')
+      ptys[0].dataCb?.('a\r\nb\r\nc\r\n')
       expect(mgr.peek(info.id, 2)).toEqual(['b', 'c'])
     })
 

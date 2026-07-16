@@ -768,11 +768,11 @@ export class SessionManager {
     return extractPeekLines(rec.tail, maxLines ?? 200)
   }
 
-  /** Last `maxLines` cleaned output lines — the approve control's peek. */
+  /** Last `maxLines` cleaned output lines — the approve control's peek and the
+   * operator `output` verb. Reads the rendered screen (Task 2), falling back
+   * to the ANSI-stripped byte tail when the screen is unavailable/empty. */
   peek(id: string, maxLines = 5): string[] {
-    const rec = this.sessions.get(id)
-    if (!rec) return []
-    return extractPeekLines(rec.tail, maxLines)
+    return this.snapshot(id, maxLines)
   }
 
   /** Append one entry to a session's ring (capped), notifying listeners. */

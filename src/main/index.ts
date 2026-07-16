@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, safeStorage, shell } from 'electron'
 import { join, basename } from 'node:path'
 import { existsSync, readFileSync, writeFileSync, rmSync, mkdirSync } from 'node:fs'
 import { spawn } from 'node:child_process'
@@ -49,6 +49,9 @@ import { ConsoleEventBus } from './console-bus'
 import { toStatusEvent, toOperatorEvent, toCaptureEvent, toGuardEvent } from '../shared/console'
 import type { ConsolePrefs } from '../shared/console'
 import { startGuardAuditTail } from './guard-audit-tail'
+import { CredentialStore } from './integrations/credential-store'
+import { IntegrationRegistry } from './integrations/integration-registry'
+import type { IntegrationId } from '../shared/integrations'
 import { startGuardSeenWatch } from './guard-seen-watch'
 import type { ActivityEntry, GrantInfo, OperatorStatus } from '../shared/operator'
 import type { Capabilities } from '../shared/git'
@@ -195,6 +198,20 @@ app.whenReady().then(async () => {
     process.env['LOCALFLOW_CLAUDE_BIN'],
     process.env['LOCALFLOW_OPENCLAW_BIN']
   )
+
+  // Integrations Hub: the CredentialStore (secrets → safeStorage-encrypted
+  // sidecar, never config.json) + the registry the flow engine/canvas consume.
+  // safeStorage is Electron's real backend; the seam keeps it unit-testable.
+  const integrationRegistry = new IntegrationRegistry({
+    creds: new CredentialStore({
+      backend: safeStorage,
+      file: join(userData, 'integration-secrets.enc')
+    }),
+    configFile: join(userData, 'config.json'),
+    // Config-boundary notices (e.g. a secret hand-edited into config.json) —
+    // legible, actionable, and NEVER carrying the secret value itself.
+    notify: (message) => console.warn(`integrations: ${message}`)
+  })
 
   const themesDir = join(userData, 'themes')
   ensureThemesSeeded(themesDir)
@@ -928,6 +945,31 @@ app.whenReady().then(async () => {
       return { ok: false, reason: (err as Error).message }
     }
   })
+
+  // Integrations Hub IPC (§4.6). Every handler returns presence/status only —
+  // a secret VALUE crosses inbound (setSecret) and is NEVER put in a return or a
+  // log. `setField` rejects a secret key and `setSecret` rejects a config key,
+  // so the config-vs-keychain routing can't be crossed by a mislabeled call.
+  ipcMain.handle('integrations:list', () => integrationRegistry.views())
+  ipcMain.handle('integrations:setEnabled', (_e, id: IntegrationId, enabled: boolean) => {
+    if (typeof enabled !== 'boolean') return { ok: false, reason: 'enabled must be a boolean' }
+    return integrationRegistry.setEnabled(id, enabled)
+  })
+  ipcMain.handle('integrations:setField', (_e, id: IntegrationId, key: string, value: string) => {
+    if (typeof key !== 'string' || typeof value !== 'string') {
+      return { ok: false, reason: 'field key and value must be strings' }
+    }
+    return integrationRegistry.setField(id, key, value)
+  })
+  ipcMain.handle('integrations:setSecret', (_e, id: IntegrationId, key: string, value: string) => {
+    if (typeof key !== 'string' || typeof value !== 'string') {
+      return { ok: false, reason: 'secret key and value must be strings' }
+    }
+    return integrationRegistry.setSecret(id, key, value)
+  })
+  ipcMain.handle('integrations:clearSecret', (_e, id: IntegrationId, key?: string) =>
+    integrationRegistry.clearSecret(id, typeof key === 'string' ? key : undefined)
+  )
 
   createWindow()
 })

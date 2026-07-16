@@ -24,6 +24,14 @@ import type {
   Watchpoint
 } from './operator'
 import type { ConsoleEvent, ConsolePrefs } from './console'
+import type {
+  ClearSecretResult,
+  IntegrationId,
+  IntegrationView,
+  SetEnabledResult,
+  SetFieldResult,
+  SetSecretResult
+} from './integrations'
 
 export interface LocalflowApi {
   /**
@@ -199,6 +207,24 @@ export interface LocalflowApi {
   openThemesFolder(): void
   /** Theme pushed from main after a set — the live-apply channel. */
   onThemeChanged(cb: (payload: { name: string; theme: Theme; error?: string }) => void): () => void
+  /**
+   * Integrations Hub views: descriptor metadata + enabled + per-field presence
+   * + live status, for all three integrations. Carries `hasValue` booleans for
+   * secret fields and non-secret `value`s from config.json — NEVER a secret
+   * value.
+   */
+  listIntegrations(): Promise<IntegrationView[]>
+  /** Persists an integration's enabled flag to config.json (optimistic-with-rollback). */
+  setIntegrationEnabled(id: IntegrationId, enabled: boolean): Promise<SetEnabledResult>
+  /** Writes one NON-secret config field; rejects a `secret:true` key (that must use setIntegrationSecret). */
+  setIntegrationField(id: IntegrationId, key: string, value: string): Promise<SetFieldResult>
+  /**
+   * Stores one secret field in the keychain (value INBOUND only; the response
+   * echoes status, never the value). Rejects a non-secret key.
+   */
+  setIntegrationSecret(id: IntegrationId, key: string, value: string): Promise<SetSecretResult>
+  /** Clears one secret field (or every field for the id when key is omitted). */
+  clearIntegrationSecret(id: IntegrationId, key?: string): Promise<ClearSecretResult>
   /** Browser panes report their guest webContents id so the operator API can drive them. */
   registerBrowser(handle: string, webContentsId: number): void
   /** Dropped on unmount/exit; a closed pane then resolves to 404 over the control API. */

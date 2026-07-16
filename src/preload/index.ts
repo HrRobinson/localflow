@@ -11,6 +11,7 @@ import type { ActivityEntry as OperatorActivityEntry, CaptureKind } from '../sha
 import type { KeyAction } from '../shared/keybindings'
 import type { Theme } from '../shared/theme'
 import type { ConsoleEvent, ConsolePrefs } from '../shared/console'
+import type { IntegrationId } from '../shared/integrations'
 
 const api: LocalflowApi = {
   createSession: (agentId: AgentId, cwd?: string, customCommand?: string, environment?: number) =>
@@ -140,7 +141,16 @@ const api: LocalflowApi = {
   },
   registerBrowser: (handle: string, webContentsId: number) =>
     ipcRenderer.send('browser:register', handle, webContentsId),
-  unregisterBrowser: (handle: string) => ipcRenderer.send('browser:unregister', handle)
+  unregisterBrowser: (handle: string) => ipcRenderer.send('browser:unregister', handle),
+  listIntegrations: () => ipcRenderer.invoke('integrations:list'),
+  setIntegrationEnabled: (id: IntegrationId, enabled: boolean) =>
+    ipcRenderer.invoke('integrations:setEnabled', id, enabled),
+  setIntegrationField: (id: IntegrationId, key: string, value: string) =>
+    ipcRenderer.invoke('integrations:setField', id, key, value),
+  setIntegrationSecret: (id: IntegrationId, key: string, value: string) =>
+    ipcRenderer.invoke('integrations:setSecret', id, key, value),
+  clearIntegrationSecret: (id: IntegrationId, key?: string) =>
+    ipcRenderer.invoke('integrations:clearSecret', id, key)
 }
 
 contextBridge.exposeInMainWorld('localflow', api)

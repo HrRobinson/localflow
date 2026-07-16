@@ -186,7 +186,7 @@ describe('control-api router', () => {
     expect(r.status).toBe(404)
   })
 
-  it('prompt writes text plus a trailing carriage return to the pty', async () => {
+  it('prompt writes text then a carriage return as two writes', async () => {
     const { deps: d, grants, writes } = deps()
     const token = grants.grant(1)
     const r = await handleRequest(
@@ -197,7 +197,21 @@ describe('control-api router', () => {
       JSON.stringify({ text: 'do it' })
     )
     expect(r.status).toBe(200)
-    expect(writes).toEqual(['do it\r'])
+    expect(writes).toEqual(['do it', '\r'])
+  })
+
+  it('empty prompt text submits a lone carriage return (bare Enter)', async () => {
+    const { deps: d, grants, writes } = deps()
+    const token = grants.grant(1)
+    const r = await handleRequest(
+      d,
+      'POST',
+      '/panes/a-term/prompt',
+      token,
+      JSON.stringify({ text: '' })
+    )
+    expect(r.status).toBe(200)
+    expect(writes).toEqual(['', '\r'])
   })
 
   it('prompt to an exited pane returns 409 and does not write', async () => {
@@ -233,7 +247,7 @@ describe('control-api router', () => {
       JSON.stringify({ text: 'ls' })
     )
     expect(r.status).toBe(200)
-    expect(writes).toEqual(['ls\r'])
+    expect(writes).toEqual(['ls', '\r'])
     expect(notices).toEqual([])
     expect(blocks).toEqual([])
   })
@@ -295,7 +309,7 @@ describe('control-api router', () => {
       JSON.stringify({ text: 'do it' })
     )
     expect(r.status).toBe(200)
-    expect(writes).toEqual(['do it\r'])
+    expect(writes).toEqual(['do it', '\r'])
   })
 
   it('output returns peeked lines, clamping maxLines', async () => {

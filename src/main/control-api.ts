@@ -242,8 +242,12 @@ export async function handleRequest(
       }
       // Attachments are referenced by path in the prompt text by the operator;
       // v1 does not re-inject them separately (screenshot() already returns a
-      // path the operator embeds). Write text + submit (carriage return).
-      deps.manager.write(handle, `${b.text}\r`)
+      // path the operator embeds). Write the text, THEN the carriage return as
+      // its own chunk: sent separately, Claude's TUI treats the \r as a submit
+      // keypress rather than absorbing it into the pasted text. Empty text
+      // still yields a lone \r = a bare Enter (submit the composer).
+      deps.manager.write(handle, b.text)
+      deps.manager.write(handle, '\r')
       record('POST prompt', handle, b.text.slice(0, 80))
       return json(200, { ok: true })
     }

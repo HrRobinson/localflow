@@ -42,6 +42,17 @@ export class MockEmailProvider implements EmailProvider {
   /** When set, `sendDraft` rejects with this — for the §9 send-failure test. */
   failSendWith: Error | null = null
 
+  /**
+   * Optional shared ordering log. When set, `sendDraft` appends `'send'` to it
+   * AT EXECUTION TIME — the moment the send seam is actually reached, before it
+   * can succeed OR throw. Inject the SAME array the approval recorder writes
+   * `'approval'` into, and the audit-before-send ordering assertion becomes a
+   * genuine guard: it observes the real execution order and FAILS if draft-gate
+   * ever sends before it records (§5.5, §10.3). Do NOT reconstruct order from
+   * `sends` after the fact — that captures nothing about when the send ran.
+   */
+  sendEvents: string[] | null = null
+
   private readonly threads = new Map<string, EmailThread>()
   private readonly handlers = new Map<string, InboundHandler>()
   private seq = 0
@@ -77,6 +88,8 @@ export class MockEmailProvider implements EmailProvider {
 
   // --- SEND (gated; the only writer of `sends`). ---
   async sendDraft(_account: AccountRef, draft: DraftRef): Promise<SendResult> {
+    // Mark the send AT EXECUTION TIME so ordering tests capture real order (§10.3).
+    this.sendEvents?.push('send')
     if (this.failSendWith) throw this.failSendWith
     const result: SendResult = {
       sentMessageId: `sent-${++this.seq}`,

@@ -13,6 +13,11 @@ describe('draft-gate (the single send caller)', () => {
     const events: string[] = []
     const audit: ApprovalAuditRecord[] = []
 
+    // One shared log, written at each step's REAL execution instant: the recorder
+    // pushes 'approval' when draft-gate records; the mock's `sendDraft` pushes
+    // 'send' when the send actually runs. Reordering draft-gate to send-first would
+    // flip these and fail the assertion (unlike a post-hoc reconstruction).
+    provider.sendEvents = events
     const result = await approveAndSend(
       {
         provider,
@@ -26,8 +31,6 @@ describe('draft-gate (the single send caller)', () => {
       draft
     )
 
-    // Mock records the send; assert ordering via a shared event log.
-    provider.sends.forEach(() => events.push('send'))
     expect(events).toEqual(['approval', 'send'])
     expect(provider.sends).toHaveLength(1)
     expect(result.threadId).toBe('thread-1')

@@ -1052,7 +1052,8 @@ describe('SessionManager', () => {
     const guard: ResolvedGuard = {
       bin: '/fake/lfguard',
       auditLog: '/fake/audit.log',
-      packs: ['default']
+      packs: ['default'],
+      seenDir: '/fake/guard-seen'
     }
 
     let t: number
@@ -1162,5 +1163,157 @@ describe('SessionManager', () => {
         { id: 'pane-7', data: '\r\n⛔ blocked\r\n' }
       ])
     })
+  })
+})
+
+describe('SessionManager guardVerification (Codex self-verify badge)', () => {
+  const guard: ResolvedGuard = {
+    bin: '/fake/lfguard',
+    auditLog: '/fake/audit.log',
+    packs: ['default'],
+    seenDir: '/fake/guard-seen'
+  }
+  const codexNotifySpec: SpawnSpec = {
+    agentId: 'codex',
+    command: 'fake-codex',
+    resumeArgs: ['resume', '--last'],
+    hookAdapter: 'cli-args-notify'
+  }
+  const codexFullSpec: SpawnSpec = { ...codexNotifySpec, hookAdapter: 'cli-args-full' }
+  const claudeSpec: SpawnSpec = {
+    agentId: 'claude',
+    command: 'fake-claude',
+    resumeArgs: ['--continue'],
+    hookAdapter: 'settings-file'
+  }
+  const geminiSpec: SpawnSpec = {
+    agentId: 'gemini',
+    command: 'fake-gemini',
+    resumeArgs: [],
+    hookAdapter: 'env-settings-file'
+  }
+
+  let t: number
+  let ptys: FakePty[]
+  const makeMgr = (guardFn?: () => ResolvedGuard | null): SessionManager => {
+    ptys = []
+    const spawnFn: SpawnFn = () => {
+      const pty = new FakePty()
+      ptys.push(pty)
+      return pty
+    }
+    return new SessionManager({
+      settingsDir: mkdtempSync(join(tmpdir(), 'localflow-gv-')),
+      port: 9999,
+      token: 'tok',
+      now: () => t,
+      spawnFn,
+      guard: guardFn
+    })
+  }
+  const gv = (mgr: SessionManager, id: string): string | undefined =>
+    mgr.list().find((s) => s.id === id)?.guardVerification
+
+  beforeEach(() => {
+    t = 0
+  })
+
+  it("sets 'unverified' for a cli-args-notify spawn with a resolved guard", () => {
+    const mgr = makeMgr(() => guard)
+    const info = mgr.create('/p', codexNotifySpec, 1)
+    expect(gv(mgr, info.id)).toBe('unverified')
+  })
+
+  it("sets 'unverified' for a cli-args-full spawn with a resolved guard", () => {
+    const mgr = makeMgr(() => guard)
+    const info = mgr.create('/p', codexFullSpec, 1)
+    expect(gv(mgr, info.id)).toBe('unverified')
+  })
+
+  it('never sets the field for a settings-file (Claude) spawn', () => {
+    const mgr = makeMgr(() => guard)
+    const info = mgr.create('/p', claudeSpec, 1)
+    expect(gv(mgr, info.id)).toBeUndefined()
+  })
+
+  it('never sets the field for an env-settings-file (Gemini) spawn', () => {
+    const mgr = makeMgr(() => guard)
+    const info = mgr.create('/p', geminiSpec, 1)
+    expect(gv(mgr, info.id)).toBeUndefined()
+  })
+
+  it('never sets the field for a no-adapter spawn', () => {
+    const mgr = makeMgr(() => guard)
+    const info = mgr.create('/p', noAdapterSpec, 1)
+    expect(gv(mgr, info.id)).toBeUndefined()
+  })
+
+  it('never sets the field for a codex spawn when the guard is null', () => {
+    const mgr = makeMgr(() => null)
+    const info = mgr.create('/p', codexNotifySpec, 1)
+    expect(gv(mgr, info.id)).toBeUndefined()
+  })
+
+  it("markGuardObserved flips 'unverified' -> 'observed' and fires changedCbs once", () => {
+    const mgr = makeMgr(() => guard)
+    const info = mgr.create('/p', codexNotifySpec, 1)
+    let changed = 0
+    mgr.onSessionsChanged(() => changed++)
+    mgr.markGuardObserved(info.id)
+    expect(gv(mgr, info.id)).toBe('observed')
+    expect(changed).toBe(1)
+  })
+
+  it('markGuardObserved on an already-observed pane is a no-op (no second changedCbs)', () => {
+    const mgr = makeMgr(() => guard)
+    const info = mgr.create('/p', codexNotifySpec, 1)
+    mgr.markGuardObserved(info.id)
+    let changed = 0
+    mgr.onSessionsChanged(() => changed++)
+    mgr.markGuardObserved(info.id)
+    expect(changed).toBe(0)
+    expect(gv(mgr, info.id)).toBe('observed')
+  })
+
+  it('markGuardObserved on an unknown id is a silent no-op', () => {
+    const mgr = makeMgr(() => guard)
+    let changed = 0
+    mgr.onSessionsChanged(() => changed++)
+    expect(() => mgr.markGuardObserved('nope')).not.toThrow()
+    expect(changed).toBe(0)
+  })
+
+  it('markGuardObserved on a non-Codex pane is a silent no-op', () => {
+    const mgr = makeMgr(() => guard)
+    const info = mgr.create('/p', claudeSpec, 1)
+    let changed = 0
+    mgr.onSessionsChanged(() => changed++)
+    mgr.markGuardObserved(info.id)
+    expect(changed).toBe(0)
+    expect(gv(mgr, info.id)).toBeUndefined()
+  })
+
+  it("a restart of a previously-observed pane resets to 'unverified'", () => {
+    const mgr = makeMgr(() => guard)
+    const info = mgr.create('/p', codexNotifySpec, 1)
+    mgr.markGuardObserved(info.id)
+    expect(gv(mgr, info.id)).toBe('observed')
+    // Exit non-instantly so no fail-open relaunch fires, then restart.
+    t = 60000
+    ptys[0].exitCb?.()
+    expect(mgr.get(info.id)?.status).toBe('exited')
+    mgr.restart(info.id)
+    expect(gv(mgr, info.id)).toBe('unverified')
+  })
+
+  it('a guard-induced instant-exit fail-open relaunch leaves the field undefined', () => {
+    const mgr = makeMgr(() => guard)
+    const info = mgr.create('/p', codexNotifySpec, 1)
+    expect(gv(mgr, info.id)).toBe('unverified')
+    // Instant exit → relaunch without the guard (skipGuard) → undefined.
+    t = 1000
+    ptys[0].exitCb?.()
+    expect(ptys).toHaveLength(2) // relaunched
+    expect(gv(mgr, info.id)).toBeUndefined()
   })
 })

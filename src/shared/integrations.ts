@@ -129,8 +129,7 @@ export type SetFieldResult = { ok: true; view: IntegrationView } | { ok: false; 
 
 /** setSecret returns presence-derived status only — the value is inbound-only. */
 export type SetSecretResult =
-  | { ok: true; status: IntegrationStatus }
-  | { ok: false; reason: string }
+  { ok: true; status: IntegrationStatus } | { ok: false; reason: string }
 
 export type ClearSecretResult = { ok: true; view: IntegrationView } | { ok: false; reason: string }
 

@@ -48,7 +48,7 @@ import { PaneRegistry } from './pane-registry'
 import { addCompanionPane, operatorCreatePane, type AddPaneRequest } from './pane-ops'
 import { OperatorGrantStore } from './operator-grant'
 import { credentialEnv, OperatorLaunchTracker } from './operator-launch'
-import { startControlServer, type OperatorPaneRequest } from './control-api'
+import { startControlServer, type ControlDeps, type OperatorPaneRequest } from './control-api'
 import { BrowserBridge } from './browser-bridge'
 import { WebviewBrowserControl } from './browser-control'
 import { CaptureStore } from './capture-store'
@@ -337,7 +337,7 @@ app.whenReady().then(async () => {
   // control-API router (handleRequest) — the engine is an operator client, not a
   // privileged SessionManager caller, so the capability boundary + lfguard guard
   // apply to flow work identically.
-  const controlDeps = {
+  const controlDeps: ControlDeps = {
     registry: paneRegistry,
     grants,
     manager,
@@ -1083,9 +1083,7 @@ app.whenReady().then(async () => {
   // The canvas palette reads the REAL Integrations Hub registry (resolved
   // descriptors). Flows persist through the engine's real flows.json store, and
   // `flow:run` drives the REAL engine (see the construction block above).
-  ipcMain.handle('integration:list', () =>
-    resolveDescriptors(integrationRegistry.descriptors())
-  )
+  ipcMain.handle('integration:list', () => resolveDescriptors(integrationRegistry.descriptors()))
   ipcMain.handle('flow:list', () => listFlowSummaries())
   ipcMain.handle('flow:get', (_e, id: string) => getFlow(id))
   ipcMain.handle('flow:save', (_e, graph: FlowGraph) => {

@@ -27,6 +27,7 @@ describe('activityLine', () => {
     expect(activityLine('moved')).toBe('moved to another environment')
     expect(activityLine('UserPromptSubmit')).toBe('you sent a prompt')
     expect(activityLine('Notification')).toBe('waiting for your approval')
+    expect(activityLine('PostToolUse')).toBe('a tool ran')
     expect(activityLine('Stop')).toBe('turn finished')
   })
 

@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import type { HookEventName } from '../shared/types'
 import { guardHookCommand, type ResolvedGuard } from './guard-hook'
 
-const EVENTS: HookEventName[] = ['UserPromptSubmit', 'Notification', 'Stop']
+const EVENTS: HookEventName[] = ['UserPromptSubmit', 'Notification', 'Stop', 'PostToolUse']
 
 const SAFE_TOKEN_RE = /^[A-Za-z0-9-]+$/
 

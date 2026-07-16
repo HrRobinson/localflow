@@ -76,6 +76,15 @@ describe('buildGeminiHookSettings', () => {
     expect(args).toEqual([])
   })
 
+  it('emits a PostToolUse event via an AfterTool hook (Claude parity)', () => {
+    const settings = buildGeminiHookSettings('p1', 4242, 'tok', null) as {
+      hooks: Record<string, { hooks: { command: string }[] }[]>
+    }
+    const cmd = settings.hooks.AfterTool[0].hooks[0].command
+    expect(cmd).toContain('"event":"PostToolUse"')
+    expect(cmd).toContain('http://127.0.0.1:4242/event')
+  })
+
   it('throws on an unsafe paneId or token', () => {
     expect(() => buildGeminiHookSettings("p'; rm -rf /", 4242, 'tok', null)).toThrow()
     expect(() => buildGeminiHookSettings('p1', 4242, "tok'; rm -rf /", null)).toThrow()
@@ -113,10 +122,13 @@ describe('buildGeminiHookSettings BeforeTool', () => {
   it('produces byte-identical output to the no-guard shape when guard is null', () => {
     const withNull = buildGeminiHookSettings('pane1', 8080, 'tok', null)
     expect(JSON.stringify(withNull)).not.toContain('BeforeTool')
+    // AfterTool (PostToolUse parity, Task 6) is unconditional — present with
+    // or without a guard, unlike guard-gated BeforeTool.
     expect(Object.keys((withNull as { hooks: object }).hooks)).toEqual([
       'BeforeAgent',
       'Notification',
-      'AfterAgent'
+      'AfterAgent',
+      'AfterTool'
     ])
   })
 })

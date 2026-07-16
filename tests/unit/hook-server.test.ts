@@ -17,6 +17,12 @@ describe('parseHookBody', () => {
     expect(parseHookBody('{"event":"Stop"}')).toBeNull()
     expect(parseHookBody('not json')).toBeNull()
   })
+  it('accepts PostToolUse as a valid event', () => {
+    expect(parseHookBody(JSON.stringify({ paneId: 'p1', event: 'PostToolUse' }))).toEqual({
+      paneId: 'p1',
+      event: 'PostToolUse'
+    })
+  })
 })
 
 describe('startHookServer', () => {

@@ -10,11 +10,11 @@ import {
 import type { ResolvedGuard } from '../../src/main/guard-hook'
 
 describe('buildHookSettings', () => {
-  it('creates a curl hook for each of the three events', () => {
+  it('creates a curl hook for each emitted event', () => {
     const settings = buildHookSettings('p1', 4242, 'tok', null) as {
       hooks: Record<string, { hooks: { type: string; command: string }[] }[]>
     }
-    for (const name of ['UserPromptSubmit', 'Notification', 'Stop']) {
+    for (const name of ['UserPromptSubmit', 'Notification', 'Stop', 'PostToolUse']) {
       const cmd = settings.hooks[name][0].hooks[0].command
       expect(settings.hooks[name][0].hooks[0].type).toBe('command')
       expect(cmd).toContain('http://127.0.0.1:4242/event')

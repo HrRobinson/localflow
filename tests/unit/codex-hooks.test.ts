@@ -57,9 +57,11 @@ describe('buildCodexHookArgs', () => {
     expect(joined).not.toContain('\\"event\\":\\"Notification\\"')
   })
 
-  it("tier 'full' embeds all three canonical events", () => {
+  it("tier 'full' embeds all four canonical events", () => {
     const args = buildCodexHookArgs('p2', 4242, 'tok', 'full', null)
-    expect(args).toHaveLength(6)
+    // Was 6 (3 events x 2 args); PostToolUse rides along for needs-you
+    // parity with Claude (see Task 6), making it 4 events x 2 args.
+    expect(args).toHaveLength(8)
     for (let i = 0; i < args.length; i += 2) {
       expect(args[i]).toBe('-c')
     }
@@ -68,9 +70,16 @@ describe('buildCodexHookArgs', () => {
     expect(joined).toContain('\\"event\\":\\"UserPromptSubmit\\"')
     expect(joined).toContain('\\"event\\":\\"Notification\\"')
     expect(joined).toContain('\\"event\\":\\"Stop\\"')
+    expect(joined).toContain('\\"event\\":\\"PostToolUse\\"')
     // PermissionRequest is Codex's native name but must never leak
     // through unmapped — every consumer sees only canonical names.
     expect(joined).not.toContain('\\"event\\":\\"PermissionRequest\\"')
+  })
+
+  it("tier 'full' emits a PostToolUse event for parity", () => {
+    const args = buildCodexHookArgs('p1', 4242, 'tok', 'full', null)
+    const joined = args.join(' ')
+    expect(joined).toContain('\\"event\\":\\"PostToolUse\\"')
   })
 
   it('throws on an unsafe paneId or token', () => {

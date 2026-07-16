@@ -10,7 +10,7 @@ export interface HookEndpoint {
   close(): void
 }
 
-const EVENT_NAMES = ['UserPromptSubmit', 'Notification', 'Stop'] as const
+const EVENT_NAMES = ['UserPromptSubmit', 'Notification', 'Stop', 'PostToolUse'] as const
 const MAX_BODY_BYTES = 4096
 
 function sha256(input: string): Buffer {

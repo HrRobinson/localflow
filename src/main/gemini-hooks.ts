@@ -61,6 +61,12 @@ export function buildGeminiHookSettings(
     ],
     AfterAgent: [
       { hooks: [{ type: 'command', command: curlCommand(paneId, port, token, 'Stop') }] }
+    ],
+    // Parity with Claude's PostToolUse: an executed tool = working again,
+    // clearing a mid-turn needs-you. UNVERIFIED Gemini hook name (degrades to
+    // no signal if wrong, never fires on the wrong condition).
+    AfterTool: [
+      { hooks: [{ type: 'command', command: curlCommand(paneId, port, token, 'PostToolUse') }] }
     ]
   }
   if (guard) {

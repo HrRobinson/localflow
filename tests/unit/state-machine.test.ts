@@ -20,4 +20,15 @@ describe('transition', () => {
     expect(transition('exited', 'Stop')).toBe('exited')
     expect(transition('exited', 'UserPromptSubmit')).toBe('exited')
   })
+  it('goes working on PostToolUse (an approved tool executing clears needs-you)', () => {
+    expect(transition('needs-you', 'PostToolUse')).toBe('working')
+    expect(transition('working', 'PostToolUse')).toBe('working')
+    expect(transition('idle', 'PostToolUse')).toBe('working')
+  })
+  it('needs-you stays needs-you on a pending Notification', () => {
+    expect(transition('needs-you', 'Notification')).toBe('needs-you')
+  })
+  it('exited stays exited on PostToolUse (late event ignored)', () => {
+    expect(transition('exited', 'PostToolUse')).toBe('exited')
+  })
 })

@@ -34,6 +34,8 @@ function baseLine(kind: ActivityEntry['kind']): string {
       return 'you sent a prompt'
     case 'Notification':
       return 'waiting for your approval'
+    case 'PostToolUse':
+      return 'a tool ran'
     case 'Stop':
       return 'turn finished'
   }

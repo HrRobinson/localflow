@@ -10,6 +10,12 @@ export function transition(
       return 'exited'
     case 'UserPromptSubmit':
       return 'working'
+    case 'PostToolUse':
+      // An approved tool actually executing = working again — clears a
+      // mid-turn needs-you that Notification set. A pending tool (Notification,
+      // not yet run) stays needs-you. Harmless (redundant) on auto-approved
+      // tools, which already went working via UserPromptSubmit.
+      return 'working'
     case 'Notification':
       return 'needs-you'
     case 'Stop':

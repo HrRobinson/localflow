@@ -28,12 +28,16 @@ export class TerminalScreen {
    * instant-exit message, peek/output).
    *
    * The only way to parse synchronously is the internal (unsupported, "will
-   * be removed soon") `Terminal._core.writeSync()`. Used here because it is
-   * the one mechanism that satisfies the synchronous-read contract without
-   * adding a second dependency. Guarded: if a future @xterm/headless removes
-   * it, this silently falls back to the async public `write()` — snapshot()
-   * then simply returns [] until the next tick, and SessionManager.snapshot
-   * falls back to the byte-tail path. Never throws, never worse than before.
+   * be removed soon" per upstream) `Terminal._core.writeSync()`. Used here
+   * because `writeSync` renders synchronously, so the ONLY same-tick reader —
+   * the instant-exit `onExit` message, which reads the screen right after
+   * feeding it the final pty bytes — sees the final frame. (SessionManager's
+   * regular data handler only writes; it does not read back in the same
+   * tick.) Guarded: if a future @xterm/headless removes `writeSync`, this
+   * silently falls back to the async public `write()` — snapshot() then
+   * simply returns [] until the next tick, and SessionManager.snapshot falls
+   * back to the byte-tail path. Never throws, never worse than before — a
+   * safe degradation.
    */
   write(data: string): void {
     if (this.broken) return

@@ -12,13 +12,13 @@ import type { ResolvedGuard } from '../../src/main/guard-hook'
 
 class FakePty implements PtyLike {
   dataCb: ((d: string) => void) | null = null
-  exitCb: (() => void) | null = null
+  exitCb: ((exitCode?: number, signal?: number) => void) | null = null
   written: string[] = []
   killed = false
   onData(cb: (d: string) => void): void {
     this.dataCb = cb
   }
-  onExit(cb: () => void): void {
+  onExit(cb: (exitCode?: number, signal?: number) => void): void {
     this.exitCb = cb
   }
   write(d: string): void {
@@ -78,7 +78,7 @@ describe('SessionManager', () => {
     ptys[0].dataCb?.(
       '\u001b[>0q\u001b]0;claude\u0007\u001b[4m\u001b[31mNo conversation found in this directory\u001b[0m\r\n'
     )
-    ptys[0].exitCb?.()
+    ptys[0].exitCb?.(0)
     const msg = mgr.list().find((s) => s.id === info.id)?.message
     expect(msg).toContain('No conversation found')
     expect(msg).not.toContain('\u001b')
@@ -89,7 +89,7 @@ describe('SessionManager', () => {
   it('instant exit strips 8-bit C1 CSI sequences too', () => {
     const info = mgr.create('/p', claudeSpec, 1)
     ptys[0].dataCb?.('31mRed0m')
-    ptys[0].exitCb?.()
+    ptys[0].exitCb?.(0)
     const msg = mgr.list().find((s) => s.id === info.id)?.message
     expect(msg).toContain('Red')
     expect(msg).not.toContain('')
@@ -105,7 +105,7 @@ describe('SessionManager', () => {
     ptys[0].dataCb?.(
       padding + '\u001b(B\u001b[78;1H No conversation found to continue \u001b(B\u001b[7m'
     )
-    ptys[0].exitCb?.()
+    ptys[0].exitCb?.(0)
     const msg = mgr.list().find((s) => s.id === info.id)?.message ?? ''
     expect(msg).toContain('No conversation found')
     expect(msg).not.toContain('(B')
@@ -115,8 +115,69 @@ describe('SessionManager', () => {
 
   it('instant exit with no output still gets an explanatory message', () => {
     const info = mgr.create('/p', claudeSpec, 1)
-    ptys[0].exitCb?.()
+    ptys[0].exitCb?.(0)
     expect(mgr.list().find((s) => s.id === info.id)?.message).toContain('Exited right away')
+  })
+
+  it('instant exit with a clean exit code and no output stays neutral (no failure claim)', () => {
+    // exitCode 0, no signal, no output: nothing in the evidence supports a
+    // "binary failed to start" claim (e.g. an agent that validates a flag
+    // and exits 0) — the message must not assert a cause it can't back up.
+    const info = mgr.create('/p', claudeSpec, 1)
+    ptys[0].exitCb?.(0)
+    const msg = mgr.list().find((s) => s.id === info.id)?.message
+    expect(msg).toContain('exit code 0')
+    expect(msg).not.toContain('failed to start')
+    expect(msg).not.toContain('Settings')
+  })
+
+  it('instant exit with no output names the real exit code and the command', () => {
+    const info = mgr.create('/p', claudeSpec, 1)
+    ptys[0].exitCb?.(127)
+    const msg = mgr.list().find((s) => s.id === info.id)?.message
+    expect(msg).toContain('exit code 127')
+    expect(msg).toContain('fake-claude')
+    expect(msg).toContain('Settings')
+  })
+
+  it('instant exit with a nonzero exit code, no signal, and no output blames the binary', () => {
+    // The one shape the evidence actually supports: a nonzero exit, no
+    // signal, and nothing printed — a real launch/binary failure.
+    const info = mgr.create('/p', claudeSpec, 1)
+    ptys[0].exitCb?.(1)
+    const msg = mgr.list().find((s) => s.id === info.id)?.message
+    expect(msg).toContain('exit code 1')
+    expect(msg).toContain('failed to start')
+    expect(msg).toContain('fake-claude')
+    expect(msg).toContain('Settings')
+  })
+
+  it('instant exit with no output names the signal when the process was killed', () => {
+    const info = mgr.create('/p', claudeSpec, 1)
+    ptys[0].exitCb?.(0, 9)
+    const msg = mgr.list().find((s) => s.id === info.id)?.message
+    expect(msg).toContain('exit code 0')
+    expect(msg).toContain('signal 9')
+  })
+
+  it('instant exit with a signal present stays neutral (no failure claim)', () => {
+    // node-pty only reports a signal for a process that WAS running and got
+    // killed (SIGKILL/OOM, SIGSEGV, ...) — "failed to start" would
+    // contradict that evidence, so the message must stay neutral.
+    const info = mgr.create('/p', claudeSpec, 1)
+    ptys[0].exitCb?.(0, 9)
+    const msg = mgr.list().find((s) => s.id === info.id)?.message
+    expect(msg).not.toContain('failed to start')
+    expect(msg).not.toContain('Settings')
+  })
+
+  it('instant exit with output names the exit code alongside the last output', () => {
+    const info = mgr.create('/p', claudeSpec, 1)
+    ptys[0].dataCb?.('No conversation found in this directory\r\n')
+    ptys[0].exitCb?.(1)
+    const msg = mgr.list().find((s) => s.id === info.id)?.message
+    expect(msg).toContain('exit code 1')
+    expect(msg).toContain('No conversation found')
   })
 
   it('long-lived session exit sets no message', () => {
@@ -135,7 +196,7 @@ describe('SessionManager', () => {
     })
     const info = mgrT.create('/p', claudeSpec, 1)
     t = 60_000
-    ptysT[0].exitCb?.()
+    ptysT[0].exitCb?.(0)
     expect(mgrT.list().find((s) => s.id === info.id)?.message).toBeUndefined()
   })
 
@@ -196,7 +257,7 @@ describe('SessionManager', () => {
 
   it('pty exit marks session exited; restart respawns with agent resume args', () => {
     const info = mgr.create('/p', claudeSpec, 1)
-    ptys[0].exitCb?.()
+    ptys[0].exitCb?.(0)
     expect(mgr.list()[0].status).toBe('exited')
     const restarted = mgr.restart(info.id)
     expect(restarted.id).toBe(info.id)
@@ -206,7 +267,7 @@ describe('SessionManager', () => {
 
   it('fresh restart skips resume args (new conversation)', () => {
     const info = mgr.create('/p', claudeSpec, 1)
-    ptys[0].exitCb?.()
+    ptys[0].exitCb?.(0)
     mgr.restart(info.id, true)
     expect(spawnCalls[1].args).not.toContain('--continue')
     expect(spawnCalls[1].args[0]).toBe('--settings')
@@ -214,7 +275,7 @@ describe('SessionManager', () => {
 
   it('restart of a no-adapter agent uses its own resume args and no settings', () => {
     const info = mgr.create('/p', noAdapterSpec, 1)
-    ptys[0].exitCb?.()
+    ptys[0].exitCb?.(0)
     const restarted = mgr.restart(info.id)
     expect(restarted.status).toBe('running')
     expect(spawnCalls[1].args).toEqual([])
@@ -222,31 +283,31 @@ describe('SessionManager', () => {
 
   it('instant exit after a resume restart sets resumeFailed', () => {
     const info = mgr.create('/p', claudeSpec, 1)
-    ptys[0].exitCb?.()
+    ptys[0].exitCb?.(0)
     mgr.restart(info.id)
-    ptys[1].exitCb?.()
+    ptys[1].exitCb?.(0)
     expect(mgr.list().find((s) => s.id === info.id)?.resumeFailed).toBe(true)
   })
 
   it('instant exit of a fresh (first) launch does not set resumeFailed', () => {
     const info = mgr.create('/p', claudeSpec, 1)
-    ptys[0].exitCb?.()
+    ptys[0].exitCb?.(0)
     expect(mgr.list().find((s) => s.id === info.id)?.resumeFailed).toBeUndefined()
   })
 
   it('instant exit after a fresh restart does not set resumeFailed', () => {
     const info = mgr.create('/p', claudeSpec, 1)
-    ptys[0].exitCb?.()
+    ptys[0].exitCb?.(0)
     mgr.restart(info.id, true)
-    ptys[1].exitCb?.()
+    ptys[1].exitCb?.(0)
     expect(mgr.list().find((s) => s.id === info.id)?.resumeFailed).toBeUndefined()
   })
 
   it('a later restart clears resumeFailed at spawn time', () => {
     const info = mgr.create('/p', claudeSpec, 1)
-    ptys[0].exitCb?.()
+    ptys[0].exitCb?.(0)
     mgr.restart(info.id)
-    ptys[1].exitCb?.()
+    ptys[1].exitCb?.(0)
     expect(mgr.list().find((s) => s.id === info.id)?.resumeFailed).toBe(true)
     const restarted = mgr.restart(info.id, true)
     expect(restarted.resumeFailed).toBeUndefined()
@@ -298,6 +359,39 @@ describe('SessionManager', () => {
     expect(info.status).toBe('exited')
     expect(messages.join('')).toContain('Could not start')
     expect(info.message).toContain('Could not start')
+    // The real exception's message must survive, not just a generic
+    // path-check sentence.
+    expect(info.message).toContain('ENOENT')
+  })
+
+  it('spawn failure surfaces the real error code, e.g. a permission problem', () => {
+    const failing = new SessionManager({
+      settingsDir: mkdtempSync(join(tmpdir(), 'localflow-sm-')),
+      port: 9999,
+      token: 'tok',
+      spawnFn: () => {
+        const err = new Error('permission denied') as NodeJS.ErrnoException
+        err.code = 'EACCES'
+        throw err
+      }
+    })
+    const info = failing.create('/p', { ...claudeSpec, command: 'restricted' }, 1)
+    expect(info.message).toContain('EACCES')
+    expect(info.message).toContain('permission denied')
+  })
+
+  it('spawn failure from a non-Error throw still yields a readable message', () => {
+    const failing = new SessionManager({
+      settingsDir: mkdtempSync(join(tmpdir(), 'localflow-sm-')),
+      port: 9999,
+      token: 'tok',
+      spawnFn: () => {
+        throw 'disk full'
+      }
+    })
+    const info = failing.create('/p', { ...claudeSpec, command: 'weird' }, 1)
+    expect(info.message).toContain('Could not start')
+    expect(info.message).toContain('disk full')
   })
 
   it('disposeAll kills every pty, keeps sessions, silences late data', () => {
@@ -311,7 +405,7 @@ describe('SessionManager', () => {
     expect(mgr.list()).toHaveLength(2)
     // Late flushed output after dispose must be swallowed, not forwarded.
     ptys[0].dataCb?.('late output after quit')
-    ptys[1].exitCb?.()
+    ptys[1].exitCb?.(0)
     expect(messages).toEqual([])
     expect(() => mgr.write(a.id, 'x')).not.toThrow()
     expect(ptys[0].written).toEqual([])
@@ -347,7 +441,7 @@ describe('SessionManager', () => {
   it('closeTerminal then a late real onExit does not re-run the instant-exit message', () => {
     const info = mgr.create('/p', claudeSpec, 1)
     mgr.closeTerminal(info.id)
-    ptys[0].exitCb?.()
+    ptys[0].exitCb?.(0)
     const list = mgr.list()
     expect(list[0].status).toBe('exited')
     expect(list[0].message).toBeUndefined()
@@ -405,14 +499,14 @@ describe('SessionManager', () => {
   it('restart preserves a renamed session name, not recomputed from cwd', () => {
     const info = mgr.create('/p', claudeSpec, 1)
     mgr.rename(info.id, 'Renamed')
-    ptys[0].exitCb?.()
+    ptys[0].exitCb?.(0)
     const restarted = mgr.restart(info.id)
     expect(restarted.name).toBe('Renamed')
   })
 
   it('resize and write after pty exit never reach the dead pty', () => {
     const info = mgr.create('/p', claudeSpec, 1)
-    ptys[0].exitCb?.()
+    ptys[0].exitCb?.(0)
     expect(() => {
       mgr.resize(info.id, 120, 40)
       mgr.write(info.id, 'ls\n')
@@ -437,7 +531,7 @@ describe('SessionManager', () => {
     expect(newPty).not.toBe(oldPty)
     // The old pty's real onExit arrives late (SIGHUP is not synchronous) —
     // it must be a no-op against the already-replaced record.
-    oldPty.exitCb?.()
+    oldPty.exitCb?.(0)
     const after = mgr.list().find((s) => s.id === info.id)
     expect(after?.status).not.toBe('exited')
     expect(after?.message).toBeUndefined()
@@ -457,7 +551,7 @@ describe('SessionManager', () => {
     oldPty.dataCb?.('OLD STALE DATA')
     expect(messages).toEqual([])
     newPty.dataCb?.('new data')
-    newPty.exitCb?.()
+    newPty.exitCb?.(0)
     const msg = mgr.list().find((s) => s.id === info.id)?.message
     expect(msg).toContain('new data')
     expect(msg).not.toContain('OLD STALE DATA')
@@ -693,7 +787,7 @@ describe('SessionManager', () => {
       mgr.closeTerminal(info.id)
       const reopened = mgr.restart(info.id)
       mgr.setEnvironment(reopened.id, 4)
-      ptys[1].exitCb?.()
+      ptys[1].exitCb?.(0)
       expect(mgr.getActivity(info.id).map((e) => e.kind)).toEqual([
         'created',
         'closed',
@@ -791,7 +885,7 @@ describe('SessionManager', () => {
       mgrT.applyHookEvent({ paneId: info.id, event: 'Notification' })
       expect(mgrT.list()[0].needsYouSince).toBe(5000)
       t = 6000
-      ptysT[0].exitCb?.()
+      ptysT[0].exitCb?.(0)
       expect(mgrT.list()[0].status).toBe('exited')
       expect(mgrT.list()[0].needsYouSince).toBeUndefined()
     })
@@ -1094,7 +1188,7 @@ describe('SessionManager', () => {
       expect(hasGuardArgs(calls[0])).toBe(true)
       // Instant exit (< 5000ms) — the guard flag likely bricked the launch.
       t = 1000
-      guardedPtys[0].exitCb?.()
+      guardedPtys[0].exitCb?.(0)
       // Relaunched once, this time WITHOUT the guard args.
       expect(calls).toHaveLength(2)
       expect(hasGuardArgs(calls[1])).toBe(false)
@@ -1106,7 +1200,7 @@ describe('SessionManager', () => {
       guardedMgr = makeMgr(() => guard)
       const info = guardedMgr.create('/p', codexSpec, 1)
       t = 6000
-      guardedPtys[0].exitCb?.()
+      guardedPtys[0].exitCb?.(0)
       expect(calls).toHaveLength(1)
       expect(guardedMgr.list().find((s) => s.id === info.id)?.status).toBe('exited')
     })
@@ -1115,7 +1209,7 @@ describe('SessionManager', () => {
       guardedMgr = makeMgr(() => guard)
       const info = guardedMgr.create('/p', claudeSpec, 1)
       t = 1000
-      guardedPtys[0].exitCb?.()
+      guardedPtys[0].exitCb?.(0)
       // No relaunch; normal instant-exit handling ran.
       expect(calls).toHaveLength(1)
       const listed = guardedMgr.list().find((s) => s.id === info.id)
@@ -1127,12 +1221,12 @@ describe('SessionManager', () => {
       guardedMgr = makeMgr(() => guard)
       guardedMgr.create('/p', codexSpec, 1)
       t = 1000
-      guardedPtys[0].exitCb?.() // triggers the guard-less relaunch (spawn #2)
+      guardedPtys[0].exitCb?.(0) // triggers the guard-less relaunch (spawn #2)
       expect(calls).toHaveLength(2)
       // The retry pty also exits instantly — but its record has guardOnCli
       // false, so it must NOT trigger another relaunch.
       t = 2000
-      guardedPtys[1].exitCb?.()
+      guardedPtys[1].exitCb?.(0)
       expect(calls).toHaveLength(2)
     })
 
@@ -1141,7 +1235,7 @@ describe('SessionManager', () => {
       const info = guardedMgr.create('/p', codexSpec, 1)
       guardedMgr.closeTerminal(info.id) // sets closedByUser, kills pty
       t = 1000
-      guardedPtys[0].exitCb?.() // late real onExit
+      guardedPtys[0].exitCb?.(0) // late real onExit
       expect(calls).toHaveLength(1)
       expect(guardedMgr.list().find((s) => s.id === info.id)?.status).toBe('exited')
     })

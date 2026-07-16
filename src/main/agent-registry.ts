@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { execFile, type ExecFileException } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import type { AgentId, AgentInfo, AgentOverride, LastAgent } from '../shared/types'
 type StatusFidelity = AgentInfo['statusFidelity']
@@ -189,21 +189,62 @@ export function saveAgentConfig(file: string, config: AgentConfig): void {
   writeFileSync(file, JSON.stringify(out, null, 2))
 }
 
+/** Narrow shape of the error execFile hands its callback — enough to tell a
+ * timed-out probe from a shell that genuinely couldn't find the binary.
+ * Aliased directly to node's own ExecFileException so the locally-defined
+ * shape never drifts from what execFile actually produces. */
+type WhichExecError = ExecFileException | null
+
+/** Injectable in place of node:child_process's execFile so tests can force
+ * each failure mode deterministically instead of depending on the host's
+ * actual shell/PATH. */
+export type WhichExecFn = (
+  file: string,
+  args: string[],
+  opts: { timeout: number },
+  cb: (err: WhichExecError, stdout: string) => void
+) => void
+
+const defaultWhichExec: WhichExecFn = (file, args, opts, cb) =>
+  execFile(file, args, opts, (err, stdout) => cb(err, stdout))
+
+/**
+ * Explains why a login-shell PATH probe failed, so the failure isn't a bare
+ * undifferentiated "not found" — see the project's Mac PATH-gap issue: a
+ * hung/broken shell profile and a genuinely-missing binary need different
+ * fixes from the user.
+ */
+export function describeWhichFailure(err: NonNullable<WhichExecError>, shell: string): string {
+  if (err.killed) return `login shell (${shell}) timed out after 5s — check its startup files`
+  if (err.code === 'ENOENT') return `login shell '${shell}' does not exist`
+  return `not on PATH via ${shell} (${err.message})`
+}
+
 /**
  * Resolve a command via the user's login shell, because a GUI app on macOS
  * does not inherit the terminal PATH (nvm, homebrew, ~/.local/bin, ...).
+ * On failure, logs *why* the probe came back empty (timeout, missing shell,
+ * or a genuine PATH miss) so a broken profile doesn't look identical to an
+ * uninstalled binary in the main-process log.
  */
-export function whichViaLoginShell(bin: string): Promise<string | null> {
+export function whichViaLoginShell(
+  bin: string,
+  execFn: WhichExecFn = defaultWhichExec
+): Promise<string | null> {
   return new Promise((resolve) => {
-    execFile(
-      process.env['SHELL'] ?? '/bin/zsh',
-      ['-ilc', `command -v ${bin}`],
-      { timeout: 5000 },
-      (err, stdout) => {
-        const found = stdout.trim().split('\n').pop() ?? ''
-        resolve(!err && found.startsWith('/') ? found : null)
+    const shell = process.env['SHELL'] ?? '/bin/zsh'
+    execFn(shell, ['-ilc', `command -v ${bin}`], { timeout: 5000 }, (err, stdout) => {
+      const found = stdout.trim().split('\n').pop() ?? ''
+      if (!err && found.startsWith('/')) {
+        resolve(found)
+        return
       }
-    )
+      if (err)
+        console.warn(
+          `agent-registry: PATH probe for '${bin}' failed — ${describeWhichFailure(err, shell)}`
+        )
+      resolve(null)
+    })
   })
 }
 

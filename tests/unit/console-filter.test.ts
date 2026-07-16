@@ -126,7 +126,7 @@ describe('appendConsoleEvents (rings)', () => {
     expect(rings.network.length).toBe(CONSOLE_SOURCE_CAPS.network)
   })
 
-  it('caps each source ring independently, trimming to that source\'s own cap', () => {
+  it("caps each source ring independently, trimming to that source's own cap", () => {
     let rings = emptyConsoleRings()
     const caps = { status: 3, operator: 5, capture: 300, guard: 300, network: 2000 }
     const statusFlood = Array.from({ length: 10 }, (_, i) => ev('status', 1, `s${i}`))
@@ -159,9 +159,7 @@ describe('ringsFromSnapshot', () => {
     )
     const rings = ringsFromSnapshot(overflow)
     expect(rings.status.length).toBe(CONSOLE_SOURCE_CAPS.status)
-    expect(rings.status[rings.status.length - 1].label).toBe(
-      `s${CONSOLE_SOURCE_CAPS.status + 49}`
-    )
+    expect(rings.status[rings.status.length - 1].label).toBe(`s${CONSOLE_SOURCE_CAPS.status + 49}`)
   })
 
   it("round-trips today's real shape with no rows dropped (snapshot at exactly the caps' sum, evenly distributed)", () => {
@@ -174,7 +172,10 @@ describe('ringsFromSnapshot', () => {
       }
     }
     const rings = ringsFromSnapshot(snapshot)
-    const total = Object.values(rings).reduce((sum: number, r) => sum + (r as ConsoleEvent[]).length, 0)
+    const total = Object.values(rings).reduce(
+      (sum: number, r) => sum + (r as ConsoleEvent[]).length,
+      0
+    )
     expect(total).toBe(snapshot.length)
     for (const source of sources) {
       expect(rings[source].length).toBe(CONSOLE_SOURCE_CAPS[source])

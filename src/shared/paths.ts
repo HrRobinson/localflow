@@ -37,15 +37,22 @@ export function expandTypedPath(input: string, home: string): string | null {
  * order `SessionManager.list()`/`session:list` already guarantee — Landing's
  * own "Latest sessions" list relies on the same ordering), falling back to
  * `home` when there is none (fresh install, or every session is a browser
- * pane with no filesystem cwd).
+ * pane with no filesystem cwd) — or when that most recent cwd has since been
+ * deleted off disk (moved/removed project folder). `exists` is an injected
+ * seam (like `SessionManager`'s `spawnFn`/`guard` options) instead of a
+ * direct `node:fs` call, so this stays pure and testable; callers pass real
+ * `fs.existsSync` in production. Omitting it skips the existence check
+ * entirely (unit tests that don't care about deleted-cwd behavior can still
+ * pass arbitrary fixture paths).
  */
 export function resolveDefaultCwd(
   sessions: Pick<SessionInfo, 'cwd' | 'kind'>[],
-  home: string
+  home: string,
+  exists?: (path: string) => boolean
 ): string {
   for (let i = sessions.length - 1; i >= 0; i--) {
     const s = sessions[i]
-    if (s.kind !== 'browser' && s.cwd) return s.cwd
+    if (s.kind !== 'browser' && s.cwd && (!exists || exists(s.cwd))) return s.cwd
   }
   return home
 }

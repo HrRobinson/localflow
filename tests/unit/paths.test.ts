@@ -52,6 +52,15 @@ describe('expandTypedPath', () => {
   it('rejects a user-prefixed tilde (~otheruser) — not expanded, not absolute', () => {
     expect(expandTypedPath('~otheruser/code', home)).toBeNull()
   })
+
+  it('passes a `~/..` traversal through unchanged after expansion — the fs boundary resolves it', () => {
+    expect(expandTypedPath('~/..', home)).toBe('/Users/jonas/..')
+  })
+
+  it('preserves a trailing slash rather than normalizing it away', () => {
+    expect(expandTypedPath('/Users/jonas/code/', home)).toBe('/Users/jonas/code/')
+    expect(expandTypedPath('~/code/', home)).toBe('/Users/jonas/code/')
+  })
 })
 
 function session(cwd: string, kind: SessionInfo['kind'] = 'terminal'): SessionInfo {
@@ -92,5 +101,22 @@ describe('resolveDefaultCwd', () => {
   it('falls back to home when the most recent terminal session has an empty cwd', () => {
     const sessions = [session('')]
     expect(resolveDefaultCwd(sessions, home)).toBe(home)
+  })
+
+  it('falls back to home when the most recent terminal cwd has since been deleted', () => {
+    const sessions = [session('/Users/jonas/deleted-project')]
+    const exists = (p: string): boolean => p !== '/Users/jonas/deleted-project'
+    expect(resolveDefaultCwd(sessions, home, exists)).toBe(home)
+  })
+
+  it('uses the most recent terminal cwd when the existence check confirms it', () => {
+    const sessions = [session('/Users/jonas/first'), session('/Users/jonas/second')]
+    expect(resolveDefaultCwd(sessions, home, () => true)).toBe('/Users/jonas/second')
+  })
+
+  it('falls through to an older still-existing cwd when the most recent one was deleted', () => {
+    const sessions = [session('/Users/jonas/first'), session('/Users/jonas/second')]
+    const exists = (p: string): boolean => p !== '/Users/jonas/second'
+    expect(resolveDefaultCwd(sessions, home, exists)).toBe('/Users/jonas/first')
   })
 })

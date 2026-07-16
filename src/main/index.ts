@@ -891,6 +891,7 @@ app.whenReady().then(async () => {
     const n = Number(maxLines)
     return manager.peek(id, Math.min(Math.max(Number.isFinite(n) ? Math.trunc(n) : 5, 1), 20))
   })
+  ipcMain.handle('session:snapshot', (_e, id: string) => manager.snapshot(id))
   ipcMain.on('session:write', (_e, id: string, data: string) => manager.write(id, data))
   ipcMain.on('session:resize', (_e, id: string, cols: number, rows: number) =>
     manager.resize(id, cols, rows)

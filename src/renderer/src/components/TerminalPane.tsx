@@ -55,6 +55,17 @@ export default function TerminalPane({
     term.open(hostRef.current)
     fit.fit()
     window.localflow.resize(session.id, term.cols, term.rows)
+    // Switching views unmounts the grid (App.tsx), so returning creates a
+    // FRESH xterm whose onData only sees NEW pty bytes — the pane would be
+    // blank until a keystroke provokes a redraw. Replay the pane's current
+    // rendered screen (from the headless emulator in main) so it paints its
+    // last frame immediately. Guarded against a mount that already tore down.
+    let cancelled = false
+    void window.localflow.snapshotSession(session.id).then((lines) => {
+      if (cancelled || termRef.current !== term) return
+      if (lines.length > 0) term.write(lines.join('\r\n'))
+      term.refresh(0, term.rows - 1)
+    })
     const offData = window.localflow.onData((id, data) => {
       if (id === session.id) term.write(data)
     })
@@ -65,6 +76,7 @@ export default function TerminalPane({
     })
     ro.observe(hostRef.current)
     return () => {
+      cancelled = true
       offData()
       onInput.dispose()
       ro.disconnect()

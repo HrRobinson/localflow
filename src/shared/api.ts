@@ -110,6 +110,9 @@ export interface LocalflowApi {
   onPersistenceNotice(cb: (message: string) => void): () => void
   /** Last few cleaned output lines of a session — the approve control's peek. */
   peekSession(id: string, maxLines?: number): Promise<string[]>
+  /** The pane's full rendered screen — replayed into a fresh xterm on
+   *  view-return so the pane isn't blank until the next keystroke. */
+  snapshotSession(id: string): Promise<string[]>
   listAgents(): Promise<AgentInfo[]>
   /** Opens a file picker to locate the agent binary; returns the updated list. */
   setAgentPath(agentId: AgentId): Promise<AgentInfo[] | null>

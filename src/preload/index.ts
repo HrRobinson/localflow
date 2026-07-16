@@ -46,6 +46,7 @@ const api: LocalflowApi = {
     return () => ipcRenderer.removeListener('persistence:notice', listener)
   },
   peekSession: (id: string, maxLines?: number) => ipcRenderer.invoke('session:peek', id, maxLines),
+  snapshotSession: (id: string) => ipcRenderer.invoke('session:snapshot', id),
   listAgents: () => ipcRenderer.invoke('agents:list'),
   setAgentPath: (agentId: AgentId) => ipcRenderer.invoke('agents:setPath', agentId),
   setDefaultAgent: (agentId: AgentId) => ipcRenderer.invoke('agents:setDefaultAgent', agentId),

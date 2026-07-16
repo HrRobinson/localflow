@@ -137,5 +137,5 @@ reason = "AWS Organizations mutation has org-wide blast radius — never agent-c
 # read verbs (`describe-*`/`list-*`/`get-*`) and restore verbs (`undelete-*`)
 # never trip it. Routine/recoverable delete verbs are exempted by the second
 # allow rule above (checked first).
-pattern = '^(?:sudo\s+)?aws\s+(?:--(?:profile|region|endpoint-url|output|query|color|ca-bundle|cli-read-timeout|cli-connect-timeout|cli-binary-format)(?:=\S+|\s+\S+)\s+|--(?:debug|no-sign-request|no-verify-ssl|no-paginate|no-cli-pager|cli-auto-prompt|no-cli-auto-prompt)\s+)*\S+\s+(?:delete[\w-]*|\S*(?:terminate|force)\S*)(?:\s|$)'
+pattern = '^(?:sudo\s+)?aws\s+(?:--(?:profile|region|endpoint-url|output|query|color|ca-bundle|cli-read-timeout|cli-connect-timeout|cli-binary-format)(?:=\S+|\s+\S+)\s+|--(?:debug|no-sign-request|no-verify-ssl|no-paginate|no-cli-pager|cli-auto-prompt|no-cli-auto-prompt)\s+)*[^-\s]\S*\s+(?:delete[\w-]*|\S*(?:terminate|force)\S*)(?:\s|$)'
 reason = "destructive AWS operation (delete/terminate/force) — verify the blast radius before running"

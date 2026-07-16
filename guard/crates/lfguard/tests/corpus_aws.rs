@@ -59,6 +59,12 @@ fn denies_destructive_aws_commands() {
         ),
         // DynamoDB
         ("aws dynamodb delete-table --table-name users", "table"),
+        // a destructive command still blocks even when a preceding global's
+        // value looks destructive (the value must not consume the service slot)
+        (
+            "aws --profile delete-me dynamodb delete-table --table-name t",
+            "table",
+        ),
         // IAM self-priv-esc shapes
         ("aws iam delete-role --role-name localflow-agent", "IAM"),
         ("aws iam delete-user --user-name svc", "IAM"),
@@ -210,6 +216,15 @@ fn allows_safe_aws_commands() {
         "aws s3api delete-object --bucket b --key path/to/one-object.txt",
         // routine delete verbs stay allowed even with a global option in front
         "aws --region us-east-1 sqs delete-message --queue-url https://q --receipt-handle abc",
+        // A value-taking global whose VALUE looks destructive must not let the
+        // flag masquerade as the service in the catch-all: these are pure reads.
+        "aws --profile delete-me s3 ls",
+        "aws --profile force-prod ec2 describe-instances",
+        "aws --query terminated ec2 describe-instances",
+        "aws --query delete_markers s3api list-object-versions",
+        "aws --query terminateProtection ec2 describe-instances",
+        "aws --output text --query terminated ec2 describe-instances",
+        "aws --region force ec2 describe-instances",
     ];
     for cmd in allow {
         assert!(

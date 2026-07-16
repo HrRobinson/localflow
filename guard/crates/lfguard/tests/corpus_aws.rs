@@ -88,6 +88,64 @@ fn denies_destructive_aws_commands() {
         ),
         ("aws ec2 delete-vpc --vpc-id vpc-1", "destructive"),
         ("aws ecs delete-service --service svc", "destructive"),
+        // Bulk S3 multi-object delete is NOT one of the routine carve-outs
+        // (only single `delete-object` is) — the catch-all must still block it.
+        (
+            "aws s3api delete-objects --bucket b --delete file://d.json",
+            "destructive",
+        ),
+        // C1 — a global option BEFORE the service must not shift the service
+        // out of the anchor. Separate-token AND `=`-joined value forms.
+        (
+            "aws --region us-east-1 ec2 terminate-instances --instance-ids i-1",
+            "terminate",
+        ),
+        (
+            "aws --profile prod dynamodb delete-table --table-name t",
+            "table",
+        ),
+        (
+            "aws --output json cloudformation delete-stack --stack-name s",
+            "stack",
+        ),
+        ("aws --region=us-east-1 s3 rb s3://b --force", "bucket"),
+        // Multiple stacked globals, mixed forms, still anchor to the service.
+        (
+            "aws --profile prod --region us-east-1 --output json ec2 terminate-instances --instance-ids i-1",
+            "terminate",
+        ),
+        // A boolean global (no value) between aws and the service.
+        (
+            "aws --no-cli-pager dynamodb delete-table --table-name t",
+            "table",
+        ),
+        // A global option in front of a catch-all destructive verb.
+        (
+            "aws --region us-east-1 ec2 delete-vpc --vpc-id vpc-1",
+            "destructive",
+        ),
+        // I1 — IAM inline-policy self-escalation (put-*-policy / create-policy-version)
+        (
+            "aws iam put-role-policy --role-name r --policy-name p --policy-document file://admin.json",
+            "self-escalate",
+        ),
+        (
+            "aws iam put-user-policy --user-name u --policy-name p --policy-document file://admin.json",
+            "self-escalate",
+        ),
+        (
+            "aws iam put-group-policy --group-name g --policy-name p --policy-document file://admin.json",
+            "self-escalate",
+        ),
+        (
+            "aws iam create-policy-version --policy-arn arn:aws:iam::1:policy/p --policy-document file://admin.json --set-as-default",
+            "self-escalate",
+        ),
+        // IAM self-escalation still caught with a global option in front.
+        (
+            "aws --profile prod iam put-role-policy --role-name r --policy-name p --policy-document file://admin.json",
+            "self-escalate",
+        ),
         // sudo-wrapped forms still denied (wrapper peeled before matching)
         (
             "sudo aws ec2 terminate-instances --instance-ids i-1",
@@ -138,6 +196,20 @@ fn allows_safe_aws_commands() {
         "aws iam attach-role-policy --role-name r --policy-arn arn:aws:iam::aws:policy/ReadOnlyAccess",
         // an undelete/restore verb must not trip the delete catch-all
         "aws route53domains list-domains",
+        // C1 — benign GLOBAL-flagged reads must still ALLOW (globals tolerated,
+        // but a read verb never blocks).
+        "aws --region us-east-1 ec2 describe-instances",
+        "aws --profile prod s3 ls",
+        "aws --output json --region us-east-1 dynamodb list-tables",
+        // C2 — routine / recoverable delete verbs the catch-all must NOT block:
+        // SQS message-ack (breaks every poller if blocked), tag removal (no data
+        // loss), single versioned-object delete (recoverable).
+        "aws sqs delete-message --queue-url https://q --receipt-handle abc",
+        "aws sqs delete-message-batch --queue-url https://q --entries file://e.json",
+        "aws ec2 delete-tags --resources i-0abc --tags Key=env",
+        "aws s3api delete-object --bucket b --key path/to/one-object.txt",
+        // routine delete verbs stay allowed even with a global option in front
+        "aws --region us-east-1 sqs delete-message --queue-url https://q --receipt-handle abc",
     ];
     for cmd in allow {
         assert!(

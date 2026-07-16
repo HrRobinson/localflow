@@ -112,8 +112,9 @@ export function setEdgeCondition(
     edges: graph.edges.map((e) => {
       if (e.id !== edgeId) return e
       if (condition === undefined) {
-        const { condition: _drop, ...rest } = e
-        return rest
+        const next = { ...e }
+        delete next.condition
+        return next
       }
       return { ...e, condition: { ...condition } }
     })

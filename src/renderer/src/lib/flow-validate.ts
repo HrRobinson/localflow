@@ -6,12 +6,7 @@
 // `ok` is false iff there is at least one `error`-severity issue. Warnings
 // (empty-graph, unreachable, router-cycle) never block. Messages are human and
 // actionable, and name the node/integration.
-import type {
-  FlowGraph,
-  FlowNode,
-  ValidationIssue,
-  ValidationResult
-} from '../../../shared/flows'
+import type { FlowGraph, FlowNode, ValidationIssue, ValidationResult } from '../../../shared/flows'
 import type { ResolvedIntegrationDescriptor } from '../../../shared/integrations'
 
 const INTEGRATION_TYPES = new Set(['trigger', 'action'])
@@ -110,9 +105,7 @@ function integrationIssues(
 ): ValidationIssue[] {
   if (!INTEGRATION_TYPES.has(node.type)) return []
   const issues: ValidationIssue[] = []
-  const descriptor = node.integration
-    ? registry.find((d) => d.id === node.integration)
-    : undefined
+  const descriptor = node.integration ? registry.find((d) => d.id === node.integration) : undefined
   const kind = node.type === 'trigger' ? 'trigger' : 'action'
 
   if (!node.integration || !node.ref) {

@@ -10,7 +10,14 @@ const graph = (id: string, name = 'flow'): FlowGraph => ({
   id,
   name,
   nodes: [
-    { id: 't', type: 'trigger', integration: 'linear', ref: 'issue.created', config: {}, position: { x: 1, y: 2 } },
+    {
+      id: 't',
+      type: 'trigger',
+      integration: 'linear',
+      ref: 'issue.created',
+      config: {},
+      position: { x: 1, y: 2 }
+    },
     { id: 'a', type: 'agent', config: { agentId: 'claude' }, position: { x: 3, y: 4 } }
   ],
   edges: [{ id: 'e', from: 't', to: 'a' }]
@@ -66,7 +73,12 @@ describe('FlowStore', () => {
   })
 
   it('rejects a malformed graph at the save boundary rather than writing it', () => {
-    const bad = { id: 'bad', name: 'x', nodes: [{ id: 'n', type: 'nope', config: {}, position: { x: 0, y: 0 } }], edges: [] }
+    const bad = {
+      id: 'bad',
+      name: 'x',
+      nodes: [{ id: 'n', type: 'nope', config: {}, position: { x: 0, y: 0 } }],
+      edges: []
+    }
     const res = store.saveFlow(bad as unknown as FlowGraph)
     expect(res.ok).toBe(false)
     if (!res.ok) expect(res.error).toMatch(/couldn't be saved|invalid|malformed/i)

@@ -25,9 +25,7 @@ import {
 import { basename, join } from 'node:path'
 import { isFlowGraph, summarize, type FlowGraph, type FlowSummary } from '../shared/flows'
 
-export type SaveFlowResult =
-  | { ok: true; summary: FlowSummary }
-  | { ok: false; error: string }
+export type SaveFlowResult = { ok: true; summary: FlowSummary } | { ok: false; error: string }
 
 /** The load-with-signals shape (mirrors persistence.ts's LoadedState). */
 export interface LoadedFlow {

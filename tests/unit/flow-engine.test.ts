@@ -10,7 +10,14 @@ const runnable = (id: string): FlowGraph => ({
   id,
   name: 'runnable',
   nodes: [
-    { id: 't', type: 'trigger', integration: 'linear', ref: 'issue.created', config: {}, position: { x: 0, y: 0 } },
+    {
+      id: 't',
+      type: 'trigger',
+      integration: 'linear',
+      ref: 'issue.created',
+      config: {},
+      position: { x: 0, y: 0 }
+    },
     { id: 'a', type: 'agent', config: {}, position: { x: 0, y: 0 } }
   ],
   edges: [{ id: 'e', from: 't', to: 'a' }]

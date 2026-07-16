@@ -17,6 +17,10 @@ import { startHookServer } from './hook-server'
 import { SessionManager, type SpawnSpec } from './session-manager'
 import { loadSavedState, saveState } from './persistence'
 import { PersistenceNoticeRouter } from './persistence-notice'
+import { FlowStore } from './flow-store'
+import { makeFlowEngineStub } from './flow-engine'
+import { fixtureIntegrationRegistry, resolveDescriptors } from '../shared/integrations'
+import type { FlowGraph } from '../shared/flows'
 import { AgentRegistry, whichViaLoginShell } from './agent-registry'
 import { resolveShellPath } from './resolve-shell-path'
 import { resolveGuardBinary } from './guard-binary'
@@ -96,6 +100,16 @@ const persistenceNotices = new PersistenceNoticeRouter((message) => {
   return false
 })
 
+// Flow-store save-failure notices (mirrors persistenceNotices). Pushed on the
+// `flow:notice` channel so the Flow Canvas can warn the on-disk copy is stale.
+const flowNotices = new PersistenceNoticeRouter((message) => {
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('flow:notice', message)
+    return true
+  }
+  return false
+})
+
 function createWindow(): void {
   win = new BrowserWindow({
     width: 1400,
@@ -116,7 +130,10 @@ function createWindow(): void {
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   // Flush any persistence notice buffered before the window existed (a save
   // failure during the pre-window startup restore) once the renderer is live.
-  win.webContents.once('did-finish-load', () => persistenceNotices.flush())
+  win.webContents.once('did-finish-load', () => {
+    persistenceNotices.flush()
+    flowNotices.flush()
+  })
   if (process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
@@ -928,6 +945,26 @@ app.whenReady().then(async () => {
       return { ok: false, reason: (err as Error).message }
     }
   })
+
+  // --- Flow Canvas (sub-project #3) ------------------------------------------
+  // One JSON file per flow under userData/flows/. The integration registry is a
+  // fixture STUB (§9) until #1 lands; the engine is a validate-and-log STUB
+  // until #2 lands. Both swap in behind these exact IPC signatures.
+  const flowStore = new FlowStore(join(userData, 'flows'))
+  const flowEngine = makeFlowEngineStub(flowStore)
+  ipcMain.handle('integration:list', () => resolveDescriptors(fixtureIntegrationRegistry()))
+  ipcMain.handle('flow:list', () => flowStore.listFlows())
+  ipcMain.handle('flow:get', (_e, id: string) => flowStore.loadFlow(id))
+  ipcMain.handle('flow:save', (_e, graph: FlowGraph) => {
+    const result = flowStore.saveFlow(graph)
+    // A later save failure is also pushed as a notice (the return value already
+    // carries it for the immediate caller; the push mirrors onPersistenceNotice
+    // so a passive banner can surface it too).
+    flowNotices.report(result.ok ? null : result.error)
+    return result
+  })
+  ipcMain.handle('flow:delete', (_e, id: string) => flowStore.deleteFlow(id))
+  ipcMain.handle('flow:run', (_e, id: string) => flowEngine.run(id))
 
   createWindow()
 })

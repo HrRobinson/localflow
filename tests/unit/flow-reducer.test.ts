@@ -30,9 +30,7 @@ describe('flow-reducer: emptyGraph', () => {
 describe('flow-reducer: addNode', () => {
   it('appends a node with the injected id, given type and position', () => {
     const g = addNode(base(), { type: 'trigger', position: { x: 10, y: 20 } }, seqIds('n1'))
-    expect(g.nodes).toEqual([
-      { id: 'n1', type: 'trigger', config: {}, position: { x: 10, y: 20 } }
-    ])
+    expect(g.nodes).toEqual([{ id: 'n1', type: 'trigger', config: {}, position: { x: 10, y: 20 } }])
   })
   it('carries integration + ref for integration-sourced nodes', () => {
     const g = addNode(

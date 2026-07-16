@@ -14,7 +14,13 @@ export type IntegrationId = 'linear' | 'email' | 'cloud'
 export interface IntegrationDescriptor {
   id: IntegrationId
   label: string
-  configFields: { key: string; label: string; secret: boolean; required: boolean; placeholder?: string }[]
+  configFields: {
+    key: string
+    label: string
+    secret: boolean
+    required: boolean
+    placeholder?: string
+  }[]
   triggers: { id: string; label: string }[]
   actions: { id: string; label: string }[]
   status(): 'connected' | 'needs-config' | 'error'
@@ -73,7 +79,13 @@ export function fixtureIntegrationRegistry(): IntegrationDescriptor[] {
       label: 'Email',
       configFields: [
         { key: 'smtpUrl', label: 'SMTP URL', secret: true, required: true },
-        { key: 'from', label: 'From address', secret: false, required: true, placeholder: 'you@example.com' }
+        {
+          key: 'from',
+          label: 'From address',
+          secret: false,
+          required: true,
+          placeholder: 'you@example.com'
+        }
       ],
       triggers: [{ id: 'message.received', label: 'Message received' }],
       actions: [{ id: 'message.send', label: 'Send email' }],
@@ -84,7 +96,13 @@ export function fixtureIntegrationRegistry(): IntegrationDescriptor[] {
       label: 'Cloud',
       configFields: [
         { key: 'serviceAccount', label: 'Service account JSON', secret: true, required: true },
-        { key: 'project', label: 'Project id', secret: false, required: true, placeholder: 'my-project' }
+        {
+          key: 'project',
+          label: 'Project id',
+          secret: false,
+          required: true,
+          placeholder: 'my-project'
+        }
       ],
       triggers: [],
       actions: [

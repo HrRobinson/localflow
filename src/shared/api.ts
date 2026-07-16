@@ -24,6 +24,8 @@ import type {
   Watchpoint
 } from './operator'
 import type { ConsoleEvent, ConsolePrefs } from './console'
+import type { FlowGraph, FlowSummary } from './flows'
+import type { ResolvedIntegrationDescriptor } from './integrations'
 
 export interface LocalflowApi {
   /**
@@ -201,6 +203,30 @@ export interface LocalflowApi {
   onThemeChanged(cb: (payload: { name: string; theme: Theme; error?: string }) => void): () => void
   /** Browser panes report their guest webContents id so the operator API can drive them. */
   registerBrowser(handle: string, webContentsId: number): void
+  /**
+   * The integration registry that feeds the Flow Canvas palette + config panel.
+   * `status()` is resolved to a plain value at fetch time (a method can't cross
+   * the IPC boundary). Stubbed by a fixture registry until Integrations Hub (#1)
+   * lands (§9); swapping the stub for #1's real handler is invisible here.
+   */
+  listIntegrations(): Promise<ResolvedIntegrationDescriptor[]>
+  /** All saved flows as lightweight summaries (Flow Canvas list view). */
+  listFlows(): Promise<FlowSummary[]>
+  /** Full flow graph by id; null if unknown/unreadable/corrupt. */
+  getFlow(id: string): Promise<FlowGraph | null>
+  /** Persists a flow (atomic). ok:false carries a human error (disk full, malformed graph, …). */
+  saveFlow(
+    graph: FlowGraph
+  ): Promise<{ ok: true; summary: FlowSummary } | { ok: false; error: string }>
+  /** Removes a saved flow. */
+  deleteFlow(id: string): Promise<void>
+  /** Hands the saved graph to the Flow Engine (#2 / stub). Returns a run id or a legible error. */
+  runFlow(id: string): Promise<{ ok: true; runId: string } | { ok: false; error: string }>
+  /**
+   * Pushed when a later flow save fails (mirrors onPersistenceNotice) — the
+   * editor keeps working in memory; this warns the on-disk copy is stale.
+   */
+  onFlowPersistenceNotice(cb: (message: string) => void): () => void
   /** Dropped on unmount/exit; a closed pane then resolves to 404 over the control API. */
   unregisterBrowser(handle: string): void
 }

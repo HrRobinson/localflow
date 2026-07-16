@@ -22,7 +22,8 @@ const registry: ResolvedIntegrationDescriptor[] = [
   }
 ]
 
-const codes = (g: FlowGraph): ValidationCode[] => validateFlow(g, registry).issues.map((i) => i.code)
+const codes = (g: FlowGraph): ValidationCode[] =>
+  validateFlow(g, registry).issues.map((i) => i.code)
 
 describe('flow-validate', () => {
   it('flags an empty graph as a warning, not an error', () => {
@@ -117,7 +118,9 @@ describe('flow-validate', () => {
     const g: FlowGraph = {
       id: 'f',
       name: 'x',
-      nodes: [{ id: 't', type: 'trigger', integration: 'linear', config: {}, position: { x: 0, y: 0 } }],
+      nodes: [
+        { id: 't', type: 'trigger', integration: 'linear', config: {}, position: { x: 0, y: 0 } }
+      ],
       edges: []
     }
     expect(codes(g)).toContain('missing-config')

@@ -64,8 +64,15 @@ pub fn command_from_hook_json(input: &str, max_bytes: usize) -> Result<String, P
 }
 
 /// Interpreters whose `-c <payload>` invocation smuggles a real command line.
+///
+/// `su` belongs here, NOT in `wrappers::TRANSPARENT_PREFIXES`: its first
+/// operand is a *username* (`su root` means "become root", not "run `root`"),
+/// so a blind prefix-skip would misread it. The wrapped command is only ever
+/// the single string behind `-c` (`su root -c 'rm -rf /'`) — exactly the
+/// `bash -c '…'` shape this path already handles, wherever the username or
+/// login options sit relative to `-c`.
 const INLINE_INTERPRETERS: &[&str] = &[
-    "bash", "sh", "zsh", "dash", "python", "python3", "node", "ruby", "perl",
+    "bash", "sh", "zsh", "dash", "python", "python3", "node", "ruby", "perl", "su",
 ];
 
 /// If `argv` is an interpreter invocation carrying a `-c <payload>` flag,
@@ -160,5 +167,40 @@ mod tests {
     fn dash_c_with_nothing_after_it_yields_none() {
         let argv = vec!["bash".to_string(), "-c".to_string()];
         assert_eq!(inline_payload(&argv), None);
+    }
+
+    fn argv(parts: &[&str]) -> Vec<String> {
+        parts.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn su_dash_c_payload_is_extracted() {
+        // The wrapped command is always the single string right after `-c`,
+        // wherever su's username/options sit.
+        assert_eq!(
+            inline_payload(&argv(&["su", "-c", "rm -rf /"])),
+            Some("rm -rf /".to_string())
+        );
+        assert_eq!(
+            inline_payload(&argv(&["su", "root", "-c", "rm -rf /"])),
+            Some("rm -rf /".to_string())
+        );
+        assert_eq!(
+            inline_payload(&argv(&["su", "-", "-c", "rm -rf /"])),
+            Some("rm -rf /".to_string())
+        );
+        assert_eq!(
+            inline_payload(&argv(&["su", "-l", "root", "-c", "git reset --hard"])),
+            Some("git reset --hard".to_string())
+        );
+    }
+
+    #[test]
+    fn su_without_dash_c_is_not_a_payload() {
+        // `su rm` must NOT be read as running `rm` (su's first operand is a
+        // username, not a command); `su root` opens an interactive shell.
+        assert_eq!(inline_payload(&argv(&["su", "rm"])), None);
+        assert_eq!(inline_payload(&argv(&["su", "root"])), None);
+        assert_eq!(inline_payload(&argv(&["su"])), None);
     }
 }

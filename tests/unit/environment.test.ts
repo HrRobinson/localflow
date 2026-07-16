@@ -4,7 +4,8 @@ import {
   ENVIRONMENT_MAX,
   clampEnvironment,
   visibleEnvironments,
-  worstStatus
+  worstStatus,
+  nextUnusedEnvironment
 } from '../../src/shared/environment'
 
 describe('clampEnvironment', () => {
@@ -38,6 +39,31 @@ describe('visibleEnvironments', () => {
   })
   it('is just the current environment when no sessions exist', () => {
     expect(visibleEnvironments([], 4)).toEqual([4])
+  })
+})
+
+describe('nextUnusedEnvironment', () => {
+  it('returns 1 when no sessions exist', () => {
+    expect(nextUnusedEnvironment([])).toBe(1)
+  })
+  it('returns the lowest number not occupied by any session', () => {
+    expect(nextUnusedEnvironment([{ environment: 1 }, { environment: 2 }])).toBe(3)
+  })
+  it('fills a gap rather than always appending at the end', () => {
+    expect(nextUnusedEnvironment([{ environment: 1 }, { environment: 3 }])).toBe(2)
+  })
+  it('is independent of input order and duplicates', () => {
+    const sessions = [
+      { environment: 5 },
+      { environment: 1 },
+      { environment: 1 },
+      { environment: 3 }
+    ]
+    expect(nextUnusedEnvironment(sessions)).toBe(2)
+  })
+  it('returns null once all nine environments are occupied', () => {
+    const sessions = Array.from({ length: 9 }, (_, i) => ({ environment: i + 1 }))
+    expect(nextUnusedEnvironment(sessions)).toBeNull()
   })
 })
 

@@ -28,6 +28,20 @@ export function visibleEnvironments(
   return [...set].sort((a, b) => a - b)
 }
 
+/**
+ * Lowest environment number 1-9 with no session on it, or null once all
+ * nine are occupied ("add environment" sidebar button). Deliberately not
+ * scoped by "current" — always scans from ENVIRONMENT_MIN so the result is
+ * deterministic and matches visibleEnvironments' own ascending order.
+ */
+export function nextUnusedEnvironment(sessions: { environment: number }[]): number | null {
+  const used = new Set(sessions.map((s) => s.environment))
+  for (let n = ENVIRONMENT_MIN; n <= ENVIRONMENT_MAX; n++) {
+    if (!used.has(n)) return n
+  }
+  return null
+}
+
 // Worst wins: the rollup dot must surface the most attention-worthy state.
 const STATUS_PRIORITY: SessionStatus[] = ['needs-you', 'working', 'running', 'idle', 'exited']
 

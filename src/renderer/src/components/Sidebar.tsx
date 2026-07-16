@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react'
 import Brand from './Brand'
-import { visibleEnvironments, worstStatus } from '../../../shared/environment'
+import {
+  nextUnusedEnvironment,
+  visibleEnvironments,
+  worstStatus
+} from '../../../shared/environment'
 import type { SessionInfo } from '../../../shared/types'
 
 interface Props {
@@ -84,6 +88,11 @@ export default function Sidebar({
   if (confirmDeleteId !== null && !sessions.some((s) => s.id === confirmDeleteId)) {
     setConfirmDeleteId(null)
   }
+
+  // Lowest unused environment number, or null once all nine are occupied —
+  // drives the "+ add environment" row below (disabled, not hidden, at 9/9,
+  // matching how the other nav buttons handle their own empty states).
+  const nextEnv = nextUnusedEnvironment(sessions)
 
   return (
     <aside className="bg-sidebar flex min-h-0 w-[230px] flex-none flex-col border-r border-white/[0.07]">
@@ -275,6 +284,18 @@ export default function Sidebar({
             </div>
           )
         })}
+        <button
+          className={`${navItemBase} block w-full text-gray-500`}
+          data-add-environment
+          disabled={nextEnv === null}
+          title={
+            nextEnv === null ? 'All 9 environments are in use' : `Switch to environment ${nextEnv}`
+          }
+          onClick={() => nextEnv !== null && onSwitchEnvironment(nextEnv)}
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          + add environment
+        </button>
         {sessions.length === 0 && (
           <div className="px-2.5 py-0.5 text-xs text-gray-600">none yet</div>
         )}

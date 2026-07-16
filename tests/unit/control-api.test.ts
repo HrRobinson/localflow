@@ -259,13 +259,17 @@ describe('control-api router', () => {
       JSON.stringify({ text: 'rm -rf /' })
     )
     expect(r.status).toBe(403)
+    // One canonical string (SYS-8): names the pack that fired and the next
+    // step, and is IDENTICAL between the JSON `error` and the pane notice.
+    const canonical =
+      "Blocked by guard pack 'core.filesystem': catastrophic rm. Edit the command or disable the pack in Settings."
     expect(r.json).toEqual({
-      error: 'blocked by command guard',
+      error: canonical,
       reason: 'catastrophic rm',
       pack: 'core.filesystem'
     })
     expect(writes).toEqual([])
-    expect(notices).toEqual([{ id: 'a-term', text: '\r\n⛔ lfguard blocked: catastrophic rm\r\n' }])
+    expect(notices).toEqual([{ id: 'a-term', text: `\r\n⛔ ${canonical}\r\n` }])
     expect(blocks).toEqual([
       {
         record: {

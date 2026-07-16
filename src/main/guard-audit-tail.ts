@@ -46,6 +46,13 @@ export interface AuditTailOptions {
  */
 export function startGuardAuditTail(opts: AuditTailOptions): () => void {
   let offset = existsSync(opts.path) ? statSync(opts.path).size : 0
+  // This tailer only feeds the Console tab's guard-event mirror — enforcement
+  // lives in operator-guard.ts/lfguard itself and is unaffected if this stops
+  // working. Still, a persistently broken tail (e.g. bad permissions on the
+  // audit log) shouldn't be invisible forever. Warn once per failure kind
+  // (not once per poll-tick, which would spam) so a real breakage surfaces.
+  let warnedRead = false
+  let warnedArm = false
   const readNew = (): void => {
     try {
       if (!existsSync(opts.path)) return
@@ -61,8 +68,12 @@ export function startGuardAuditTail(opts: AuditTailOptions): () => void {
       offset = size
       const records = parseAuditLines(buf.toString('utf8'))
       if (records.length) opts.onRecords(records)
-    } catch {
+    } catch (err) {
       /* best-effort */
+      if (!warnedRead) {
+        warnedRead = true
+        console.warn('guard audit tail: read failed (further read errors suppressed)', err)
+      }
     }
   }
   // fs.watch fires on append; guard against missing file by watching the dir is
@@ -75,8 +86,12 @@ export function startGuardAuditTail(opts: AuditTailOptions): () => void {
       // default (e.g. on log rotation/deletion on some platforms). Swallow
       // it to preserve the fail-open, never-crash-main guarantee.
       watcher.on('error', () => {})
-    } catch {
+    } catch (err) {
       /* file not present yet; a later arm() retry covers it */
+      if (!warnedArm) {
+        warnedArm = true
+        console.warn('guard audit tail: watch setup failed (further watch errors suppressed)', err)
+      }
     }
   }
   arm()

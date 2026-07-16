@@ -13,6 +13,7 @@ import { VALID_AGENTS, type AgentId, type SessionInfo } from '../shared/types'
 import { normalizeHttpUrl } from '../shared/urls'
 import type { GuardVerdict } from './operator-guard'
 import type { GuardAuditRecord } from '../shared/console'
+import { guardDenyMessage } from './guard-message'
 
 export interface ControlDeps {
   registry: PaneRegistry
@@ -226,13 +227,17 @@ export async function handleRequest(
       if (deps.guard) {
         const v = await deps.guard.check(b.text)
         if (!v.allowed) {
-          deps.manager.emitNotice(handle, `\r\n⛔ lfguard blocked: ${v.reason}\r\n`)
+          // One canonical string for both surfaces (SYS-8) — names the pack
+          // that fired and what to do next, instead of a generic message on
+          // one surface and a fuller-but-unassembled one on the other.
+          const message = guardDenyMessage(v.pack, v.reason)
+          deps.manager.emitNotice(handle, `\r\n⛔ ${message}\r\n`)
           deps.onGuardBlock?.(
             { ts: Date.now(), tag: handle, command: b.text, reason: v.reason, pack: v.pack },
             environment
           )
           record('POST prompt blocked', handle, v.reason)
-          return json(403, { error: 'blocked by command guard', reason: v.reason, pack: v.pack })
+          return json(403, { error: message, reason: v.reason, pack: v.pack })
         }
       }
       // Attachments are referenced by path in the prompt text by the operator;

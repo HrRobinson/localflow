@@ -91,7 +91,12 @@ describe('buildCodexHookArgs', () => {
     expect(script).toMatch(/esac$/)
   })
 
-  const guard: ResolvedGuard = { bin: '/g/lfguard', auditLog: '/g/audit.jsonl', packs: [] }
+  const guard: ResolvedGuard = {
+    bin: '/g/lfguard',
+    auditLog: '/g/audit.jsonl',
+    packs: [],
+    seenDir: '/g/guard-seen'
+  }
 
   it('appends PreToolUse hook + trust bypass when guard present', () => {
     const args = buildCodexHookArgs('pane1', 8080, 'tok', 'notify', guard)

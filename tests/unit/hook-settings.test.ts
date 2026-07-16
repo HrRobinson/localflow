@@ -85,7 +85,8 @@ describe('buildHookSettings PreToolUse', () => {
   const guard: ResolvedGuard = {
     bin: '/g/lfguard',
     auditLog: '/g/audit.jsonl',
-    packs: ['cloud.gcloud']
+    packs: ['cloud.gcloud'],
+    seenDir: '/g/guard-seen'
   }
 
   it('omits PreToolUse when no guard', () => {

@@ -32,6 +32,7 @@ export default function Settings(): React.JSX.Element {
   const [themeName, setThemeName] = useState<string>('dark')
   const [themeError, setThemeError] = useState<string | null>(null)
   const [guardPacks, setGuardPacks] = useState<string[]>([])
+  const [guardPacksNotice, setGuardPacksNotice] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -85,10 +86,21 @@ export default function Settings(): React.JSX.Element {
   }
 
   const OPT_IN = ['cloud.gcloud', 'db.postgres'] as const
-  const togglePack = (id: string): void => {
+  const togglePack = async (id: string): Promise<void> => {
+    const previous = guardPacks
     const next = guardPacks.includes(id) ? guardPacks.filter((p) => p !== id) : [...guardPacks, id]
+    // Optimistic, like the rest of this file's toggles — but this one guards
+    // a security setting, so a rejected write rolls the checkbox back rather
+    // than leaving it showing "on" while nothing was actually persisted.
     setGuardPacks(next)
-    window.localflow.setGuardPacks(next)
+    setGuardPacksNotice(null)
+    const result = await window.localflow.setGuardPacks(next)
+    if (!result.ok) {
+      setGuardPacks(previous)
+      setGuardPacksNotice(
+        `Couldn't save guard pack change: ${result.reason}. Protection may not be active — check Settings again.`
+      )
+    }
   }
 
   return (
@@ -248,11 +260,14 @@ export default function Settings(): React.JSX.Element {
             <input
               type="checkbox"
               checked={guardPacks.includes(id)}
-              onChange={() => togglePack(id)}
+              onChange={() => void togglePack(id)}
             />
             {id}
           </label>
         ))}
+        {guardPacksNotice && (
+          <p className="guard-packs-notice m-0 text-[11px] text-red-400">{guardPacksNotice}</p>
+        )}
       </section>
     </div>
   )

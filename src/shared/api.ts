@@ -5,6 +5,7 @@ import type {
   AgentInfo,
   AgentOverride,
   AgentOverrideResult,
+  GuardPacksResult,
   LastAgent,
   SessionGroup,
   SessionInfo,
@@ -83,6 +84,20 @@ export interface LocalflowApi {
   /** Opens an http(s) URL in the system browser. Non-http(s) is dropped in main. */
   openExternal(url: string): void
   listSessions(): Promise<SessionInfo[]>
+  /**
+   * A human-readable notice if `sessions.json` existed at startup but
+   * couldn't be read/parsed (the corrupt file is backed up and localflow
+   * started with an empty saved layout instead). Null on a normal start —
+   * including a genuine first run with no saved file yet.
+   */
+  getPersistenceNotice(): Promise<string | null>
+  /**
+   * Pushed whenever a later save of the session/group layout fails (e.g.
+   * disk full, permission revoked) — mirrors `onThemeChanged`'s push shape.
+   * The layout keeps working in memory; this only warns that the on-disk
+   * copy is stale until the write starts succeeding again.
+   */
+  onPersistenceNotice(cb: (message: string) => void): () => void
   /** Last few cleaned output lines of a session — the approve control's peek. */
   peekSession(id: string, maxLines?: number): Promise<string[]>
   listAgents(): Promise<AgentInfo[]>
@@ -156,8 +171,14 @@ export interface LocalflowApi {
   setConsolePrefs(prefs: ConsolePrefs): void
   /** Enabled opt-in lfguard pack ids (core.filesystem/core.git are always on, not included). */
   getGuardPacks(): Promise<string[]>
-  /** Persists the enabled opt-in pack ids; applies to newly-launched panes. */
-  setGuardPacks(packs: string[]): void
+  /**
+   * Persists the enabled opt-in pack ids; applies to newly-launched panes.
+   * Security-relevant setting — a disk-write failure is reported (`ok:
+   * false`, with `reason`) rather than silently discarded, so the caller can
+   * roll back an optimistic UI update and warn the user protection may not
+   * be active.
+   */
+  setGuardPacks(packs: string[]): Promise<GuardPacksResult>
   /** Working-tree status for a session's repo. `repo:false` when the cwd isn't a git repo (or the session has none). */
   gitStatus(id: string): Promise<GitStatus>
   /** Diff text for one path at one layer. Untracked files come back as full additions; size-capped. */

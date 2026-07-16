@@ -173,3 +173,13 @@ export interface AgentInfo {
  */
 export type AgentOverrideResult =
   { ok: true; agents: AgentInfo[] } | { ok: false; reserved: string[] }
+
+/**
+ * Result of a `guard:setPacks` write (mirrors `AgentOverrideResult`/
+ * `BindingChangeResult`): this is a security-relevant setting (which lfguard
+ * packs are enforced), so a disk-write failure must be surfaced rather than
+ * silently discarded — a checkbox that looks "on" while nothing was actually
+ * persisted would leave the user believing protection is active when it
+ * isn't.
+ */
+export type GuardPacksResult = { ok: true; packs: string[] } | { ok: false; reason: string }

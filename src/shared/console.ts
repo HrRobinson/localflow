@@ -5,6 +5,16 @@ import type { ConsoleScope } from './console-filter'
 // 'guard' = lfguard deny (audit-log tail); 'network' = browser-pane CDP (Console v2).
 export type ConsoleSource = 'status' | 'operator' | 'capture' | 'guard' | 'network'
 
+/** Per-source ring caps shared by the main-process bus and the renderer's
+ *  live buffer, so the two can never silently drift out of sync. */
+export const CONSOLE_SOURCE_CAPS: Record<ConsoleSource, number> = {
+  status: 500,
+  operator: 500,
+  capture: 300,
+  guard: 300,
+  network: 2000
+}
+
 export interface NetworkDetailInput {
   requestId: string
   method: string

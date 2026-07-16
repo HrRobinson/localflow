@@ -1,12 +1,5 @@
+import { CONSOLE_SOURCE_CAPS } from '../shared/console'
 import type { ConsoleEvent, ConsoleEventInput, ConsoleSource } from '../shared/console'
-
-const DEFAULT_CAPS: Record<ConsoleSource, number> = {
-  status: 500,
-  operator: 500,
-  capture: 300,
-  guard: 300,
-  network: 2000
-}
 
 type ConsoleSubscriber = (e: ConsoleEvent | ConsoleEvent[]) => void
 
@@ -20,7 +13,7 @@ export class ConsoleEventBus {
     caps: Partial<Record<ConsoleSource, number>> = {},
     private readonly now: () => number = Date.now
   ) {
-    this.caps = { ...DEFAULT_CAPS, ...caps }
+    this.caps = { ...CONSOLE_SOURCE_CAPS, ...caps }
   }
 
   private append(input: ConsoleEventInput): ConsoleEvent {

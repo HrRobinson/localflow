@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ConsoleEventBus } from '../../src/main/console-bus'
+import { CONSOLE_SOURCE_CAPS } from '../../src/shared/console'
 import type { ConsoleEventInput, ConsoleSource } from '../../src/shared/console'
 
 function input(label: string, source: ConsoleSource = 'status'): ConsoleEventInput {
@@ -83,5 +84,15 @@ describe('ConsoleEventBus', () => {
     bus.subscribe(() => (calls += 1))
     expect(bus.emitBatch([])).toEqual([])
     expect(calls).toBe(0)
+  })
+
+  it('default caps come from the shared CONSOLE_SOURCE_CAPS constant', () => {
+    const bus = new ConsoleEventBus()
+    const cap = CONSOLE_SOURCE_CAPS.network
+    for (let i = 0; i < cap + 5; i++) bus.emit(input(`n${i}`, 'network'))
+    const labels = bus.snapshot().map((e) => e.label)
+    expect(labels.length).toBe(cap)
+    expect(labels[0]).toBe('n5')
+    expect(labels[labels.length - 1]).toBe(`n${cap + 4}`)
   })
 })

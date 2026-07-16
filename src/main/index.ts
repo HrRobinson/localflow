@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
 import { join, basename } from 'node:path'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, rmSync, mkdirSync } from 'node:fs'
 import { spawn } from 'node:child_process'
 import {
   VALID_AGENTS,
@@ -46,6 +46,7 @@ import { ConsoleEventBus } from './console-bus'
 import { toStatusEvent, toOperatorEvent, toCaptureEvent, toGuardEvent } from '../shared/console'
 import type { ConsolePrefs } from '../shared/console'
 import { startGuardAuditTail } from './guard-audit-tail'
+import { startGuardSeenWatch } from './guard-seen-watch'
 import type { ActivityEntry, GrantInfo, OperatorStatus } from '../shared/operator'
 import type { Capabilities } from '../shared/git'
 import {
@@ -184,8 +185,31 @@ app.whenReady().then(async () => {
     resourcesPath: process.resourcesPath
   })
   const guardAuditLog = join(userData, 'guard-audit.jsonl')
+  // Per-pane invocation markers for the Codex guard self-verify badge. Cleared
+  // and recreated at startup so the watcher arms on a clean slate and no stale
+  // cross-run marker can be mistaken for a live write (hygiene, not correctness
+  // — fs.watch only reports changes, never pre-existing files). Best-effort,
+  // mirrors captureStore.clear().
+  const guardSeenDir = join(userData, 'guard-seen')
+  try {
+    rmSync(guardSeenDir, { recursive: true, force: true })
+  } catch {
+    /* best-effort */
+  }
+  try {
+    mkdirSync(guardSeenDir, { recursive: true })
+  } catch {
+    /* best-effort */
+  }
   const guardProvider = (): import('./guard-hook').ResolvedGuard | null =>
-    guardBin ? { bin: guardBin, auditLog: guardAuditLog, packs: registry.getGuardPacks() } : null
+    guardBin
+      ? {
+          bin: guardBin,
+          auditLog: guardAuditLog,
+          packs: registry.getGuardPacks(),
+          seenDir: guardSeenDir
+        }
+      : null
   const operatorGuard = makeOperatorGuard({
     resolveBinary: () => guardBin, // resolved once at line 180; null when none bundled
     getPacks: () => registry.getGuardPacks() // AgentRegistry — same source G2 hooks use
@@ -271,9 +295,14 @@ app.whenReady().then(async () => {
       }
     }
   })
+  const stopGuardSeenWatch = startGuardSeenWatch({
+    dir: guardSeenDir,
+    onSeen: (tag) => manager.markGuardObserved(tag)
+  })
   app.on('before-quit', () => {
     control.close()
     stopGuardTail()
+    stopGuardSeenWatch()
     // The scratch dir only holds handoff assets for live sessions; nothing in
     // it is meaningful across a restart (captures themselves are in-memory).
     captureStore.clear()

@@ -134,6 +134,14 @@ export default function TerminalPane({
         <span className="rounded bg-white/[0.06] px-1.5 py-px font-mono text-[10px] text-gray-400">
           {agentLabel}
         </span>
+        {session.guardVerification === 'unverified' && (
+          <span
+            className="rounded border border-amber-400/40 bg-amber-400/10 px-1.5 py-px font-mono text-[10px] text-amber-300"
+            title="lfguard is configured for this Codex pane, but no enforcement has been observed yet — it is armed but unproven. The badge clears the first time a command actually reaches the guard this session. It does not mean the guard is broken."
+          >
+            guard: not yet observed
+          </span>
+        )}
         {session.status === 'needs-you' && (
           <ApproveButton
             sessionId={session.id}

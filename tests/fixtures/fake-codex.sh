@@ -34,11 +34,45 @@ wait_for_go() {
   fi
 }
 
+# Separate gate for the guard PreToolUse invocation below: it fires ONLY once
+# LOCALFLOW_E2E_GUARD_GO's file appears (the badge-clears test touches it).
+# When the var is unset, or the file never appears, the guard is never run —
+# so the idle-pane regression test keeps its "guard: not yet observed" badge.
+# Returns non-zero (never run) when the gate isn't configured.
+guard_wait_for_go() {
+  if [ -n "${LOCALFLOW_E2E_GUARD_GO:-}" ]; then
+    until [ -f "$LOCALFLOW_E2E_GUARD_GO" ]; do sleep 0.1; done
+    return 0
+  fi
+  return 1
+}
+
+# A PreToolUse payload for an ALLOW command — running the guard on it writes the
+# per-pane seen-dir marker (allow OR deny clears the badge), without a deny row.
+GUARD_PAYLOAD='{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"ls -la"}}'
+
 prev=""
 for arg in "$@"; do
   case "$prev" in
     -c)
       case "$arg" in
+        *hooks.PreToolUse*)
+          # The guard -c override embeds `lfguard check ... --seen-dir <dir>
+          # --audit-tag <paneId>` as a JSON.stringify'd command. That command
+          # uses single-quoted paths (no inner double-quotes), so JSON.stringify
+          # wraps it in "..." with NO escaping — extract it back out directly.
+          # Run it with a PreToolUse payload on stdin, exactly as real Codex
+          # would dispatch a Bash tool-call to the guard, so lfguard writes the
+          # invocation marker localflow's guard-seen watcher observes.
+          gcmd=$(echo "$arg" | sed -n 's/.*,command="\(.*\)"}]}]$/\1/p')
+          if [ -n "$gcmd" ]; then
+            (
+              if guard_wait_for_go; then
+                printf '%s' "$GUARD_PAYLOAD" | sh -c "$gcmd"
+              fi
+            ) &
+          fi
+          ;;
         *curl*)
           # $arg looks like: notify=["sh","-c","curl ... -d '{\"paneId\":...}'"]
           # Pull out the JSON.stringify-escaped sh -c payload (the quoted

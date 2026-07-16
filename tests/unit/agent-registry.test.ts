@@ -183,6 +183,21 @@ describe('AgentRegistry', () => {
     expect(reg.argsFor('claude', false)).toEqual([])
   })
 
+  it("fresh (non-resume) launch uses a preset's startArgs; openclaw defaults to chat", () => {
+    const reg = new AgentRegistry(tmpConfig(), async () => null)
+    // OpenClaw with no args just prints help and exits — a fresh session
+    // must default to the `chat` subcommand to get a working operator TUI.
+    expect(reg.argsFor('openclaw', false)).toEqual(['chat'])
+    // Resuming an OpenClaw session is unaffected — its resumeArgs stays [].
+    expect(reg.argsFor('openclaw', true)).toEqual([])
+    // No other preset defines startArgs, so their fresh-launch args stay [].
+    expect(reg.argsFor('claude', false)).toEqual([])
+    expect(reg.argsFor('codex', false)).toEqual([])
+    expect(reg.argsFor('gemini', false)).toEqual([])
+    expect(reg.argsFor('shell', false)).toEqual([])
+    expect(reg.argsFor('custom', false)).toEqual([])
+  })
+
   it('list reports detection via the injected which fn and setPath persists', async () => {
     const file = tmpConfig()
     const reg = new AgentRegistry(file, async (bin) => (bin === 'claude' ? '/found/claude' : null))

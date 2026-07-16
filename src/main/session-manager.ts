@@ -38,6 +38,12 @@ export interface SpawnSpec {
   command: string
   /** Args appended when resuming a dead session (agent-specific). */
   resumeArgs: string[]
+  /**
+   * Args appended on a fresh (non-resume) launch (agent-specific, M4.1).
+   * Optional so existing hand-built SpawnSpec fixtures keep compiling;
+   * absent means no preset args on a fresh launch (unchanged behavior).
+   */
+  startArgs?: string[]
   /** Which hook-injection mechanism to use to feed this session's status. */
   hookAdapter: HookAdapterKind
   /** Extra CLI args appended after resume args (per-agent override, M4). */
@@ -321,10 +327,13 @@ export class SessionManager {
         this.opts.token,
         guard
       )
-      const resumeArgs = resume ? spec.resumeArgs : []
+      // Fresh (non-resume) launches use the preset's startArgs (e.g.
+      // openclaw → ['chat']) instead of resumeArgs; either way, a user's
+      // Settings extra args are appended last.
+      const presetArgs = resume ? spec.resumeArgs : (spec.startArgs ?? [])
       pty = (this.opts.spawnFn ?? defaultSpawn)(
         spec.command,
-        [...injection.args, ...resumeArgs, ...(spec.extraArgs ?? [])],
+        [...injection.args, ...presetArgs, ...(spec.extraArgs ?? [])],
         {
           cwd,
           cols: 80,

@@ -5,7 +5,15 @@ import type { SessionInfo } from '../../../shared/types'
 
 interface Props {
   sessions: SessionInfo[]
-  view: 'home' | 'environment' | 'settings' | 'changes' | 'activity' | 'cockpit' | 'integrations'
+  view:
+    | 'home'
+    | 'environment'
+    | 'settings'
+    | 'changes'
+    | 'activity'
+    | 'cockpit'
+    | 'integrations'
+    | 'flows'
   activeId: string | null
   environment: number
   grantedEnvs: Set<number>
@@ -15,6 +23,7 @@ interface Props {
   onActivity: () => void
   onCockpit: () => void
   onIntegrations: () => void
+  onFlows: () => void
   onSettings: () => void
   onChanges: () => void
   onOpenSession: (id: string) => void
@@ -38,6 +47,7 @@ export default function Sidebar({
   onActivity,
   onCockpit,
   onIntegrations,
+  onFlows,
   onSettings,
   onChanges,
   onOpenSession,
@@ -140,6 +150,13 @@ export default function Sidebar({
           onMouseDown={(e) => e.preventDefault()}
         >
           Integrations
+        </button>
+        <button
+          className={`${navItemBase}${view === 'flows' ? ` ${navItemActive}` : ''}`}
+          onClick={onFlows}
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          Flows
         </button>
         <button
           className={`${navItemBase}${view === 'settings' ? ` ${navItemActive}` : ''}`}

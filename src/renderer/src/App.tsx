@@ -12,6 +12,7 @@ import Sidebar from './components/Sidebar'
 import Changes from './components/Changes'
 import Cockpit from './components/Cockpit'
 import Integrations from './components/Integrations'
+import FlowCanvas from './components/FlowCanvas'
 import { Console } from './components/Console'
 import type { ConsoleEvent } from '../../shared/console'
 import { reconcileOrder } from './lib/order'
@@ -92,7 +93,14 @@ export default function App(): React.JSX.Element {
   const [order, setOrder] = useState<string[]>([])
   // The app opens on the home overview; the environment view is entered explicitly.
   const [view, setView] = useState<
-    'home' | 'environment' | 'settings' | 'changes' | 'activity' | 'cockpit' | 'integrations'
+    | 'home'
+    | 'environment'
+    | 'settings'
+    | 'changes'
+    | 'activity'
+    | 'cockpit'
+    | 'integrations'
+    | 'flows'
   >('home')
   // Which environment's grid is visible. Sessions on other environments stay
   // mounted-invisible? No — they simply don't render; their ptys live in
@@ -395,6 +403,7 @@ export default function App(): React.JSX.Element {
   const enterActivity = (): void => setView('activity')
   const enterCockpit = (): void => setView('cockpit')
   const enterIntegrations = (): void => setView('integrations')
+  const enterFlows = (): void => setView('flows')
   // Console row "open source": reflect-and-replay, not navigation-by-guess —
   // a status row jumps to its session (same focus semantics as clicking it
   // in the sidebar); operator/capture rows have no single pane to jump to,
@@ -823,7 +832,9 @@ export default function App(): React.JSX.Element {
                       ? 'cockpit'
                       : view === 'integrations'
                         ? 'integrations'
-                        : 'home'
+                        : view === 'flows'
+                          ? 'flows'
+                          : 'home'
           }
           activeId={activeId}
           environment={environment}
@@ -834,6 +845,7 @@ export default function App(): React.JSX.Element {
           onActivity={enterActivity}
           onCockpit={enterCockpit}
           onIntegrations={enterIntegrations}
+          onFlows={enterFlows}
           onSettings={() => setView('settings')}
           onChanges={enterChanges}
           onOpenSession={openSession}
@@ -969,6 +981,8 @@ export default function App(): React.JSX.Element {
           <Cockpit environment={environment} />
         ) : view === 'integrations' ? (
           <Integrations />
+        ) : view === 'flows' ? (
+          <FlowCanvas />
         ) : (
           <Landing
             sessions={sessions}

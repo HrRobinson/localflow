@@ -60,6 +60,32 @@ describe('IntegrationRegistry', () => {
     expect(build().get('linear')!.status()).toBe('connected')
   })
 
+  it('a fully-configured but DISABLED integration reports disabled, not connected', () => {
+    // Every required field present, but the config entry is turned off. Opt-in:
+    // the engine refuses any non-'connected' integration, so this must NOT be
+    // 'connected'.
+    writeConfig({ integrations: { linear: { enabled: false, workspaceId: 'ws', environment: 2 } } })
+    creds.set('linear', 'oauthToken', 'tok')
+    creds.set('linear', 'webhookSecret', 'whs')
+    const v = build().view('linear')
+    expect(v.status).toBe('disabled')
+    expect(v.enabled).toBe(false)
+    expect(build().get('linear')!.status()).toBe('disabled')
+  })
+
+  it('views() reads config once — a secret-in-config drop notice fires only once', () => {
+    // A secret hand-edited into config.json is dropped with a loud notice. The
+    // old code re-read+re-validated config ~6× per views() and spammed the
+    // notice six times; views() must now parse once and emit it a single time.
+    writeConfig({
+      integrations: { linear: { enabled: true, oauthToken: 'leaked', workspaceId: 'ws' } }
+    })
+    const notices: string[] = []
+    const reg = new IntegrationRegistry({ creds, configFile, notify: (m) => notices.push(m) })
+    reg.views()
+    expect(notices.filter((n) => n.includes('linear.oauthToken'))).toHaveLength(1)
+  })
+
   it('reaches connected for cloud with NO secret — the all-non-secret case', () => {
     writeConfig({
       integrations: {

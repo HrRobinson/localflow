@@ -1,7 +1,8 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, safeStorage, shell } from 'electron'
 import { join, basename } from 'node:path'
-import { existsSync, readFileSync, writeFileSync, rmSync, mkdirSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, rmSync, mkdirSync, statSync } from 'node:fs'
 import { spawn } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import {
   VALID_AGENTS,
   type AgentId,
@@ -17,6 +18,13 @@ import { startHookServer } from './hook-server'
 import { SessionManager, type SpawnSpec } from './session-manager'
 import { loadSavedState, saveState } from './persistence'
 import { PersistenceNoticeRouter } from './persistence-notice'
+import { resolveDescriptors } from '../shared/integrations'
+import { isFlowGraph, summarize, type FlowGraph, type FlowSummary } from '../shared/flows'
+import { loadFlows, saveFlows } from './flow/flow-store'
+import { loadFlowsConfig } from './flow/flow-config'
+import { FlowEngine } from './flow/flow-engine'
+import { PaneDriver } from './flow/pane-driver'
+import type { ApprovalPort } from './flow/types'
 import { AgentRegistry, whichViaLoginShell } from './agent-registry'
 import { resolveShellPath } from './resolve-shell-path'
 import { resolveGuardBinary } from './guard-binary'
@@ -99,6 +107,16 @@ const persistenceNotices = new PersistenceNoticeRouter((message) => {
   return false
 })
 
+// Flow-store save-failure notices (mirrors persistenceNotices). Pushed on the
+// `flow:notice` channel so the Flow Canvas can warn the on-disk copy is stale.
+const flowNotices = new PersistenceNoticeRouter((message) => {
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('flow:notice', message)
+    return true
+  }
+  return false
+})
+
 function createWindow(): void {
   win = new BrowserWindow({
     width: 1400,
@@ -119,7 +137,10 @@ function createWindow(): void {
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   // Flush any persistence notice buffered before the window existed (a save
   // failure during the pre-window startup restore) once the renderer is live.
-  win.webContents.once('did-finish-load', () => persistenceNotices.flush())
+  win.webContents.once('did-finish-load', () => {
+    persistenceNotices.flush()
+    flowNotices.flush()
+  })
   if (process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
@@ -312,7 +333,11 @@ app.whenReady().then(async () => {
   })
   const watchpoints = new WatchpointRegistry()
 
-  const control = await startControlServer({
+  // Extracted so the Flow Engine's PaneDriver can drive panes through the SAME
+  // control-API router (handleRequest) — the engine is an operator client, not a
+  // privileged SessionManager caller, so the capability boundary + lfguard guard
+  // apply to flow work identically.
+  const controlDeps = {
     registry: paneRegistry,
     grants,
     manager,
@@ -330,7 +355,8 @@ app.whenReady().then(async () => {
     onCapture: (cap) => consoleBus.emit(toCaptureEvent(cap)),
     guard: operatorGuard,
     onGuardBlock: (r, env) => consoleBus.emit(toGuardEvent(r, env))
-  })
+  }
+  const control = await startControlServer(controlDeps)
   consoleBus.subscribe((event) => sendToWindow('console:event', event))
   const stopGuardTail = startGuardAuditTail({
     path: guardAuditLog,
@@ -345,10 +371,87 @@ app.whenReady().then(async () => {
     dir: guardSeenDir,
     onSeen: (tag) => manager.markGuardObserved(tag)
   })
+
+  // ── Flow Engine (sub-project #2), wired to the real Integrations Hub (#1) ────
+  // Opt-in and inert by default: the `flows` config block is off unless a user
+  // turns it on, so with no flow configured nothing subscribes and nothing runs.
+  // The engine drives panes only as an OPERATOR CLIENT — via the PaneDriver over
+  // the same control-API router grants + lfguard already gate.
+  const flowsFile = join(userData, 'flows.json')
+  const flowConfigFile = join(userData, 'config.json')
+  const flowsConfig = loadFlowsConfig(flowConfigFile)
+  const paneDriver = new PaneDriver({ controlDeps, grants })
+  // Gate approvals bind to the needs-you + ApproveButton primitive in a
+  // follow-up (design §10.5). Until that UI seam exists a gate cleanly REJECTS
+  // rather than silently auto-proceeding (a human "no" is not a failure), so a
+  // flow with a gate stops safely instead of hanging. NOTE: this is the one
+  // deliberately stubbed seam — see the integration report.
+  const flowApprovals: ApprovalPort = {
+    requestApproval: async (req) => {
+      pushActivity(flowsConfig.environment, {
+        at: Date.now(),
+        route: 'flow:gate',
+        detail: `Gate '${req.nodeId}' needs approval — interactive gates aren't wired yet, rejecting safely.`
+      })
+      return false
+    }
+  }
+  const loadedFlows = loadFlows(flowsFile)
+  for (const notice of loadedFlows.notices) flowNotices.report(notice)
+  const flowEngine = new FlowEngine({
+    flows: loadedFlows.flows,
+    config: flowsConfig,
+    registry: integrationRegistry,
+    approvals: flowApprovals,
+    driver: paneDriver,
+    manager
+  })
+  flowEngine.onEvent((event) => sendToWindow('flow:run-event', event))
+  // Subscribe trigger streams for enabled flows. No-op when the flows block is
+  // disabled (the default) — the "works with no flow configured" guarantee holds.
+  flowEngine.start()
+
+  // Per-id CRUD over the engine's single real flows.json store, adapting the
+  // canvas IPC (list/get/save/delete) to the engine's loadFlows/saveFlows.
+  const flowMtime = (): number => {
+    try {
+      return statSync(flowsFile).mtimeMs
+    } catch {
+      return Date.now()
+    }
+  }
+  const listFlowSummaries = (): FlowSummary[] => {
+    const mt = flowMtime()
+    return loadFlows(flowsFile).flows.map((g) => summarize(g, mt))
+  }
+  const getFlow = (id: string): FlowGraph | null =>
+    loadFlows(flowsFile).flows.find((g) => g.id === id) ?? null
+  const saveFlow = (
+    graph: FlowGraph
+  ): { ok: true; summary: FlowSummary } | { ok: false; error: string } => {
+    if (!isFlowGraph(graph)) {
+      return {
+        ok: false,
+        error:
+          "This flow couldn't be saved — it was malformed (an unknown node type, a non-object config, or an arrow pointing at a missing node). Nothing was written."
+      }
+    }
+    const flows = loadFlows(flowsFile).flows.filter((g) => g.id !== graph.id)
+    flows.push(graph)
+    const res = saveFlows(flowsFile, flows)
+    if (!res.ok) return { ok: false, error: res.error }
+    return { ok: true, summary: summarize(graph, flowMtime()) }
+  }
+  const deleteFlow = (id: string): void => {
+    const flows = loadFlows(flowsFile).flows.filter((g) => g.id !== id)
+    saveFlows(flowsFile, flows)
+  }
+
   app.on('before-quit', () => {
     control.close()
     stopGuardTail()
     stopGuardSeenWatch()
+    flowEngine.stop()
     // The scratch dir only holds handoff assets for live sessions; nothing in
     // it is meaningful across a restart (captures themselves are in-memory).
     captureStore.clear()
@@ -421,6 +524,11 @@ app.whenReady().then(async () => {
   manager.onData((id, data) => sendToWindow('session:data', id, data))
   manager.onStatus((id, status) => {
     sendToWindow('session:status', id, status)
+    // The Flow Engine JOINS this existing status feed as one more subscriber (it
+    // never registers its own pty listeners): a flow-driven agent pane's
+    // terminal transition resolves its waiting node. A pane handle IS its
+    // session id, so `id` matches the handle the PaneDriver returned.
+    flowEngine.onPaneStatus(id, status)
     // Opt-in early teardown (operatorRevokeOnExit in config.json, read fresh
     // like editorCommand): when the last live pty of a launch-owned
     // environment exits or is closed, revoke right away instead of waiting
@@ -970,6 +1078,49 @@ app.whenReady().then(async () => {
   ipcMain.handle('integrations:clearSecret', (_e, id: IntegrationId, key?: string) =>
     integrationRegistry.clearSecret(id, typeof key === 'string' ? key : undefined)
   )
+
+  // --- Flow Canvas (sub-project #3) → real Engine (#2) + Hub registry (#1) ----
+  // The canvas palette reads the REAL Integrations Hub registry (resolved
+  // descriptors). Flows persist through the engine's real flows.json store, and
+  // `flow:run` drives the REAL engine (see the construction block above).
+  ipcMain.handle('integration:list', () =>
+    resolveDescriptors(integrationRegistry.descriptors())
+  )
+  ipcMain.handle('flow:list', () => listFlowSummaries())
+  ipcMain.handle('flow:get', (_e, id: string) => getFlow(id))
+  ipcMain.handle('flow:save', (_e, graph: FlowGraph) => {
+    const result = saveFlow(graph)
+    // A later save failure is also pushed as a notice (the return value already
+    // carries it for the immediate caller; the push mirrors onPersistenceNotice
+    // so a passive banner can surface it too).
+    flowNotices.report(result.ok ? null : result.error)
+    return result
+  })
+  ipcMain.handle('flow:delete', (_e, id: string) => deleteFlow(id))
+  ipcMain.handle('flow:run', (_e, id: string) => {
+    const graph = getFlow(id)
+    if (!graph) {
+      return {
+        ok: false,
+        error: `That flow couldn't be found — it may have been deleted. Save it again, then Run. (id: ${id})`
+      }
+    }
+    if (!graph.nodes.some((n) => n.type === 'trigger')) {
+      return {
+        ok: false,
+        error: `"${graph.name}" has no trigger, so there's nothing to start it — add a trigger node and save before running.`
+      }
+    }
+    // A manual run from the canvas is an explicit user action: synthesize an
+    // empty seed event and hand the SAVED graph to the real engine, which drives
+    // panes via the operator control API. Returns the run id immediately; the
+    // walk proceeds async and streams over `flow:run-event`.
+    const runId = flowEngine.startRun(graph, { eventId: randomUUID(), payload: {} })
+    if (!runId) {
+      return { ok: false, error: `"${graph.name}" couldn't start — no runnable trigger node.` }
+    }
+    return { ok: true, runId }
+  })
 
   createWindow()
 })

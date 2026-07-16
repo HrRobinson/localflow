@@ -12,6 +12,7 @@ import type { KeyAction } from '../shared/keybindings'
 import type { Theme } from '../shared/theme'
 import type { ConsoleEvent, ConsolePrefs } from '../shared/console'
 import type { IntegrationId } from '../shared/integrations'
+import type { FlowGraph } from '../shared/flows'
 
 const api: LocalflowApi = {
   createSession: (agentId: AgentId, cwd?: string, customCommand?: string, environment?: number) =>
@@ -150,7 +151,18 @@ const api: LocalflowApi = {
   setIntegrationSecret: (id: IntegrationId, key: string, value: string) =>
     ipcRenderer.invoke('integrations:setSecret', id, key, value),
   clearIntegrationSecret: (id: IntegrationId, key?: string) =>
-    ipcRenderer.invoke('integrations:clearSecret', id, key)
+    ipcRenderer.invoke('integrations:clearSecret', id, key),
+  listIntegrationDescriptors: () => ipcRenderer.invoke('integration:list'),
+  listFlows: () => ipcRenderer.invoke('flow:list'),
+  getFlow: (id: string) => ipcRenderer.invoke('flow:get', id),
+  saveFlow: (graph: FlowGraph) => ipcRenderer.invoke('flow:save', graph),
+  deleteFlow: (id: string) => ipcRenderer.invoke('flow:delete', id),
+  runFlow: (id: string) => ipcRenderer.invoke('flow:run', id),
+  onFlowPersistenceNotice: (cb) => {
+    const listener = (_e: IpcRendererEvent, message: string): void => cb(message)
+    ipcRenderer.on('flow:notice', listener)
+    return () => ipcRenderer.removeListener('flow:notice', listener)
+  }
 }
 
 contextBridge.exposeInMainWorld('localflow', api)

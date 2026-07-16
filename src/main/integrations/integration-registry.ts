@@ -88,12 +88,17 @@ export class IntegrationRegistry implements IntegrationRegistryContract {
   // ── Renderer DTOs (secret VALUES excluded by construction) ──────────────────
 
   views(): IntegrationView[] {
-    return INTEGRATION_IDS.map((id) => this.view(id))
+    // Parse config ONCE per views() and thread it down. `loadIntegrationsConfig`
+    // re-emits the secret-in-config drop notice on every read, and the old path
+    // read it ~6× per call (three views × {view + deriveStatus}), so a single
+    // hand-edit mistake spammed the notice six times. One read → one notice.
+    const config = this.config()
+    return INTEGRATION_IDS.map((id) => this.view(id, config))
   }
 
-  view(id: IntegrationId): IntegrationView {
+  view(id: IntegrationId, config: IntegrationsConfig = this.config()): IntegrationView {
     const def = DESCRIPTOR_DEFS[id]
-    const entry = this.config()[id]
+    const entry = config[id]
     const values = entry?.values ?? {}
     const fields: IntegrationFieldView[] = def.configFields.map((f) => {
       if (f.secret) {
@@ -117,7 +122,7 @@ export class IntegrationRegistry implements IntegrationRegistryContract {
         value: raw === undefined ? undefined : display(raw)
       }
     })
-    const { status, detail } = this.deriveStatus(id)
+    const { status, detail } = this.deriveStatus(id, config)
     return {
       id,
       label: def.label,
@@ -204,9 +209,13 @@ export class IntegrationRegistry implements IntegrationRegistryContract {
   }
 
   /** Synchronous, presence-derived status (§4.2, §11). */
-  private deriveStatus(id: IntegrationId): { status: IntegrationStatus; detail?: string } {
+  private deriveStatus(
+    id: IntegrationId,
+    config: IntegrationsConfig = this.config()
+  ): { status: IntegrationStatus; detail?: string } {
     const def = DESCRIPTOR_DEFS[id]
-    const values = this.config()[id]?.values ?? {}
+    const entry = config[id]
+    const values = entry?.values ?? {}
     // A stored secret that can't be decrypted is an error (state, not value).
     const decryptErr = this.creds.decryptionError(id)
     if (decryptErr) return { status: 'error', detail: decryptErr }
@@ -215,6 +224,16 @@ export class IntegrationRegistry implements IntegrationRegistryContract {
       .map((f) => f.label)
     if (missing.length > 0) {
       return { status: 'needs-config', detail: `Needs: ${missing.join(', ')}.` }
+    }
+    // Fully configured but a config entry EXISTS and is turned off: opt-in means
+    // the engine refuses any non-'connected' integration, so a configured-but-
+    // disabled one reports 'disabled' (NOT 'connected'). A fresh install with no
+    // entry at all falls through to 'connected' only when actually usable.
+    if (entry && !entry.enabled) {
+      return {
+        status: 'disabled',
+        detail: `"${def.label}" is configured but turned off — enable it in the Integrations tab to use it in a flow.`
+      }
     }
     return { status: 'connected' }
   }

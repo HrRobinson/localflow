@@ -18,7 +18,10 @@ const inputCls =
 const STATUS: Record<IntegrationStatus, { dot: string; label: string }> = {
   connected: { dot: 'bg-idle', label: 'Connected' },
   'needs-config': { dot: 'bg-needs-you', label: 'Needs config' },
-  error: { dot: 'bg-exited', label: 'Error' }
+  error: { dot: 'bg-exited', label: 'Error' },
+  // Configured but turned off — a muted dot, distinct from 'needs-config' (which
+  // is actionable-incomplete) and 'connected'.
+  disabled: { dot: 'bg-gray-500', label: 'Disabled' }
 }
 
 function StatusPill({ view }: { view: IntegrationView }): React.JSX.Element {

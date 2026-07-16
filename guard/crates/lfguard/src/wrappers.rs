@@ -29,7 +29,10 @@ use crate::lexer::Word;
 /// applied to argv[0] elsewhere in the pipeline (macOS's case-insensitive
 /// filesystem means `COMMAND rm -rf /` finds the same binary as `command`).
 const TRANSPARENT_PREFIXES: &[&str] =
-    &["command", "env", "nohup", "nice", "stdbuf", "ionice", "sudo", "time", "timeout", "chroot"];
+    &[
+        "command", "env", "nohup", "nice", "stdbuf", "ionice", "sudo", "time", "timeout", "chroot",
+        "flock",
+    ];
 
 /// `sudo` short options that take a value, e.g. `-u root`. Bundled/attached
 /// forms (`-uroot`) are also handled — see `unwrap_transparent_prefix`.
@@ -126,6 +129,21 @@ pub fn unwrap_transparent_prefix(seg: &[Word]) -> &[Word] {
                 // recursive wipe of the chroot's own root is still the
                 // catastrophe class we block — see the design's DECISION 5.)
                 rest = skip_options_then_positionals(rest, &[], &[], 1, None);
+            }
+            "flock" => {
+                // `flock [OPTIONS] <LOCKFILE|DIR|FD> CMD` (the dominant prefix
+                // form) — value-taking `-w SECONDS`/`-E CODE` (and `--timeout`/
+                // `--conflict-exit-code`), then one lock-target positional.
+                // The `flock … -c 'STRING'` sub-form is deferred (design
+                // DECISION 4): it interleaves an inline payload after the
+                // positional and is a documented gap, not handled here.
+                rest = skip_options_then_positionals(
+                    rest,
+                    &['w', 'E'],
+                    &["timeout", "conflict-exit-code"],
+                    1,
+                    None,
+                );
             }
             _ => {}
         }
@@ -582,6 +600,63 @@ mod tests {
         );
         // NEWROOT only, no command -> nothing to judge.
         assert!(unwrap_transparent_prefix(&[w("chroot"), w("/mnt")]).is_empty());
+    }
+
+    #[test]
+    fn unwraps_flock_lockfile_and_command() {
+        assert_eq!(
+            texts(unwrap_transparent_prefix(&[
+                w("flock"),
+                w("/tmp/lock"),
+                w("rm"),
+                w("-rf"),
+                w("/")
+            ])),
+            vec!["rm", "-rf", "/"]
+        );
+        // value-taking -w with a boolean -n mixed in
+        assert_eq!(
+            texts(unwrap_transparent_prefix(&[
+                w("flock"),
+                w("-w"),
+                w("5"),
+                w("/tmp/lock"),
+                w("rm"),
+                w("-rf"),
+                w("/")
+            ])),
+            vec!["rm", "-rf", "/"]
+        );
+        assert_eq!(
+            texts(unwrap_transparent_prefix(&[
+                w("flock"),
+                w("-n"),
+                w("/var/lock/x"),
+                w("rm"),
+                w("-rf"),
+                w("~")
+            ])),
+            vec!["rm", "-rf", "~"]
+        );
+    }
+
+    #[test]
+    fn flock_benign_and_fd_only() {
+        assert_eq!(
+            texts(unwrap_transparent_prefix(&[w("flock"), w("/tmp/lock"), w("ls")])),
+            vec!["ls"]
+        );
+        assert_eq!(
+            texts(unwrap_transparent_prefix(&[
+                w("flock"),
+                w("/tmp/lock"),
+                w("echo"),
+                w("hi")
+            ])),
+            vec!["echo", "hi"]
+        );
+        // `flock -n 9` — fd form, no command after the positional.
+        assert!(unwrap_transparent_prefix(&[w("flock"), w("-n"), w("9")]).is_empty());
     }
 
     #[test]

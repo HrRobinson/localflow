@@ -1,9 +1,12 @@
-// THE ONLY MODULE THAT TOUCHES THE CANVAS LIBRARY (@xyflow/react). It is a
-// swappable rendering ADAPTER: it renders the FlowGraph as a projection and
-// emits interaction intents (move / connect / select / drop) up to FlowCanvas,
-// which routes every one of them through the pure reducer. React Flow never owns
-// state here — swapping it for a hand-rolled SVG surface would change only this
-// file (§3.3, §10.1).
+// The canvas-library (@xyflow/react) ADAPTER boundary. Two files touch React
+// Flow: THIS module (the surface — layout, viewport, interaction intents) and
+// its custom node renderer `FlowNodeCard.tsx` (which imports React Flow's
+// `Handle`/`Position` for the node's connection anchors). Nothing else in the
+// app imports the library. It is a swappable rendering adapter: it renders the
+// FlowGraph as a projection and emits interaction intents (move / connect /
+// select / drop) up to FlowCanvas, which routes every one through the pure
+// reducer. React Flow never owns state here — swapping it for a hand-rolled SVG
+// surface would change only these two files (§3.3, §10.1).
 import { useCallback } from 'react'
 import {
   ReactFlow,

@@ -49,6 +49,12 @@ export async function runAction(
   const rawParams = isObject(node.config.params) ? node.config.params : node.config
   const params = templateParams(rawParams, context)
   try {
+    // FAILURE CONVENTION: an action signals failure by REJECTING the promise
+    // (throwing). A resolved promise — ANY value, including `undefined` — is
+    // treated as SUCCESS here (its value becomes the node's context output).
+    // This matches the pinned `IntegrationRegistry.invokeAction(): Promise<unknown>`
+    // contract; a connector that wants to fail must throw, never resolve a
+    // sentinel this runner would have to special-case.
     const output = await deps.registry.invokeAction(integrationId, actionId, params)
     return { status: 'done', context: { [node.id]: output } }
   } catch (err) {

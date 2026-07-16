@@ -11,7 +11,7 @@ const COMMON = [
 
 /** A runner that echoes a fixed PATH wrapped in the sentinels the module emits. */
 function fakeRunner(pathValue: string): ShellRunner {
-  return (_shell, args) => {
+  return async (_shell, args) => {
     // The probe command is the last arg: `printf '%s%s%s' 'START' "$PATH" 'END'`.
     // Extract the two sentinels and reproduce what a real shell would print.
     const cmd = args[args.length - 1]
@@ -27,10 +27,10 @@ function entries(path: string): string[] {
 }
 
 describe('resolveShellPath', () => {
-  it('unions the shell PATH with the process PATH without duplicates', () => {
+  it('unions the shell PATH with the process PATH without duplicates', async () => {
     const proc = '/usr/bin:/bin'
     const shell = '/Users/tester/.local/bin:/opt/homebrew/bin:/usr/bin'
-    const result = resolveShellPath({
+    const result = await resolveShellPath({
       currentPath: proc,
       platform: 'darwin',
       home: HOME,
@@ -48,9 +48,9 @@ describe('resolveShellPath', () => {
     expect(parts[1]).toBe('/bin')
   })
 
-  it('fails open to the original PATH when the runner throws', () => {
+  it('fails open to the original PATH when the runner throws synchronously', async () => {
     const proc = '/usr/bin:/bin'
-    const result = resolveShellPath({
+    const result = await resolveShellPath({
       currentPath: proc,
       platform: 'darwin',
       home: HOME,
@@ -62,19 +62,30 @@ describe('resolveShellPath', () => {
     for (const p of entries(proc)) expect(entries(result)).toContain(p)
   })
 
-  it('fails open (still usable) on timeout or empty output', () => {
+  it('fails open to the original PATH when the runner rejects', async () => {
     const proc = '/usr/bin:/bin'
-    const result = resolveShellPath({
+    const result = await resolveShellPath({
       currentPath: proc,
       platform: 'darwin',
       home: HOME,
-      runner: () => '' // simulates a wedged / silent shell
+      runner: () => Promise.reject(new Error('shell blew up'))
     })
     for (const p of entries(proc)) expect(entries(result)).toContain(p)
   })
 
-  it('always includes the common-dir fallbacks even when the probe fails', () => {
-    const result = resolveShellPath({
+  it('fails open (still usable) on timeout or empty output', async () => {
+    const proc = '/usr/bin:/bin'
+    const result = await resolveShellPath({
+      currentPath: proc,
+      platform: 'darwin',
+      home: HOME,
+      runner: async () => '' // simulates a wedged / silent shell
+    })
+    for (const p of entries(proc)) expect(entries(result)).toContain(p)
+  })
+
+  it('always includes the common-dir fallbacks even when the probe fails', async () => {
+    const result = await resolveShellPath({
       currentPath: '/usr/bin:/bin',
       platform: 'darwin',
       home: HOME,
@@ -85,9 +96,9 @@ describe('resolveShellPath', () => {
     for (const dir of COMMON) expect(entries(result)).toContain(dir)
   })
 
-  it('is an idempotent no-op-safe union when shell PATH equals process PATH', () => {
+  it('is an idempotent no-op-safe union when shell PATH equals process PATH', async () => {
     const same = `/usr/bin:/bin:${COMMON.join(':')}`
-    const result = resolveShellPath({
+    const result = await resolveShellPath({
       currentPath: same,
       platform: 'darwin',
       home: HOME,
@@ -100,19 +111,59 @@ describe('resolveShellPath', () => {
     expect(parts).toEqual(entries(same))
   })
 
-  it('leaves the PATH unchanged on non-darwin platforms', () => {
+  it('leaves the PATH unchanged on non-darwin platforms', async () => {
     const proc = '/usr/bin:/bin'
     let ran = false
-    const result = resolveShellPath({
+    const result = await resolveShellPath({
       currentPath: proc,
       platform: 'linux',
       home: HOME,
-      runner: () => {
+      runner: async () => {
         ran = true
         return '/whatever'
       }
     })
     expect(result).toBe(proc)
     expect(ran).toBe(false)
+  })
+
+  it('fails open within a bounded time when the runner never resolves (pathological hang)', async () => {
+    // Regression test for the execFileSync/spawnSync pipe-inheritance gotcha:
+    // an rc file that backgrounds a grandchild holding the stdout pipe open
+    // must never be able to extend resolveShellPath's wall-clock bound. Here
+    // the injected runner itself never settles — standing in for a
+    // defaultRunner whose process-group kill somehow failed to unblock the
+    // pipe — and resolveShellPath must still resolve fail-open on its own,
+    // bounded by timeoutMs, without waiting on the runner at all.
+    const proc = '/usr/bin:/bin'
+    const start = Date.now()
+    const result = await resolveShellPath({
+      currentPath: proc,
+      platform: 'darwin',
+      home: HOME,
+      timeoutMs: 30,
+      runner: () => new Promise<string>(() => {}) // never settles
+    })
+    const elapsed = Date.now() - start
+    // Bounded well within the timeout's ballpark, not "eventually" or "never".
+    expect(elapsed).toBeLessThan(500)
+    for (const p of entries(proc)) expect(entries(result)).toContain(p)
+  })
+
+  it('fails open when the probe output has only a start sentinel (partial/malformed)', async () => {
+    const proc = '/usr/bin:/bin'
+    const result = await resolveShellPath({
+      currentPath: proc,
+      platform: 'darwin',
+      home: HOME,
+      runner: async () => '__LOCALFLOW_PATH_START__/some/leaked/partial/path'
+      // no end sentinel — e.g. the shell was killed mid-write
+    })
+    const parts = entries(result)
+    for (const p of entries(proc)) expect(parts).toContain(p)
+    for (const dir of COMMON) expect(parts).toContain(dir)
+    // The unterminated partial output must not leak into the resolved PATH.
+    expect(parts).not.toContain('/some/leaked/partial/path')
+    expect(result).not.toContain('__LOCALFLOW_PATH_START__')
   })
 })

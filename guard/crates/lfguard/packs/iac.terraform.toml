@@ -63,10 +63,18 @@ reason = "'terraform force-unlock' bypasses state-lock protection against concur
 [[deny]]
 # KEYSTONE — bare `terraform apply` with NO saved plan file: it re-plans and
 # applies blind, defeating the human plan-review gate. Matches `apply` followed
-# only by flag tokens (`-x`/`--x`) to end-of-line; a positional argument (the
-# `.tfplan` the human reviewed) stops the match, so `terraform apply plan.tfplan`
-# is allowed. This deliberately errs toward allow when a flag takes a following
-# value (`-var name=val`) — precision over coverage; the reviewed-plan path is
-# always `apply <planfile>`.
-pattern = '^(?:sudo\s+)?terraform\s+(?:-\S+\s+)*apply(?:\s+--?\S+)*\s*$'
+# only by flags to end-of-line; a POSITIONAL argument (the `.tfplan` the human
+# reviewed) stops the match, so `terraform apply plan.tfplan` is allowed.
+#
+# The subtlety is a value-taking flag whose value is a SEPARATE token
+# (`-var region=us-east-1`, `-target aws_instance.foo`): a naive `(?:\s+--?\S+)*`
+# run stops at the value (it isn't `-`-prefixed), leaving the value looking like a
+# positional plan file — so bare `apply -var x=y` slipped through UNblocked and
+# applied blind. The flag run therefore recognizes the known value-taking flags
+# and consumes their following value (both `-flag value` and `-flag=value`) before
+# looking for end-of-line, while any other `--?token` is still a bare flag. A real
+# positional plan file (`apply plan.tfplan`, `apply out`) is not `-`-prefixed and
+# is not the value of a preceding value-flag, so the run stops and the `\s*$`
+# anchor fails there — still allowed, still fail-open toward the reviewed path.
+pattern = '^(?:sudo\s+)?terraform\s+(?:-\S+\s+)*apply(?:\s+(?:--?(?:var|var-file|target|state|state-out|backup|lock-timeout|parallelism|replace|refresh)(?:=\S+|\s+\S+)|--?\S+))*\s*$'
 reason = "bare 'terraform apply' re-plans and applies blind — run 'terraform plan -out=plan.tfplan', review, then apply that plan file"

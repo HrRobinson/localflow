@@ -40,6 +40,14 @@ fn denies_destructive_terraform_commands() {
         ("terraform apply", "blind"),
         ("terraform apply -input=false", "blind"),
         ("terraform -chdir=infra apply", "blind"),
+        // I2 — a value-taking flag whose value is a SEPARATE token must not be
+        // mistaken for a positional plan file: these are all still BARE applies.
+        ("terraform apply -var region=us-east-1", "blind"),
+        ("terraform apply -var name=val -var other=x", "blind"),
+        ("terraform apply -var-file prod.tfvars", "blind"),
+        ("terraform apply -target aws_instance.foo", "blind"),
+        ("terraform apply -replace aws_instance.foo", "blind"),
+        ("terraform apply -input=false -var region=us-east-1", "blind"),
         // auto-approve, anywhere in argv
         ("terraform apply -auto-approve", "confirmation"),
         ("terraform apply --auto-approve", "confirmation"),
@@ -86,6 +94,11 @@ fn allows_safe_terraform_commands() {
         // a resource literally named to look like a destructive verb
         "terraform state show aws_instance.delete_me",
         "terraform plan -target=aws_instance.destroy_me",
+        // I2 — a reviewed plan file after a value-taking flag is still a
+        // positional plan file → ALLOW (the value-flag consumes only its own
+        // value token, the .tfplan remains positional and stops the keystone).
+        "terraform apply -var region=us-east-1 plan.tfplan",
+        "terraform apply -target aws_instance.foo plan.tfplan",
     ];
     for cmd in allow {
         assert!(
@@ -103,8 +116,14 @@ fn allows_safe_terraform_commands() {
 fn apply_planfile_vs_bare_boundary() {
     let e = engine();
 
-    // Bare apply — no positional plan file → DENY.
-    for cmd in ["terraform apply", "terraform apply -input=false"] {
+    // Bare apply — no positional plan file → DENY. Includes value-taking flags
+    // whose value is a separate token (the I2 bypass): still bare.
+    for cmd in [
+        "terraform apply",
+        "terraform apply -input=false",
+        "terraform apply -var region=us-east-1",
+        "terraform apply -target aws_instance.foo",
+    ] {
         assert!(e.evaluate(cmd).is_deny(), "bare apply must DENY: {cmd:?}");
     }
 
@@ -115,6 +134,7 @@ fn apply_planfile_vs_bare_boundary() {
         "terraform apply -input=false plan.tfplan",
         "terraform -chdir=infra apply infra.tfplan",
         "terraform apply out",
+        "terraform apply -var region=us-east-1 plan.tfplan",
     ] {
         assert!(
             !e.evaluate(cmd).is_deny(),

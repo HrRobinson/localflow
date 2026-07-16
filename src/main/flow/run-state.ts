@@ -39,7 +39,9 @@ export function readyNodes(graph: FlowGraph, state: RunNodesState): string[] {
     .filter((n) => {
       const inbound = graph.edges.filter((e) => e.to === n.id)
       if (inbound.length === 0) return true
-      const allDecided = inbound.every((e) => state.takenEdges.has(e.id) || state.deadEdges.has(e.id))
+      const allDecided = inbound.every(
+        (e) => state.takenEdges.has(e.id) || state.deadEdges.has(e.id)
+      )
       const anyTaken = inbound.some((e) => state.takenEdges.has(e.id))
       return allDecided && anyTaken
     })

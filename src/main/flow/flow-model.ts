@@ -24,7 +24,10 @@ const INTEGRATION_IDS: ReadonlySet<string> = new Set<IntegrationId>(['linear', '
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 
-function parseNode(raw: unknown, index: number): { ok: true; node: FlowNode } | { ok: false; error: string } {
+function parseNode(
+  raw: unknown,
+  index: number
+): { ok: true; node: FlowNode } | { ok: false; error: string } {
   if (!isObject(raw)) return { ok: false, error: `node #${index} is not an object` }
   if (typeof raw.id !== 'string' || raw.id.length === 0)
     return { ok: false, error: `node #${index} has a missing or non-string id` }
@@ -32,7 +35,10 @@ function parseNode(raw: unknown, index: number): { ok: true; node: FlowNode } | 
   if (typeof raw.type !== 'string' || !NODE_TYPES.has(raw.type))
     return { ok: false, error: `node '${id}' has an invalid type '${String(raw.type)}'` }
   if (raw.integration !== undefined && !INTEGRATION_IDS.has(raw.integration as string))
-    return { ok: false, error: `node '${id}' names an unknown integration '${String(raw.integration)}'` }
+    return {
+      ok: false,
+      error: `node '${id}' names an unknown integration '${String(raw.integration)}'`
+    }
   if (raw.ref !== undefined && typeof raw.ref !== 'string')
     return { ok: false, error: `node '${id}' has a non-string ref` }
   if (raw.config !== undefined && !isObject(raw.config))
@@ -52,7 +58,10 @@ function parseNode(raw: unknown, index: number): { ok: true; node: FlowNode } | 
   return { ok: true, node }
 }
 
-function parseEdge(raw: unknown, index: number): { ok: true; edge: FlowEdge } | { ok: false; error: string } {
+function parseEdge(
+  raw: unknown,
+  index: number
+): { ok: true; edge: FlowEdge } | { ok: false; error: string } {
   if (!isObject(raw)) return { ok: false, error: `edge #${index} is not an object` }
   if (typeof raw.id !== 'string' || raw.id.length === 0)
     return { ok: false, error: `edge #${index} has a missing or non-string id` }
@@ -60,8 +69,15 @@ function parseEdge(raw: unknown, index: number): { ok: true; edge: FlowEdge } | 
     return { ok: false, error: `edge '${raw.id}' has a non-string from/to` }
   const edge: FlowEdge = { id: raw.id, from: raw.from, to: raw.to }
   if (raw.condition !== undefined) {
-    if (!isObject(raw.condition) || typeof raw.condition.field !== 'string' || !('equals' in raw.condition))
-      return { ok: false, error: `edge '${raw.id}' has an ill-typed condition (need { field: string, equals })` }
+    if (
+      !isObject(raw.condition) ||
+      typeof raw.condition.field !== 'string' ||
+      !('equals' in raw.condition)
+    )
+      return {
+        ok: false,
+        error: `edge '${raw.id}' has an ill-typed condition (need { field: string, equals })`
+      }
     edge.condition = { field: raw.condition.field, equals: raw.condition.equals }
   }
   return { ok: true, edge }
@@ -89,16 +105,25 @@ export function parseFlowGraphResult(raw: unknown): ParseResult {
 
   const triggers = nodes.filter((n) => n.type === 'trigger')
   if (triggers.length !== 1)
-    return { ok: false, error: `flow '${raw.id}' must have exactly one trigger node (found ${triggers.length})` }
+    return {
+      ok: false,
+      error: `flow '${raw.id}' must have exactly one trigger node (found ${triggers.length})`
+    }
 
   const edges: FlowEdge[] = []
   for (let i = 0; i < raw.edges.length; i++) {
     const r = parseEdge(raw.edges[i], i)
     if (!r.ok) return { ok: false, error: `flow '${raw.id}': ${r.error}` }
     if (!ids.has(r.edge.from))
-      return { ok: false, error: `flow '${raw.id}': edge '${r.edge.id}' → unknown source node '${r.edge.from}'` }
+      return {
+        ok: false,
+        error: `flow '${raw.id}': edge '${r.edge.id}' → unknown source node '${r.edge.from}'`
+      }
     if (!ids.has(r.edge.to))
-      return { ok: false, error: `flow '${raw.id}': edge '${r.edge.id}' → unknown node '${r.edge.to}'` }
+      return {
+        ok: false,
+        error: `flow '${raw.id}': edge '${r.edge.id}' → unknown node '${r.edge.to}'`
+      }
     edges.push(r.edge)
   }
 
@@ -109,7 +134,10 @@ export function parseFlowGraphResult(raw: unknown): ParseResult {
   const triggerId = triggers[0].id
   const orphan = nodes.find((n) => n.id !== triggerId && !hasInbound.has(n.id))
   if (orphan)
-    return { ok: false, error: `flow '${raw.id}': node '${orphan.id}' is an orphan (no inbound edge)` }
+    return {
+      ok: false,
+      error: `flow '${raw.id}': node '${orphan.id}' is an orphan (no inbound edge)`
+    }
 
   return { ok: true, flow: { id: raw.id, name: raw.name, nodes, edges } }
 }

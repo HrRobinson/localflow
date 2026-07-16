@@ -67,7 +67,12 @@ describe('selectEdges', () => {
     nodes: [],
     edges: [
       { id: 'e-bug', from: 'r', to: 'bug', condition: { field: 'triage.category', equals: 'bug' } },
-      { id: 'e-other', from: 'r', to: 'other', condition: { field: 'triage.category', equals: 'other' } },
+      {
+        id: 'e-other',
+        from: 'r',
+        to: 'other',
+        condition: { field: 'triage.category', equals: 'other' }
+      },
       { id: 'e-always', from: 'r', to: 'log' }
     ]
   }

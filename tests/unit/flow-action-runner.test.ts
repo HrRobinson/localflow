@@ -40,12 +40,12 @@ function actionNode(over: Partial<FlowNode> = {}): FlowNode {
 describe('runAction', () => {
   it('invokes the action with templated params and writes the result to context', async () => {
     const invokeAction = vi.fn(async () => ({ issueId: 'ENG-42' }))
-    const out = await runAction(
-      { registry: registry({ invokeAction }) },
-      actionNode(),
-      { trigger: { subject: 'Login broken' } }
-    )
-    expect(invokeAction).toHaveBeenCalledWith('linear', 'createIssue', { title: 'Re: Login broken' })
+    const out = await runAction({ registry: registry({ invokeAction }) }, actionNode(), {
+      trigger: { subject: 'Login broken' }
+    })
+    expect(invokeAction).toHaveBeenCalledWith('linear', 'createIssue', {
+      title: 'Re: Login broken'
+    })
     expect(out.status).toBe('done')
     expect(out.context).toEqual({ ac1: { issueId: 'ENG-42' } })
   })
@@ -53,7 +53,12 @@ describe('runAction', () => {
   it('fails legibly BEFORE any call when the integration is not connected', async () => {
     const invokeAction = vi.fn()
     const out = await runAction(
-      { registry: registry({ get: () => descriptor({ status: () => 'needs-config' }), invokeAction }) },
+      {
+        registry: registry({
+          get: () => descriptor({ status: () => 'needs-config' }),
+          invokeAction
+        })
+      },
       actionNode(),
       {}
     )

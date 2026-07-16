@@ -37,7 +37,10 @@ export function coerceEvent(event: unknown): SeedEvent {
 
 /** A trigger node's `config.filter` (an object of field→value) all match the
  *  event payload. No filter ⇒ always matches. Deterministic value compare. */
-export function matchesFilter(config: Record<string, unknown>, payload: Record<string, unknown>): boolean {
+export function matchesFilter(
+  config: Record<string, unknown>,
+  payload: Record<string, unknown>
+): boolean {
   if (!isObject(config.filter)) return true
   return Object.entries(config.filter).every(([key, value]) => payload[key] === value)
 }

@@ -31,7 +31,10 @@ export function loadFlows(file: string): LoadedFlows {
     // read error is surfaced but non-fatal.
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { flows: [], notices: [] }
     const detail = err instanceof Error ? err.message : String(err)
-    return { flows: [], notices: [`Couldn't read flows.json — ${detail}. Fix the file and relaunch.`] }
+    return {
+      flows: [],
+      notices: [`Couldn't read flows.json — ${detail}. Fix the file and relaunch.`]
+    }
   }
 
   let data: unknown
@@ -41,7 +44,9 @@ export function loadFlows(file: string): LoadedFlows {
     const detail = err instanceof Error ? err.message : String(err)
     return {
       flows: [],
-      notices: [`flows.json couldn't be parsed and no flows were loaded — ${detail}. Fix flows.json.`]
+      notices: [
+        `flows.json couldn't be parsed and no flows were loaded — ${detail}. Fix flows.json.`
+      ]
     }
   }
 

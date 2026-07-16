@@ -10,7 +10,14 @@ function validFlow(id: string): FlowGraph {
     id,
     name: `Flow ${id}`,
     nodes: [
-      { id: 't', type: 'trigger', integration: 'email', ref: 'inbound', config: {}, position: { x: 0, y: 0 } },
+      {
+        id: 't',
+        type: 'trigger',
+        integration: 'email',
+        ref: 'inbound',
+        config: {},
+        position: { x: 0, y: 0 }
+      },
       { id: 'a', type: 'agent', ref: 'claude', config: {}, position: { x: 1, y: 0 } }
     ],
     edges: [{ id: 'e1', from: 't', to: 'a' }]

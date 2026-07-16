@@ -1,4 +1,3 @@
-import type { FlowNode } from '../../../shared/flows'
 import type { NodeOutcome } from '../types'
 
 /**
@@ -10,6 +9,6 @@ import type { NodeOutcome } from '../types'
  * along every matching out-edge (design §3.5). Kept as its own runner for the
  * one-runner-per-node-type mapping and to document that routing is boolean.
  */
-export function runRouter(_node: FlowNode): NodeOutcome {
+export function runRouter(): NodeOutcome {
   return { status: 'done' }
 }

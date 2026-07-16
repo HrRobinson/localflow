@@ -134,7 +134,12 @@ export class FlowEngine {
     const run: Run = { graph: flow, snapshot, state, inFlight: new Set() }
     this.runs.set(runId, run)
     this.emit({ kind: 'run-status', runId, status: 'running' })
-    this.emit({ kind: 'run-activity', runId, nodeId: trigger.id, detail: `Flow '${flow.name}' started` })
+    this.emit({
+      kind: 'run-activity',
+      runId,
+      nodeId: trigger.id,
+      detail: `Flow '${flow.name}' started`
+    })
 
     // The trigger resolves promptly: done, routing along its out-edges.
     state = applyOutcome(flow, state, trigger.id, 'done', selectEdges(flow, trigger.id, context))
@@ -205,10 +210,16 @@ export class FlowEngine {
         )
       case 'gate': {
         const peek = run.lastPaneHandle ? this.deps.manager.peek(run.lastPaneHandle, 20) : []
-        return runGate({ approvals: this.deps.approvals }, node, run.snapshot.context, run.snapshot.runId, peek)
+        return runGate(
+          { approvals: this.deps.approvals },
+          node,
+          run.snapshot.context,
+          run.snapshot.runId,
+          peek
+        )
       }
       case 'router':
-        return Promise.resolve(runRouter(node))
+        return Promise.resolve(runRouter())
       case 'trigger':
         // Triggers resolve at startRun; a trigger never reaches dispatch.
         return Promise.resolve({ status: 'done' })
@@ -265,7 +276,8 @@ export class FlowEngine {
     // A gate whose human said "no" with no matching (reject) edge ends the run
     // cleanly as rejected — a human "no" is NOT a failure (§3.4).
     if (node.type === 'gate' && selected.length === 0) {
-      const approved = isObject(run.snapshot.context[node.id]) &&
+      const approved =
+        isObject(run.snapshot.context[node.id]) &&
         (run.snapshot.context[node.id] as Record<string, unknown>).approved === true
       if (!approved) {
         this.emit({

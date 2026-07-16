@@ -1,17 +1,26 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { SessionManager, type PtyLike, type SpawnFn, type SpawnSpec } from '../../src/main/session-manager'
+import {
+  SessionManager,
+  type PtyLike,
+  type SpawnFn,
+  type SpawnSpec
+} from '../../src/main/session-manager'
 import { PaneRegistry } from '../../src/main/pane-registry'
 import { OperatorGrantStore } from '../../src/main/operator-grant'
 import { operatorCreatePane } from '../../src/main/pane-ops'
-import { handleRequest, type ControlDeps, type OperatorPaneRequest } from '../../src/main/control-api'
+import type { ControlDeps, OperatorPaneRequest } from '../../src/main/control-api'
 import { PaneDriver } from '../../src/main/flow/pane-driver'
 import { FlowEngine } from '../../src/main/flow/flow-engine'
 import type { ApprovalPort } from '../../src/main/flow/types'
 import type { FlowGraph, RunEvent } from '../../src/shared/flows'
-import type { IntegrationDescriptor, IntegrationId, IntegrationRegistry } from '../../src/shared/integrations'
+import type {
+  IntegrationDescriptor,
+  IntegrationId,
+  IntegrationRegistry
+} from '../../src/shared/integrations'
 import type { AgentId } from '../../src/shared/types'
 
 // --- fakes --------------------------------------------------------------
@@ -40,7 +49,11 @@ const specFor = (agentId: AgentId): SpawnSpec => ({
   hookAdapter: 'settings-file'
 })
 
-const connected = (id: IntegrationId, actions: string[], triggers: string[]): IntegrationDescriptor => ({
+const connected = (
+  id: IntegrationId,
+  actions: string[],
+  triggers: string[]
+): IntegrationDescriptor => ({
   id,
   label: id[0].toUpperCase() + id.slice(1),
   configFields: [],
@@ -102,31 +115,103 @@ function flagshipFlow(groupId: string): FlowGraph {
     id: 'support-triage',
     name: 'Customer email → triage → Linear → deploy → reply',
     nodes: [
-      { id: 't', type: 'trigger', integration: 'email', ref: 'inbound', config: {}, position: { x: 0, y: 0 } },
+      {
+        id: 't',
+        type: 'trigger',
+        integration: 'email',
+        ref: 'inbound',
+        config: {},
+        position: { x: 0, y: 0 }
+      },
       agent('triage'),
       { id: 'route', type: 'router', config: {}, position: { x: 0, y: 0 } },
-      { id: 'createIssue', type: 'action', integration: 'linear', ref: 'createIssue', config: { params: { title: 'Re: {{t.subject}}', body: '{{t.body}}' } }, position: { x: 0, y: 0 } },
-      { id: 'comment', type: 'action', integration: 'linear', ref: 'comment', config: { params: { body: 'auto' } }, position: { x: 0, y: 0 } },
+      {
+        id: 'createIssue',
+        type: 'action',
+        integration: 'linear',
+        ref: 'createIssue',
+        config: { params: { title: 'Re: {{t.subject}}', body: '{{t.body}}' } },
+        position: { x: 0, y: 0 }
+      },
+      {
+        id: 'comment',
+        type: 'action',
+        integration: 'linear',
+        ref: 'comment',
+        config: { params: { body: 'auto' } },
+        position: { x: 0, y: 0 }
+      },
       agent('deploy'),
-      { id: 'planGate', type: 'gate', config: { prompt: 'Apply the deploy plan?' }, position: { x: 0, y: 0 } },
-      { id: 'applyPlan', type: 'action', integration: 'cloud', ref: 'applyPlan', config: { params: {} }, position: { x: 0, y: 0 } },
-      { id: 'toReview', type: 'action', integration: 'linear', ref: 'issueUpdate', config: { params: { issueId: '{{createIssue.issueId}}', stateId: 'Review' } }, position: { x: 0, y: 0 } },
+      {
+        id: 'planGate',
+        type: 'gate',
+        config: { prompt: 'Apply the deploy plan?' },
+        position: { x: 0, y: 0 }
+      },
+      {
+        id: 'applyPlan',
+        type: 'action',
+        integration: 'cloud',
+        ref: 'applyPlan',
+        config: { params: {} },
+        position: { x: 0, y: 0 }
+      },
+      {
+        id: 'toReview',
+        type: 'action',
+        integration: 'linear',
+        ref: 'issueUpdate',
+        config: { params: { issueId: '{{createIssue.issueId}}', stateId: 'Review' } },
+        position: { x: 0, y: 0 }
+      },
       agent('draft'),
-      { id: 'sendGate', type: 'gate', config: { prompt: 'Send this reply to {{t.from}}?' }, position: { x: 0, y: 0 } },
-      { id: 'sendDraft', type: 'action', integration: 'email', ref: 'sendDraft', config: { params: { threadId: '{{t.threadId}}' } }, position: { x: 0, y: 0 } }
+      {
+        id: 'sendGate',
+        type: 'gate',
+        config: { prompt: 'Send this reply to {{t.from}}?' },
+        position: { x: 0, y: 0 }
+      },
+      {
+        id: 'sendDraft',
+        type: 'action',
+        integration: 'email',
+        ref: 'sendDraft',
+        config: { params: { threadId: '{{t.threadId}}' } },
+        position: { x: 0, y: 0 }
+      }
     ],
     edges: [
       { id: 'e1', from: 't', to: 'triage' },
       { id: 'e2', from: 'triage', to: 'route' },
-      { id: 'e-bug', from: 'route', to: 'createIssue', condition: { field: 'triage.category', equals: 'bug' } },
-      { id: 'e-other', from: 'route', to: 'comment', condition: { field: 'triage.category', equals: 'other' } },
+      {
+        id: 'e-bug',
+        from: 'route',
+        to: 'createIssue',
+        condition: { field: 'triage.category', equals: 'bug' }
+      },
+      {
+        id: 'e-other',
+        from: 'route',
+        to: 'comment',
+        condition: { field: 'triage.category', equals: 'other' }
+      },
       { id: 'e3', from: 'createIssue', to: 'deploy' },
       { id: 'e4', from: 'deploy', to: 'planGate' },
-      { id: 'e-apply', from: 'planGate', to: 'applyPlan', condition: { field: 'planGate.approved', equals: true } },
+      {
+        id: 'e-apply',
+        from: 'planGate',
+        to: 'applyPlan',
+        condition: { field: 'planGate.approved', equals: true }
+      },
       { id: 'e5', from: 'applyPlan', to: 'toReview' },
       { id: 'e6', from: 'toReview', to: 'draft' },
       { id: 'e7', from: 'draft', to: 'sendGate' },
-      { id: 'e-send', from: 'sendGate', to: 'sendDraft', condition: { field: 'sendGate.approved', equals: true } }
+      {
+        id: 'e-send',
+        from: 'sendGate',
+        to: 'sendDraft',
+        condition: { field: 'sendGate.approved', equals: true }
+      }
     ]
   }
 }
@@ -213,7 +298,10 @@ function harness(approvals: ApprovalPort): Harness {
   const runDone = new Promise<RunEvent & { kind: 'run-status' }>((r) => (resolveDone = r))
   engine.onEvent((e) => {
     events.push(e)
-    if (e.kind === 'run-status' && (e.status === 'done' || e.status === 'failed' || e.status === 'rejected')) {
+    if (
+      e.kind === 'run-status' &&
+      (e.status === 'done' || e.status === 'failed' || e.status === 'rejected')
+    ) {
       resolveDone(e)
     }
   })
@@ -228,7 +316,12 @@ function harness(approvals: ApprovalPort): Harness {
     fireEmail: () =>
       reg.fire('email', 'inbound', {
         eventId: 'evt-1',
-        payload: { from: 'user@ex.com', subject: 'Login broken', body: 'cannot log in', threadId: 'thread-9' }
+        payload: {
+          from: 'user@ex.com',
+          subject: 'Login broken',
+          body: 'cannot log in',
+          threadId: 'thread-9'
+        }
       })
   }
 }

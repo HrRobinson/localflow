@@ -1,5 +1,9 @@
 import { describe, it, expect, vi } from 'vitest'
-import { subscribeTriggers, coerceEvent, matchesFilter } from '../../src/main/flow/trigger-subscriber'
+import {
+  subscribeTriggers,
+  coerceEvent,
+  matchesFilter
+} from '../../src/main/flow/trigger-subscriber'
 import type { FlowGraph } from '../../src/shared/flows'
 import type { IntegrationRegistry } from '../../src/shared/integrations'
 
@@ -8,7 +12,14 @@ function flow(over: Partial<FlowGraph> = {}): FlowGraph {
     id: 'f',
     name: 'f',
     nodes: [
-      { id: 't', type: 'trigger', integration: 'email', ref: 'inbound', config: {}, position: { x: 0, y: 0 } },
+      {
+        id: 't',
+        type: 'trigger',
+        integration: 'email',
+        ref: 'inbound',
+        config: {},
+        position: { x: 0, y: 0 }
+      },
       { id: 'a', type: 'agent', ref: 'claude', config: {}, position: { x: 1, y: 0 } }
     ],
     edges: [{ id: 'e1', from: 't', to: 'a' }],
@@ -42,7 +53,7 @@ describe('matchesFilter', () => {
 })
 
 describe('subscribeTriggers', () => {
-  it('subscribes each enabled flow\'s trigger node and starts a run on a matching event', () => {
+  it("subscribes each enabled flow's trigger node and starts a run on a matching event", () => {
     const handlers: Record<string, (e: unknown) => void> = {}
     const registry: IntegrationRegistry = {
       descriptors: () => [],
@@ -54,7 +65,9 @@ describe('subscribeTriggers', () => {
       }
     }
     const started: { flowId: string; eventId: string }[] = []
-    subscribeTriggers(registry, [flow()], (f, ev) => started.push({ flowId: f.id, eventId: ev.eventId }))
+    subscribeTriggers(registry, [flow()], (f, ev) =>
+      started.push({ flowId: f.id, eventId: ev.eventId })
+    )
     handlers['email:inbound']({ eventId: 'e9', payload: { subject: 'hi' } })
     expect(started).toEqual([{ flowId: 'f', eventId: 'e9' }])
   })
@@ -73,7 +86,14 @@ describe('subscribeTriggers', () => {
     const onStart = vi.fn()
     const f = flow({
       nodes: [
-        { id: 't', type: 'trigger', integration: 'email', ref: 'inbound', config: { filter: { label: 'support' } }, position: { x: 0, y: 0 } },
+        {
+          id: 't',
+          type: 'trigger',
+          integration: 'email',
+          ref: 'inbound',
+          config: { filter: { label: 'support' } },
+          position: { x: 0, y: 0 }
+        },
         { id: 'a', type: 'agent', ref: 'claude', config: {}, position: { x: 1, y: 0 } }
       ]
     })

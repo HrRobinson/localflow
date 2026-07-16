@@ -6,9 +6,26 @@ import type { IntegrationId } from './integrations'
 // engine agree byte-for-byte.
 
 export type FlowNodeType = 'trigger' | 'agent' | 'action' | 'gate' | 'router'
-export interface FlowNode { id: string; type: FlowNodeType; integration?: IntegrationId; ref?: string; config: Record<string, unknown>; position: { x: number; y: number } }
-export interface FlowEdge { id: string; from: string; to: string; condition?: { field: string; equals: unknown } }
-export interface FlowGraph { id: string; name: string; nodes: FlowNode[]; edges: FlowEdge[] }
+export interface FlowNode {
+  id: string
+  type: FlowNodeType
+  integration?: IntegrationId
+  ref?: string
+  config: Record<string, unknown>
+  position: { x: number; y: number }
+}
+export interface FlowEdge {
+  id: string
+  from: string
+  to: string
+  condition?: { field: string; equals: unknown }
+}
+export interface FlowGraph {
+  id: string
+  name: string
+  nodes: FlowNode[]
+  edges: FlowEdge[]
+}
 
 // ---------------------------------------------------------------------------
 // Run-state types — PRODUCED for sub-project #3 (the canvas renders them as a

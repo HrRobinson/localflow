@@ -9,11 +9,28 @@
 // flow's trigger node is never `cloud`. `status()` is synchronous.
 
 export type IntegrationId = 'linear' | 'email' | 'cloud'
-export interface IntegrationConfigField { key: string; label: string; secret: boolean; required: boolean; placeholder?: string }
-export interface IntegrationDescriptor { id: IntegrationId; label: string; configFields: IntegrationConfigField[]; triggers: {id:string;label:string}[]; actions: {id:string;label:string}[]; status(): 'connected'|'needs-config'|'error' }
+export interface IntegrationConfigField {
+  key: string
+  label: string
+  secret: boolean
+  required: boolean
+  placeholder?: string
+}
+export interface IntegrationDescriptor {
+  id: IntegrationId
+  label: string
+  configFields: IntegrationConfigField[]
+  triggers: { id: string; label: string }[]
+  actions: { id: string; label: string }[]
+  status(): 'connected' | 'needs-config' | 'error'
+}
 export interface IntegrationRegistry {
   descriptors(): IntegrationDescriptor[]
   get(id: IntegrationId): IntegrationDescriptor | undefined
-  invokeAction(id: IntegrationId, actionId: string, params: Record<string, unknown>): Promise<unknown>
+  invokeAction(
+    id: IntegrationId,
+    actionId: string,
+    params: Record<string, unknown>
+  ): Promise<unknown>
   subscribe(id: IntegrationId, triggerId: string, handler: (event: unknown) => void): () => void
 }

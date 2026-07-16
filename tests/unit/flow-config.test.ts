@@ -7,11 +7,17 @@ import { parseFlowsConfig, loadFlowsConfig } from '../../src/main/flow/flow-conf
 describe('parseFlowsConfig — validate at the boundary, off by default', () => {
   it('absent flows block → disabled (opt-in default)', () => {
     expect(parseFlowsConfig({})).toEqual({ enabled: false, environment: 1, maxConcurrentPanes: 2 })
-    expect(parseFlowsConfig(null)).toEqual({ enabled: false, environment: 1, maxConcurrentPanes: 2 })
+    expect(parseFlowsConfig(null)).toEqual({
+      enabled: false,
+      environment: 1,
+      maxConcurrentPanes: 2
+    })
   })
 
   it('honors a well-typed flows block', () => {
-    expect(parseFlowsConfig({ flows: { enabled: true, environment: 3, maxConcurrentPanes: 4 } })).toEqual({
+    expect(
+      parseFlowsConfig({ flows: { enabled: true, environment: 3, maxConcurrentPanes: 4 } })
+    ).toEqual({
       enabled: true,
       environment: 3,
       maxConcurrentPanes: 4
@@ -26,7 +32,9 @@ describe('parseFlowsConfig — validate at the boundary, off by default', () => 
   it('rejects an out-of-range environment to 1 and floors concurrency at 1', () => {
     expect(parseFlowsConfig({ flows: { enabled: true, environment: 99 } }).environment).toBe(1)
     expect(parseFlowsConfig({ flows: { enabled: true, environment: 5 } }).environment).toBe(5)
-    expect(parseFlowsConfig({ flows: { enabled: true, maxConcurrentPanes: 0 } }).maxConcurrentPanes).toBe(1)
+    expect(
+      parseFlowsConfig({ flows: { enabled: true, maxConcurrentPanes: 0 } }).maxConcurrentPanes
+    ).toBe(1)
   })
 
   it('loadFlowsConfig reads config.json fresh; a missing/broken file disables', () => {

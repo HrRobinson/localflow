@@ -59,7 +59,7 @@ describe('runAgent', () => {
     expect(out.context).toEqual({ triage: {} })
   })
 
-  it('an instant-exit fails the node, forwarding the pane\'s REAL exit tail verbatim', async () => {
+  it("an instant-exit fails the node, forwarding the pane's REAL exit tail verbatim", async () => {
     const tail = 'Exited right away (exit code 1) — last output: “No conversation found”'
     const h = deps({
       waitForTerminal: async () => 'exited',
@@ -70,7 +70,7 @@ describe('runAgent', () => {
     expect(out.message).toBe(tail)
   })
 
-  it('a rejected pane creation fails the node with the router\'s error and never prompts', async () => {
+  it("a rejected pane creation fails the node with the router's error and never prompts", async () => {
     const prompt = vi.fn()
     const h = deps({
       driver: {

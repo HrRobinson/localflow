@@ -2,7 +2,12 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { SessionManager, type PtyLike, type SpawnFn, type SpawnSpec } from '../../src/main/session-manager'
+import {
+  SessionManager,
+  type PtyLike,
+  type SpawnFn,
+  type SpawnSpec
+} from '../../src/main/session-manager'
 import { PaneRegistry } from '../../src/main/pane-registry'
 import { OperatorGrantStore } from '../../src/main/operator-grant'
 import { operatorCreatePane } from '../../src/main/pane-ops'
@@ -78,7 +83,7 @@ describe('PaneDriver', () => {
     expect(h.manager.peek).toBeDefined()
   })
 
-  it('surfaces the router\'s own status+error when a drive is rejected (unknown agent)', async () => {
+  it("surfaces the router's own status+error when a drive is rejected (unknown agent)", async () => {
     // 'shell' is outside OPERATOR_TERMINAL_AGENTS — the control API rejects it.
     const res = await h.driver.createTerminal(1, 'shell' as AgentId, h.groupId)
     expect(res.ok).toBe(false)

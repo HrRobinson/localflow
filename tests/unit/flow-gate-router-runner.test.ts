@@ -18,9 +18,13 @@ describe('runGate', () => {
   it('requests approval with a templated prompt + peek, records the boolean', async () => {
     const requestApproval = vi.fn(async () => true)
     const port: ApprovalPort = { requestApproval }
-    const out = await runGate({ approvals: port }, gateNode(), { trigger: { from: 'a@b.com' } }, 'run-1', [
-      'the draft body'
-    ])
+    const out = await runGate(
+      { approvals: port },
+      gateNode(),
+      { trigger: { from: 'a@b.com' } },
+      'run-1',
+      ['the draft body']
+    )
     expect(requestApproval).toHaveBeenCalledWith({
       runId: 'run-1',
       nodeId: 'g1',
@@ -56,10 +60,7 @@ describe('runGate', () => {
 })
 
 describe('runRouter', () => {
-  it('resolves done with no side effects — routing is the engine\'s pure edge eval', () => {
-    const out = runRouter(
-      { id: 'r', type: 'router', config: {}, position: { x: 0, y: 0 } }
-    )
-    expect(out).toEqual({ status: 'done' })
+  it("resolves done with no side effects — routing is the engine's pure edge eval", () => {
+    expect(runRouter()).toEqual({ status: 'done' })
   })
 })

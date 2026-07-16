@@ -13,7 +13,14 @@ export function GlobalErrorNotice(): React.ReactElement | null {
   }, [])
 
   const handleError = useCallback((event: ErrorEvent) => {
-    setError(noticeFromError(event))
+    const notice = noticeFromError(event)
+    if (!notice) {
+      // Known-benign (e.g. ResizeObserver loop warnings) -- log for
+      // debugging visibility, but don't cry wolf with a user-facing toast.
+      console.debug('[GlobalErrorNotice] ignored benign error event:', event.message)
+      return
+    }
+    setError(notice)
   }, [])
 
   useEffect(() => {

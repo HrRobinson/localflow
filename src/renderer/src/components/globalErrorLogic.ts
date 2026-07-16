@@ -31,9 +31,33 @@ export function noticeFromRejection(
   }
 }
 
+// Known-benign `window` 'error' messages that Chromium dispatches as real
+// error events but that carry no actionable information for the user.
+// ResizeObserver's loop-limit warnings are the textbook example: this app's
+// own TerminalPane runs a ResizeObserver that calls xterm's FitAddon.fit()
+// synchronously, which is exactly what triggers them. Industry-standard to
+// ignore (e.g. Sentry ignores these by default) -- surfacing a red toast for
+// them just teaches users to distrust the notice. Keep this list narrow and
+// specific; do not broaden it to swallow genuine errors.
+const BENIGN_ERROR_SUBSTRINGS = [
+  'resizeobserver loop limit exceeded',
+  'resizeobserver loop completed with undelivered notifications'
+]
+
+export function isBenignErrorMessage(message: string): boolean {
+  if (!message) {
+    return false
+  }
+  const lower = message.toLowerCase()
+  return BENIGN_ERROR_SUBSTRINGS.some((benign) => lower.includes(benign))
+}
+
 export function noticeFromError(
   event: Pick<ErrorEvent, 'message'> & { error?: unknown }
-): GlobalErrorState {
+): GlobalErrorState | null {
+  if (isBenignErrorMessage(event.message)) {
+    return null
+  }
   return {
     message: 'An unexpected error occurred.',
     detail:

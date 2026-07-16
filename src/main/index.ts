@@ -16,6 +16,7 @@ import { parseSessionTemplates, type SessionTemplate } from '../shared/templates
 import { startHookServer } from './hook-server'
 import { SessionManager, type SpawnSpec } from './session-manager'
 import { loadSavedState, saveState } from './persistence'
+import { PersistenceNoticeRouter } from './persistence-notice'
 import { AgentRegistry, whichViaLoginShell } from './agent-registry'
 import { resolveGuardBinary } from './guard-binary'
 import { makeOperatorGuard } from './operator-guard'
@@ -81,6 +82,18 @@ function loadSessionTemplates(configFile: string): SessionTemplate[] {
 let win: BrowserWindow | null = null
 let managerRef: SessionManager | null = null
 
+// Buffers persistence save-failure notices raised before the window exists and
+// flushes them once it loads (see PersistenceNoticeRouter). Module-level so
+// createWindow's did-finish-load handler can flush what the whenReady closure
+// reported during the pre-window startup restore.
+const persistenceNotices = new PersistenceNoticeRouter((message) => {
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('persistence:notice', message)
+    return true
+  }
+  return false
+})
+
 function createWindow(): void {
   win = new BrowserWindow({
     width: 1400,
@@ -99,6 +112,9 @@ function createWindow(): void {
   })
   win.webContents.on('will-navigate', (e) => e.preventDefault())
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  // Flush any persistence notice buffered before the window existed (a save
+  // failure during the pre-window startup restore) once the renderer is live.
+  win.webContents.once('did-finish-load', () => persistenceNotices.flush())
   if (process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
@@ -365,11 +381,14 @@ app.whenReady().then(async () => {
     const env = manager.list().find((s) => s.id === id)?.environment ?? 1
     consoleBus.emit(toStatusEvent(id, env, entry))
   })
-  // Set once a save fails, so a persistent failure (e.g. disk still full)
-  // doesn't re-push an identical toast on every subsequent pane/group
-  // change; cleared as soon as a save succeeds again so a *new* failure
-  // (different cause) is re-announced.
-  let lastPersistenceSaveError: string | null = null
+  // No-clobber invariant: auto-save may overwrite sessions.json ONLY when the
+  // load proved it safe (ENOENT first run, a clean load, or corruption whose
+  // backup succeeded). If the file was unreadable — or corruption we couldn't
+  // back up — the intact bytes are still on disk, so we must NOT save empty
+  // over them. Assigned from the load below (before the restore loop, which
+  // itself fires onSessionsChanged); defaults false so nothing can race a save
+  // ahead of the decision.
+  let persistenceSafe = false
   manager.onSessionsChanged(() => {
     const currentIds = new Set(manager.list().map((s) => s.id))
     for (const id of launchTracker.trackedIds()) {
@@ -378,6 +397,9 @@ app.whenReady().then(async () => {
         if (env !== null) revokeOperator(env)
       }
     }
+    // The load couldn't guarantee the on-disk file is disposable — skip the
+    // write so a transient glitch can't reset the workspace to empty.
+    if (!persistenceSafe) return
     const result = saveState(sessionsFile, {
       sessions: manager
         .list()
@@ -394,16 +416,14 @@ app.whenReady().then(async () => {
         })),
       groups: manager.listGroups()
     })
-    if (!result.ok) {
-      if (result.error !== lastPersistenceSaveError)
-        sendToWindow('persistence:notice', result.error)
-      lastPersistenceSaveError = result.error
-    } else {
-      lastPersistenceSaveError = null
-    }
+    // Router de-dupes an already-shown error and buffers one raised before the
+    // window exists (flushed on did-finish-load), so a cold-start save failure
+    // still reaches the user instead of being permanently muted.
+    persistenceNotices.report(result.ok ? null : result.error)
   })
 
   const savedState = loadSavedState(sessionsFile)
+  persistenceSafe = savedState.safeToPersist
   const persistenceStartupNotice = savedState.error ?? null
   ipcMain.handle('persistence:getNotice', () => persistenceStartupNotice)
   manager.restoreGroups(savedState.groups)

@@ -220,6 +220,34 @@ fn su_non_prefix_regression_stays_allow() {
     assert_all_allow(&default_engine(), &["su rm", "su root"]);
 }
 
+// I-2: util-linux `su --command COMMAND` (separate token) and
+// `--command=COMMAND` (attached) previously bypassed inline-payload
+// extraction, which only matched the exact `-c` token.
+#[test]
+fn su_dash_dash_command_bypass_now_denies() {
+    assert_all_deny(
+        &default_engine(),
+        &[
+            "su --command 'rm -rf /'",
+            "su --command='rm -rf /'",
+            "su -l root --command 'rm -rf /'",
+        ],
+    );
+}
+
+#[test]
+fn su_dash_dash_command_benign_still_allows() {
+    assert_all_allow(
+        &default_engine(),
+        &[
+            "su --command 'ls'",
+            r#"su --command='psql -c "SELECT 1"'"#,
+            "su rm",
+            "su root",
+        ],
+    );
+}
+
 // ---- watch ---------------------------------------------------------------
 
 #[test]

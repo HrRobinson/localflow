@@ -70,21 +70,37 @@ pub fn command_from_hook_json(input: &str, max_bytes: usize) -> Result<String, P
 /// so a blind prefix-skip would misread it. The wrapped command is only ever
 /// the single string behind `-c` (`su root -c 'rm -rf /'`) — exactly the
 /// `bash -c '…'` shape this path already handles, wherever the username or
-/// login options sit relative to `-c`.
+/// login options sit relative to `-c`. util-linux `su` additionally accepts
+/// the long form `--command COMMAND` (separate token) or `--command=COMMAND`
+/// (attached) as an alias for `-c` — see `inline_payload`.
 const INLINE_INTERPRETERS: &[&str] = &[
     "bash", "sh", "zsh", "dash", "python", "python3", "node", "ruby", "perl", "su",
 ];
 
 /// If `argv` is an interpreter invocation carrying a `-c <payload>` flag,
-/// return the payload argument (the exact token right after `-c`) —
-/// `argv[0]` must already be case-folded and directory-stripped, which the
-/// engine does before calling this (so `/usr/bin/Bash -c '...'` is still
-/// recognized). Returns `None` for anything else, including interpreter
-/// invocations with no `-c`.
+/// return the payload argument. For most interpreters this is the exact
+/// token right after `-c`; `su` additionally recognizes the long-form alias
+/// `--command COMMAND` (separate token) and `--command=COMMAND` (attached) —
+/// gated to `su` specifically, since no other `INLINE_INTERPRETERS` entry has
+/// a `--command` flag, so this cannot create a false positive for `bash`,
+/// `sh`, `python`, etc. `argv[0]` must already be case-folded and
+/// directory-stripped, which the engine does before calling this (so
+/// `/usr/bin/Bash -c '...'` is still recognized). Returns `None` for anything
+/// else, including interpreter invocations with no `-c`/`--command`.
 pub fn inline_payload(argv: &[String]) -> Option<String> {
     let prog = argv.first()?;
     if !INLINE_INTERPRETERS.contains(&prog.as_str()) {
         return None;
+    }
+    if prog == "su" {
+        for (i, a) in argv.iter().enumerate() {
+            if let Some(val) = a.strip_prefix("--command=") {
+                return Some(val.to_string());
+            }
+            if a == "--command" {
+                return argv.get(i + 1).cloned();
+            }
+        }
     }
     let idx = argv.iter().position(|a| a == "-c")?;
     argv.get(idx + 1).cloned()
@@ -234,6 +250,39 @@ mod tests {
         assert_eq!(
             inline_payload(&argv(&["su", "-l", "root", "-c", "git reset --hard"])),
             Some("git reset --hard".to_string())
+        );
+    }
+
+    #[test]
+    fn su_dash_dash_command_payload_is_extracted() {
+        // util-linux `su` also accepts `--command COMMAND` (separate token)
+        // and `--command=COMMAND` (attached) as an alias for `-c`.
+        assert_eq!(
+            inline_payload(&argv(&["su", "--command", "rm -rf /"])),
+            Some("rm -rf /".to_string())
+        );
+        assert_eq!(
+            inline_payload(&argv(&["su", "--command=rm -rf /"])),
+            Some("rm -rf /".to_string())
+        );
+        assert_eq!(
+            inline_payload(&argv(&["su", "-l", "root", "--command", "rm -rf /"])),
+            Some("rm -rf /".to_string())
+        );
+    }
+
+    #[test]
+    fn dash_dash_command_is_not_recognized_for_other_interpreters() {
+        // `--command` is a `su`-specific alias for `-c`; other
+        // INLINE_INTERPRETERS entries have no such flag, so it must not be
+        // treated as a payload marker for them.
+        assert_eq!(
+            inline_payload(&argv(&["bash", "--command", "rm -rf /"])),
+            None
+        );
+        assert_eq!(
+            inline_payload(&argv(&["python3", "--command=rm -rf /"])),
+            None
         );
     }
 

@@ -333,7 +333,8 @@ app.whenReady().then(async () => {
     settingsDir: userData,
     port: endpoint.port,
     token: endpoint.token,
-    guard: guardProvider
+    guard: guardProvider,
+    pathExists: existsSync
   })
   managerRef = manager
 
@@ -706,7 +707,9 @@ app.whenReady().then(async () => {
   // Sensible default new-session cwd (M-pathux): most recent terminal
   // session's cwd, else home — lets Landing skip the folder picker by
   // default while keeping it one click away via session:chooseFolder.
-  ipcMain.handle('session:defaultCwd', () => resolveDefaultCwd(manager.list(), homedir()))
+  ipcMain.handle('session:defaultCwd', () =>
+    resolveDefaultCwd(manager.list(), homedir(), existsSync)
+  )
   ipcMain.handle('session:chooseFolder', async () => {
     const result = await dialog.showOpenDialog(win!, {
       properties: ['openDirectory', 'createDirectory'],

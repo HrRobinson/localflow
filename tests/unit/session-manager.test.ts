@@ -394,6 +394,54 @@ describe('SessionManager', () => {
     expect(info.message).toContain('disk full')
   })
 
+  it('a nonexistent cwd is blamed by name instead of mis-blaming the agent binary', () => {
+    let spawnCalled = false
+    const withCheck = new SessionManager({
+      settingsDir: mkdtempSync(join(tmpdir(), 'localflow-sm-')),
+      port: 9999,
+      token: 'tok',
+      spawnFn: () => {
+        spawnCalled = true
+        return new FakePty()
+      },
+      pathExists: (p) => p !== '/deleted/project'
+    })
+    const messages: string[] = []
+    withCheck.onData((_id, d) => messages.push(d))
+    const info = withCheck.create('/deleted/project', claudeSpec, 1)
+    expect(info.status).toBe('exited')
+    expect(info.message).toContain("doesn't exist")
+    expect(info.message).toContain('/deleted/project')
+    expect(info.message).not.toContain(claudeSpec.command)
+    expect(messages.join('')).toContain('/deleted/project')
+    // The real fix is picking another folder, not touching the agent's path
+    // — spawnFn must never even be invoked for a cwd known to be missing.
+    expect(spawnCalled).toBe(false)
+  })
+
+  it('an existing cwd spawns normally when pathExists is supplied', () => {
+    const withCheck = new SessionManager({
+      settingsDir: mkdtempSync(join(tmpdir(), 'localflow-sm-')),
+      port: 9999,
+      token: 'tok',
+      spawnFn: (bin, args, opts) => {
+        spawnCalls.push({ bin, args, cwd: opts.cwd })
+        const pty = new FakePty()
+        ptys.push(pty)
+        return pty
+      },
+      pathExists: (p) => p === '/real/project'
+    })
+    const info = withCheck.create('/real/project', claudeSpec, 1)
+    expect(info.status).not.toBe('exited')
+    expect(spawnCalls.at(-1)?.cwd).toBe('/real/project')
+  })
+
+  it('omitting pathExists skips the existence check (existing fixture-path tests keep working)', () => {
+    const info = mgr.create('/definitely/not/on/disk', claudeSpec, 1)
+    expect(info.status).not.toBe('exited')
+  })
+
   it('disposeAll kills every pty, keeps sessions, silences late data', () => {
     const a = mgr.create('/p1', claudeSpec, 1)
     mgr.create('/p2', codexSpec, 1)

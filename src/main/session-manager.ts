@@ -76,6 +76,18 @@ interface Options {
   now?: () => number
   /** Resolves the guard config at spawn time (null = no guard). */
   guard?: () => import('./guard-hook').ResolvedGuard | null
+  /**
+   * Existence check for a session's cwd, run right before attempting to
+   * spawn it — an injected seam (like `spawnFn`/`guard`) instead of a direct
+   * `node:fs` call, so this stays testable; production wires real
+   * `fs.existsSync`. Omitted entirely means "don't check" (existing unit
+   * tests that spawn against arbitrary fixture paths keep working
+   * unmodified). A cwd that fails this check never reaches `spawnFn` — see
+   * the check in `spawn()`, which blames the folder by name instead of
+   * letting the resulting ENOENT/ENOTDIR get misattributed to the agent
+   * binary.
+   */
+  pathExists?: (path: string) => boolean
 }
 
 interface Record_ {
@@ -317,6 +329,29 @@ export class SessionManager {
       command: spec.command,
       environment,
       kind: 'terminal' as const
+    }
+    // A missing cwd (typed-and-deleted, or a stale restore) must be blamed by
+    // name here — before spawnFn ever runs — not left to surface as an
+    // ENOENT from the pty spawn itself, which the catch block below (by
+    // design) attributes to the agent binary. That mislabels the real cause
+    // and points the user at the wrong fix (Settings → Agents instead of
+    // picking another folder).
+    if (this.opts.pathExists && !this.opts.pathExists(cwd)) {
+      const message = `That folder doesn't exist: ${cwd} — pick another working directory`
+      info.status = 'exited'
+      info.message = message
+      this.sessions.set(id, {
+        info,
+        spec,
+        pty: null,
+        spawnedAt: 0,
+        tail: '',
+        activity,
+        guardOnCli: false
+      })
+      this.changedCbs.forEach((cb) => cb())
+      this.dataCbs.forEach((cb) => cb(id, `\r\n${message}\r\n`))
+      return info
     }
     // A relaunch after a guard-induced instant exit passes skipGuard=true so
     // the retry runs unguarded (fail open). Otherwise resolve the guard now.

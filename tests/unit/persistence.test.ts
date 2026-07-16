@@ -1,12 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, writeFileSync, existsSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync, existsSync, readdirSync, chmodSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { platform } from 'node:os'
 import { loadSavedState, saveState, type SavedSession } from '../../src/main/persistence'
 
 const loadSavedSessions = (file: string): SavedSession[] => loadSavedState(file).sessions
-const saveSessions = (file: string, sessions: SavedSession[]): void =>
+const saveSessions = (file: string, sessions: SavedSession[]): void => {
   saveState(file, { sessions, groups: [] })
+}
 
 describe('persistence', () => {
   it('round-trips sessions and tolerates a missing file', () => {
@@ -21,6 +23,22 @@ describe('persistence', () => {
     saveSessions(file, [])
     writeFileSync(file, 'garbage')
     expect(loadSavedSessions(file)).toEqual([])
+  })
+  it('backs up a corrupt file and reports a human+technical error instead of looking like a fresh install', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'localflow-p-'))
+    const file = join(dir, 'sessions.json')
+    saveSessions(file, [{ id: 'a', cwd: '/x' }])
+    writeFileSync(file, 'garbage')
+    const state = loadSavedState(file)
+    expect(state.sessions).toEqual([])
+    expect(state.groups).toEqual([])
+    expect(state.error).toMatch(/couldn't be read and was reset/i)
+    expect(state.error).toMatch(/backed up to sessions\.json\.corrupt-/)
+    // The original corrupt content is preserved under the backup name, not
+    // silently discarded or overwritten by a later save.
+    expect(existsSync(file)).toBe(false)
+    const backups = readdirSync(dir).filter((f) => f.startsWith('sessions.json.corrupt-'))
+    expect(backups).toHaveLength(1)
   })
   it('round-trips an optional name', () => {
     const file = join(mkdtempSync(join(tmpdir(), 'localflow-p-')), 'sessions.json')
@@ -109,9 +127,39 @@ describe('persistence v2', () => {
     expect(loadSavedState(file).groups).toEqual([{ id: 'g1', name: 'ok', environment: 1 }])
   })
 
-  it('returns empty state for a missing or corrupt file', () => {
+  it('returns empty state with no error for a genuinely missing file (first run)', () => {
     expect(loadSavedState(join(dir, 'nope.json'))).toEqual({ sessions: [], groups: [] })
+  })
+
+  it('returns empty state with an error for a corrupt file, and backs it up', () => {
     writeFileSync(file, '{{{')
-    expect(loadSavedState(file)).toEqual({ sessions: [], groups: [] })
+    const state = loadSavedState(file)
+    expect(state.sessions).toEqual([])
+    expect(state.groups).toEqual([])
+    expect(typeof state.error).toBe('string')
+    expect(existsSync(file)).toBe(false)
+    expect(readdirSync(dir).some((f) => f.startsWith('sessions.json.corrupt-'))).toBe(true)
+  })
+
+  it('saveState reports a write failure instead of throwing or swallowing it', () => {
+    if (platform() === 'win32') return // chmod-based read-only dirs aren't reliable on Windows CI
+    const roDir = mkdtempSync(join(tmpdir(), 'lf-persist-ro-'))
+    const roFile = join(roDir, 'sessions.json')
+    chmodSync(roDir, 0o500) // read + execute only — writes to new files inside must fail
+    try {
+      const result = saveState(roFile, { sessions: [], groups: [] })
+      expect(result.ok).toBe(false)
+      if (!result.ok) {
+        expect(result.error).toMatch(/couldn't save your session layout/i)
+        expect(result.error).toContain(roFile)
+      }
+    } finally {
+      chmodSync(roDir, 0o700)
+      rmSync(roDir, { recursive: true, force: true })
+    }
+  })
+
+  it('saveState succeeds normally (ok:true, no error)', () => {
+    expect(saveState(file, { sessions: [], groups: [] })).toEqual({ ok: true })
   })
 })

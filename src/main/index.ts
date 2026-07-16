@@ -7,6 +7,7 @@ import {
   type AgentId,
   type AgentOverride,
   type AgentOverrideResult,
+  type GuardPacksResult,
   type SessionInfo
 } from '../shared/types'
 import { clampEnvironment } from '../shared/environment'
@@ -364,6 +365,11 @@ app.whenReady().then(async () => {
     const env = manager.list().find((s) => s.id === id)?.environment ?? 1
     consoleBus.emit(toStatusEvent(id, env, entry))
   })
+  // Set once a save fails, so a persistent failure (e.g. disk still full)
+  // doesn't re-push an identical toast on every subsequent pane/group
+  // change; cleared as soon as a save succeeds again so a *new* failure
+  // (different cause) is re-announced.
+  let lastPersistenceSaveError: string | null = null
   manager.onSessionsChanged(() => {
     const currentIds = new Set(manager.list().map((s) => s.id))
     for (const id of launchTracker.trackedIds()) {
@@ -372,7 +378,7 @@ app.whenReady().then(async () => {
         if (env !== null) revokeOperator(env)
       }
     }
-    saveState(sessionsFile, {
+    const result = saveState(sessionsFile, {
       sessions: manager
         .list()
         .map(({ id, cwd, agentId, command, name, environment, kind, url, groupId }) => ({
@@ -388,9 +394,18 @@ app.whenReady().then(async () => {
         })),
       groups: manager.listGroups()
     })
+    if (!result.ok) {
+      if (result.error !== lastPersistenceSaveError)
+        sendToWindow('persistence:notice', result.error)
+      lastPersistenceSaveError = result.error
+    } else {
+      lastPersistenceSaveError = null
+    }
   })
 
   const savedState = loadSavedState(sessionsFile)
+  const persistenceStartupNotice = savedState.error ?? null
+  ipcMain.handle('persistence:getNotice', () => persistenceStartupNotice)
   manager.restoreGroups(savedState.groups)
   for (const saved of savedState.sessions) {
     if (saved.kind === 'browser') {
@@ -836,7 +851,22 @@ app.whenReady().then(async () => {
   ipcMain.on('console:setPrefs', (_e, prefs: ConsolePrefs) => registry.setConsolePrefs(prefs))
 
   ipcMain.handle('guard:getPacks', () => registry.getGuardPacks())
-  ipcMain.on('guard:setPacks', (_e, packs: string[]) => registry.setGuardPacks(packs))
+  // Security-relevant setting (which lfguard packs are enforced): a bare
+  // ipcMain.on fire-and-forget here would mean a config.json write failure
+  // (disk full, permission revoked) left the renderer's checkbox showing a
+  // pack as enabled while it was never persisted — surfaced instead as a
+  // structured result, same shape as keybindings:set / agents:setOverride.
+  ipcMain.handle('guard:setPacks', (_e, packs: string[]): GuardPacksResult => {
+    if (!Array.isArray(packs) || !packs.every((p) => typeof p === 'string')) {
+      return { ok: false, reason: 'invalid pack list' }
+    }
+    try {
+      registry.setGuardPacks(packs)
+      return { ok: true, packs: registry.getGuardPacks() }
+    } catch (err) {
+      return { ok: false, reason: (err as Error).message }
+    }
+  })
 
   createWindow()
 })

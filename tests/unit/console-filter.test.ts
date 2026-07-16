@@ -3,10 +3,14 @@ import {
   visibleEvents,
   deriveConsoleScope,
   appendConsoleEvents,
-  RENDERER_EVENT_CAP,
+  emptyConsoleRings,
+  ringsFromSnapshot,
+  mergeConsoleRings,
   type ConsoleFilter,
-  type ConsoleScope
+  type ConsoleScope,
+  type ConsoleRings
 } from '../../src/shared/console-filter'
+import { CONSOLE_SOURCE_CAPS } from '../../src/shared/console'
 import type { ConsoleEvent, ConsoleSource } from '../../src/shared/console'
 
 let seq = 0
@@ -109,17 +113,84 @@ describe('deriveConsoleScope', () => {
   })
 })
 
-describe('appendConsoleEvents', () => {
-  it('keeps only the last RENDERER_EVENT_CAP events', () => {
-    const seed = Array.from({ length: RENDERER_EVENT_CAP }, (_, i) => ev('status', 1, `s${i}`))
-    const result = appendConsoleEvents(seed, [ev('network', 1, 'newest')])
-    expect(result.length).toBe(RENDERER_EVENT_CAP)
-    expect(result[result.length - 1].label).toBe('newest')
-    expect(result[0].label).toBe('s1')
+describe('appendConsoleEvents (rings)', () => {
+  it('is the direct regression test for M1: a network flood does not evict a quiet status row', () => {
+    let rings = emptyConsoleRings()
+    rings = appendConsoleEvents(rings, [ev('status', 1, 'quiet status row')])
+    const flood = Array.from({ length: CONSOLE_SOURCE_CAPS.network + 200 }, (_, i) =>
+      ev('network', 1, `n${i}`)
+    )
+    rings = appendConsoleEvents(rings, flood)
+    const merged = mergeConsoleRings(rings)
+    expect(merged.some((e) => e.label === 'quiet status row')).toBe(true)
+    expect(rings.network.length).toBe(CONSOLE_SOURCE_CAPS.network)
   })
 
-  it('leaves a below-cap array untrimmed', () => {
-    const result = appendConsoleEvents([ev('status', 1, 'a')], [ev('status', 1, 'b')])
-    expect(result.map((e) => e.label)).toEqual(['a', 'b'])
+  it("caps each source ring independently, trimming to that source's own cap", () => {
+    let rings = emptyConsoleRings()
+    const caps = { status: 3, operator: 5, capture: 300, guard: 300, network: 2000 }
+    const statusFlood = Array.from({ length: 10 }, (_, i) => ev('status', 1, `s${i}`))
+    const operatorFlood = Array.from({ length: 10 }, (_, i) => ev('operator', 1, `o${i}`))
+    rings = appendConsoleEvents(rings, [...statusFlood, ...operatorFlood], caps)
+    expect(rings.status.length).toBe(3)
+    expect(rings.status.map((e) => e.label)).toEqual(['s7', 's8', 's9'])
+    expect(rings.operator.length).toBe(5)
+    expect(rings.operator.map((e) => e.label)).toEqual(['o5', 'o6', 'o7', 'o8', 'o9'])
+  })
+
+  it('leaves a below-cap ring untrimmed', () => {
+    let rings = emptyConsoleRings()
+    rings = appendConsoleEvents(rings, [ev('status', 1, 'a')])
+    rings = appendConsoleEvents(rings, [ev('status', 1, 'b')])
+    expect(rings.status.map((e) => e.label)).toEqual(['a', 'b'])
+  })
+
+  it('an empty incoming batch is a no-op, returning the same rings reference', () => {
+    const rings = emptyConsoleRings()
+    const result = appendConsoleEvents(rings, [])
+    expect(result).toBe(rings)
+  })
+})
+
+describe('ringsFromSnapshot', () => {
+  it('is the direct regression test for the snapshot-cap-bypass bug: trims a source that exceeds its cap', () => {
+    const overflow = Array.from({ length: CONSOLE_SOURCE_CAPS.status + 50 }, (_, i) =>
+      ev('status', 1, `s${i}`)
+    )
+    const rings = ringsFromSnapshot(overflow)
+    expect(rings.status.length).toBe(CONSOLE_SOURCE_CAPS.status)
+    expect(rings.status[rings.status.length - 1].label).toBe(`s${CONSOLE_SOURCE_CAPS.status + 49}`)
+  })
+
+  it("round-trips today's real shape with no rows dropped (snapshot at exactly the caps' sum, evenly distributed)", () => {
+    seq = 0
+    const snapshot: ConsoleEvent[] = []
+    const sources: ConsoleSource[] = ['status', 'operator', 'capture', 'guard', 'network']
+    for (const source of sources) {
+      for (let i = 0; i < CONSOLE_SOURCE_CAPS[source]; i++) {
+        snapshot.push(ev(source, 1, `${source}-${i}`))
+      }
+    }
+    const rings = ringsFromSnapshot(snapshot)
+    const total = Object.values(rings).reduce(
+      (sum: number, r) => sum + (r as ConsoleEvent[]).length,
+      0
+    )
+    expect(total).toBe(snapshot.length)
+    for (const source of sources) {
+      expect(rings[source].length).toBe(CONSOLE_SOURCE_CAPS[source])
+    }
+  })
+})
+
+describe('mergeConsoleRings', () => {
+  it('flattens rings populated out of seq order into a single seq-sorted array', () => {
+    let rings: ConsoleRings = emptyConsoleRings()
+    rings = appendConsoleEvents(rings, [ev('network', 1, 'n1')])
+    rings = appendConsoleEvents(rings, [ev('status', 1, 's1')])
+    rings = appendConsoleEvents(rings, [ev('network', 1, 'n2')])
+    const merged = mergeConsoleRings(rings)
+    expect(merged.map((e) => e.seq)).toEqual([...merged.map((e) => e.seq)].sort((a, b) => a - b))
+    expect(merged.map((e) => e.label)).toEqual(['n1', 's1', 'n2'])
   })
 })

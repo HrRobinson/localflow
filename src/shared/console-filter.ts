@@ -1,3 +1,4 @@
+import { CONSOLE_SOURCE_CAPS } from './console'
 import type { ConsoleEvent, ConsoleSource } from './console'
 
 export type ConsoleScope =
@@ -47,14 +48,53 @@ export function deriveConsoleScope(focus: ConsoleFocus): ConsoleScope {
   return { kind: 'everywhere' }
 }
 
-export const RENDERER_EVENT_CAP = 3000
+export type ConsoleRings = Record<ConsoleSource, ConsoleEvent[]>
 
-/** Renderer live-append: concatenate a batch, keep only the last `cap` (P1.2). */
+export function emptyConsoleRings(): ConsoleRings {
+  return { status: [], operator: [], capture: [], guard: [], network: [] }
+}
+
+/** Renderer live-append: bucket incoming events by source, trim each
+ *  touched ring to its own cap. Replaces the flat appendConsoleEvents. */
 export function appendConsoleEvents(
-  prev: ConsoleEvent[],
+  prev: ConsoleRings,
   incoming: ConsoleEvent[],
-  cap = RENDERER_EVENT_CAP
-): ConsoleEvent[] {
-  const next = [...prev, ...incoming]
-  return next.length > cap ? next.slice(next.length - cap) : next
+  caps: Record<ConsoleSource, number> = CONSOLE_SOURCE_CAPS
+): ConsoleRings {
+  if (incoming.length === 0) return prev
+  const next = { ...prev }
+  const touched = new Set<ConsoleSource>()
+  for (const e of incoming) {
+    if (!touched.has(e.source)) {
+      next[e.source] = [...next[e.source]]
+      touched.add(e.source)
+    }
+    next[e.source].push(e)
+  }
+  for (const source of touched) {
+    const cap = caps[source]
+    const ring = next[source]
+    if (ring.length > cap) next[source] = ring.slice(ring.length - cap)
+  }
+  return next
+}
+
+/** Initial-snapshot ingestion: buckets a flat main-side snapshot by source
+ *  and applies the SAME per-source caps, closing the snapshot-cap-bypass
+ *  bug even if a future change ever lets main and renderer caps drift. */
+export function ringsFromSnapshot(
+  snapshot: ConsoleEvent[],
+  caps: Record<ConsoleSource, number> = CONSOLE_SOURCE_CAPS
+): ConsoleRings {
+  return appendConsoleEvents(emptyConsoleRings(), snapshot, caps)
+}
+
+/** Flatten rings back into one seq-ordered array for filtering/rendering.
+ *  Each ring is already seq-ordered internally (append-only), so this is a
+ *  5-way merge — same asymptotic shape as the bus's own snapshot(), sized
+ *  small enough (≤3600 rows) that a plain sort is fine here too. */
+export function mergeConsoleRings(rings: ConsoleRings): ConsoleEvent[] {
+  const all: ConsoleEvent[] = []
+  for (const source of Object.keys(rings) as ConsoleSource[]) all.push(...rings[source])
+  return all.sort((a, b) => a.seq - b.seq)
 }

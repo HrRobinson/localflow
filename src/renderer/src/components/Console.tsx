@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ConsoleEvent, ConsoleSource } from '../../../shared/console'
 import { DEFAULT_CONSOLE_PREFS } from '../../../shared/console'
 import { rowActions } from '../../../shared/console-actions'
@@ -6,9 +6,13 @@ import {
   visibleEvents,
   deriveConsoleScope,
   appendConsoleEvents,
+  emptyConsoleRings,
+  ringsFromSnapshot,
+  mergeConsoleRings,
   type ConsoleFilter,
   type ConsoleScope,
-  type ConsoleFocus
+  type ConsoleFocus,
+  type ConsoleRings
 } from '../../../shared/console-filter'
 
 const SOURCES: ConsoleSource[] = ['status', 'operator', 'capture', 'guard', 'network']
@@ -39,7 +43,7 @@ export function Console({
   onOpenSource,
   onRerunWatchpoint
 }: ConsoleProps): React.JSX.Element | null {
-  const [events, setEvents] = useState<ConsoleEvent[]>([])
+  const [eventRings, setEventRings] = useState<ConsoleRings>(emptyConsoleRings())
   const [sources, setSources] = useState<Set<ConsoleSource>>(new Set())
   const [muted, setMuted] = useState<Set<ConsoleSource>>(new Set())
   const [scopeMode, setScopeMode] = useState<'auto' | ConsoleScope>('auto')
@@ -92,16 +96,18 @@ export function Console({
     if (!open) return
     let alive = true
     void window.localflow.listConsole().then((snap) => {
-      if (alive) setEvents(snap)
+      if (alive) setEventRings(ringsFromSnapshot(snap))
     })
     const off = window.localflow.onConsoleEvent((e) =>
-      setEvents((prev) => appendConsoleEvents(prev, Array.isArray(e) ? e : [e]))
+      setEventRings((prev) => appendConsoleEvents(prev, Array.isArray(e) ? e : [e]))
     )
     return () => {
       alive = false
       off()
     }
   }, [open])
+
+  const events = useMemo(() => mergeConsoleRings(eventRings), [eventRings])
 
   // Lazy thumbnail fetch: only when a capture row with a screenshotPath is
   // expanded, and only once per path (cached in `previews`).

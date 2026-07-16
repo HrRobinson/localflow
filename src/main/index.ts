@@ -1103,21 +1103,13 @@ app.whenReady().then(async () => {
         error: `That flow couldn't be found — it may have been deleted. Save it again, then Run. (id: ${id})`
       }
     }
-    if (!graph.nodes.some((n) => n.type === 'trigger')) {
-      return {
-        ok: false,
-        error: `"${graph.name}" has no trigger, so there's nothing to start it — add a trigger node and save before running.`
-      }
-    }
     // A manual run from the canvas is an explicit user action: synthesize an
-    // empty seed event and hand the SAVED graph to the real engine, which drives
-    // panes via the operator control API. Returns the run id immediately; the
-    // walk proceeds async and streams over `flow:run-event`.
-    const runId = flowEngine.startRun(graph, { eventId: randomUUID(), payload: {} })
-    if (!runId) {
-      return { ok: false, error: `"${graph.name}" couldn't start — no runnable trigger node.` }
-    }
-    return { ok: true, runId }
+    // empty seed event and hand the SAVED graph to the real engine. The engine
+    // re-validates through the STRICT parser here — listing/editing stayed
+    // LENIENT so a draft (e.g. an unreachable node) round-trips through save,
+    // but nothing is dispatched for an unrunnable graph. Returns the run id
+    // immediately; the walk proceeds async and streams over `flow:run-event`.
+    return flowEngine.run(graph, { eventId: randomUUID(), payload: {} })
   })
 
   createWindow()

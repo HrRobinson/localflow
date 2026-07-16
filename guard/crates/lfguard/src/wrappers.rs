@@ -29,7 +29,7 @@ use crate::lexer::Word;
 /// applied to argv[0] elsewhere in the pipeline (macOS's case-insensitive
 /// filesystem means `COMMAND rm -rf /` finds the same binary as `command`).
 const TRANSPARENT_PREFIXES: &[&str] =
-    &["command", "env", "nohup", "nice", "stdbuf", "ionice", "sudo", "time", "timeout"];
+    &["command", "env", "nohup", "nice", "stdbuf", "ionice", "sudo", "time", "timeout", "chroot"];
 
 /// `sudo` short options that take a value, e.g. `-u root`. Bundled/attached
 /// forms (`-uroot`) are also handled — see `unwrap_transparent_prefix`.
@@ -117,6 +117,15 @@ pub fn unwrap_transparent_prefix(seg: &[Word]) -> &[Word] {
                     1,
                     Some(is_duration_shape),
                 );
+            }
+            "chroot" => {
+                // `chroot [OPTIONS] NEWROOT [CMD]` — GNU chroot's options are
+                // all attached long forms (`--userspec=`, `--groups=`,
+                // `--skip-chdir`), so none take a separate value token; then
+                // exactly one NEWROOT positional precedes the command. (A
+                // recursive wipe of the chroot's own root is still the
+                // catastrophe class we block — see the design's DECISION 5.)
+                rest = skip_options_then_positionals(rest, &[], &[], 1, None);
             }
             _ => {}
         }
@@ -537,6 +546,42 @@ mod tests {
             texts(unwrap_transparent_prefix(&[w("timeout"), w("rm"), w("-rf"), w("/")])),
             vec!["rm", "-rf", "/"]
         );
+    }
+
+    #[test]
+    fn unwraps_chroot_newroot_and_command() {
+        assert_eq!(
+            texts(unwrap_transparent_prefix(&[
+                w("chroot"),
+                w("/mnt/root"),
+                w("rm"),
+                w("-rf"),
+                w("/")
+            ])),
+            vec!["rm", "-rf", "/"]
+        );
+        // Attached long option before NEWROOT.
+        assert_eq!(
+            texts(unwrap_transparent_prefix(&[
+                w("chroot"),
+                w("--userspec=root:root"),
+                w("/mnt"),
+                w("rm"),
+                w("-rf"),
+                w("/etc")
+            ])),
+            vec!["rm", "-rf", "/etc"]
+        );
+    }
+
+    #[test]
+    fn chroot_benign_and_no_command() {
+        assert_eq!(
+            texts(unwrap_transparent_prefix(&[w("chroot"), w("/mnt/root"), w("ls")])),
+            vec!["ls"]
+        );
+        // NEWROOT only, no command -> nothing to judge.
+        assert!(unwrap_transparent_prefix(&[w("chroot"), w("/mnt")]).is_empty());
     }
 
     #[test]

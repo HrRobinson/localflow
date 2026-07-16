@@ -84,11 +84,15 @@ describe('TaskRouter (pane-per-thread)', () => {
   it('attachDraft for an unknown thread throws a legible error', () => {
     const { router } = makeRouter()
     expect(() =>
-      router.attachDraft('ghost', { draftId: 'd1', threadId: 'ghost' }, {
-        to: [],
-        subject: '',
-        body: ''
-      })
+      router.attachDraft(
+        'ghost',
+        { draftId: 'd1', threadId: 'ghost' },
+        {
+          to: [],
+          subject: '',
+          body: ''
+        }
+      )
     ).toThrow(/ghost/)
   })
 })

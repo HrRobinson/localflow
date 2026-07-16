@@ -8,7 +8,7 @@
  * `ApproveButton`), never from an agent's pane, tool, or control-API route.
  *
  * Two structural properties this file must preserve:
- *   1. Exactly one call site of `.sendDraft(` in the whole codebase lives here
+ *   1. Exactly one provider send call site in the whole codebase lives here
  *      (asserted by the single-caller invariant test, §10.1). Do not add another
  *      caller anywhere in `src/`.
  *   2. The human-approval audit record is written BEFORE the send, so every send

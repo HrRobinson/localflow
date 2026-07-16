@@ -2,6 +2,8 @@ export interface ResolvedGuard {
   bin: string
   auditLog: string
   packs: string[]
+  /** Dir under userData for per-pane invocation markers (guard self-verify). */
+  seenDir: string
 }
 
 const SAFE_PANE_RE = /^[A-Za-z0-9-]+$/
@@ -13,7 +15,7 @@ function shSingleQuote(s: string): string {
 
 /**
  * The shell command a pre-tool hook runs: invoke lfguard in exit-2 deny
- * mode with the active packs and per-pane audit tag. bin/auditLog are
+ * mode with the active packs and per-pane audit tag. bin/auditLog/seenDir are
  * single-quoted because macOS userData paths contain spaces.
  */
 export function guardHookCommand(guard: ResolvedGuard, paneId: string): string {
@@ -26,6 +28,8 @@ export function guardHookCommand(guard: ResolvedGuard, paneId: string): string {
     ...packFlags,
     '--audit-log',
     shSingleQuote(guard.auditLog),
+    '--seen-dir',
+    shSingleQuote(guard.seenDir),
     '--audit-tag',
     paneId
   ].join(' ')

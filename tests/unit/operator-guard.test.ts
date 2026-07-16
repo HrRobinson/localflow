@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { makeOperatorGuard, type GuardRunner } from '../../src/main/operator-guard'
 
 // A runner that returns a canned result and records how it was called.
@@ -145,5 +145,57 @@ describe('makeOperatorGuard', () => {
     }
     const g = makeOperatorGuard({ ...base, runner })
     expect(await g.check('x')).toEqual({ allowed: true })
+  })
+
+  it('logs the malfunction when the runner throws, but still fails open', async () => {
+    const boom = new Error('boom')
+    const runner: GuardRunner = async () => {
+      throw boom
+    }
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const g = makeOperatorGuard({ ...base, runner })
+      const verdict = await g.check('rm -rf /')
+      // The invariant this proves: a guard malfunction is NEVER allowed to
+      // flip a verdict to blocked — fail-open is absolute, unconditional.
+      expect(verdict).toEqual({ allowed: true })
+      expect(errorSpy).toHaveBeenCalledTimes(1)
+      expect(errorSpy.mock.calls[0].join(' ')).toContain('failing open')
+      expect(errorSpy.mock.calls[0]).toContain(boom)
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
+  it('logs a warning for an unexpected exit code, still fails open', async () => {
+    const { runner } = fakeRunner({ code: 2, stderr: 'clap parse error', timedOut: false })
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const g = makeOperatorGuard({ ...base, runner })
+      expect(await g.check('x')).toEqual({ allowed: true })
+      expect(warnSpy).toHaveBeenCalledTimes(1)
+      const msg = warnSpy.mock.calls[0].join(' ')
+      expect(msg).toContain('exited 2')
+      expect(msg).toContain('clap parse error')
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+
+  it('logs a warning when deny stderr does not match the expected format', async () => {
+    const { runner } = fakeRunner({ code: 1, stderr: 'garbled output', timedOut: false })
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const g = makeOperatorGuard({ ...base, runner })
+      expect(await g.check('x')).toEqual({
+        allowed: false,
+        reason: 'blocked by command guard',
+        pack: 'unknown'
+      })
+      expect(warnSpy).toHaveBeenCalledTimes(1)
+      expect(warnSpy.mock.calls[0].join(' ')).toContain('garbled output')
+    } finally {
+      warnSpy.mockRestore()
+    }
   })
 })

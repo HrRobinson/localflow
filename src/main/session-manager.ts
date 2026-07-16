@@ -382,6 +382,13 @@ export class SessionManager {
     const guardOnCli =
       guard !== null &&
       (spec.hookAdapter === 'cli-args-full' || spec.hookAdapter === 'cli-args-notify')
+    // Codex self-verify badge: only when the guard rode this launch's CLI can
+    // the -c hooks.PreToolUse grammar silently fail. Start 'unverified'; the
+    // seen-dir marker watcher flips it to 'observed' on the first invocation.
+    // Any other pane (settings-file/env-file agents, unguarded, skipGuard
+    // relaunch) leaves it undefined — the renderer shows nothing. Rebuilt each
+    // spawn, so a respawn always re-proves enforcement.
+    if (guardOnCli) info.guardVerification = 'unverified'
     const rec: Record_ = {
       info,
       spec,
@@ -468,6 +475,20 @@ export class SessionManager {
     })
     this.changedCbs.forEach((cb) => cb())
     return info
+  }
+
+  /**
+   * Marks a Codex pane's guard as observed-enforcing: called once lfguard's
+   * invocation marker for this pane's id has been written. No-op for an unknown
+   * id, a non-Codex/undefined pane, or a pane already 'observed' (idempotent —
+   * a second invocation must not re-fire changedCbs). Never un-sets: only a
+   * fresh spawn resets the field back to 'unverified'.
+   */
+  markGuardObserved(id: string): void {
+    const rec = this.sessions.get(id)
+    if (!rec || rec.info.guardVerification !== 'unverified') return
+    rec.info.guardVerification = 'observed'
+    this.changedCbs.forEach((cb) => cb())
   }
 
   applyHookEvent(e: HookEvent): void {

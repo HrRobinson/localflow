@@ -1,12 +1,13 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
 import { join, basename } from 'node:path'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, rmSync, mkdirSync } from 'node:fs'
 import { spawn } from 'node:child_process'
 import {
   VALID_AGENTS,
   type AgentId,
   type AgentOverride,
   type AgentOverrideResult,
+  type GuardPacksResult,
   type SessionInfo
 } from '../shared/types'
 import { clampEnvironment } from '../shared/environment'
@@ -15,7 +16,9 @@ import { parseSessionTemplates, type SessionTemplate } from '../shared/templates
 import { startHookServer } from './hook-server'
 import { SessionManager, type SpawnSpec } from './session-manager'
 import { loadSavedState, saveState } from './persistence'
+import { PersistenceNoticeRouter } from './persistence-notice'
 import { AgentRegistry, whichViaLoginShell } from './agent-registry'
+import { resolveShellPath } from './resolve-shell-path'
 import { resolveGuardBinary } from './guard-binary'
 import { makeOperatorGuard } from './operator-guard'
 import { ensureThemesSeeded, listThemeNames, resolveTheme } from './theme-store'
@@ -46,6 +49,7 @@ import { ConsoleEventBus } from './console-bus'
 import { toStatusEvent, toOperatorEvent, toCaptureEvent, toGuardEvent } from '../shared/console'
 import type { ConsolePrefs } from '../shared/console'
 import { startGuardAuditTail } from './guard-audit-tail'
+import { startGuardSeenWatch } from './guard-seen-watch'
 import type { ActivityEntry, GrantInfo, OperatorStatus } from '../shared/operator'
 import type { Capabilities } from '../shared/git'
 import {
@@ -80,6 +84,18 @@ function loadSessionTemplates(configFile: string): SessionTemplate[] {
 let win: BrowserWindow | null = null
 let managerRef: SessionManager | null = null
 
+// Buffers persistence save-failure notices raised before the window exists and
+// flushes them once it loads (see PersistenceNoticeRouter). Module-level so
+// createWindow's did-finish-load handler can flush what the whenReady closure
+// reported during the pre-window startup restore.
+const persistenceNotices = new PersistenceNoticeRouter((message) => {
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('persistence:notice', message)
+    return true
+  }
+  return false
+})
+
 function createWindow(): void {
   win = new BrowserWindow({
     width: 1400,
@@ -98,6 +114,9 @@ function createWindow(): void {
   })
   win.webContents.on('will-navigate', (e) => e.preventDefault())
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  // Flush any persistence notice buffered before the window existed (a save
+  // failure during the pre-window startup restore) once the renderer is live.
+  win.webContents.once('did-finish-load', () => persistenceNotices.flush())
   if (process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
@@ -148,6 +167,17 @@ function buildAppMenu(): void {
 app.whenReady().then(async () => {
   buildAppMenu()
 
+  // A macOS app launched from Finder/Dock inherits only a minimal PATH (no
+  // ~/.local/bin, homebrew, nvm), so a bare agent command like `claude` isn't
+  // found and its pty exits instantly — nothing opens or resumes. Resolve the
+  // login-shell PATH once here, before any pane can spawn, so every later pty
+  // inherits it via process.env. Fail-safe: time-bounded (and the bound is
+  // enforced independently of the shell probe itself, so a pipe-holding
+  // grandchild can't extend it), never throws, and worst case leaves PATH
+  // unchanged; a no-op off macOS and in dev. Awaiting here yields the event
+  // loop rather than blocking it, and still completes before window creation.
+  process.env['PATH'] = await resolveShellPath()
+
   // Dev-mode dock icon (packaged builds get it from build/icon.png via
   // electron-builder; in dev Electron shows its default logo otherwise).
   if (!app.isPackaged && process.platform === 'darwin') {
@@ -184,8 +214,31 @@ app.whenReady().then(async () => {
     resourcesPath: process.resourcesPath
   })
   const guardAuditLog = join(userData, 'guard-audit.jsonl')
+  // Per-pane invocation markers for the Codex guard self-verify badge. Cleared
+  // and recreated at startup so the watcher arms on a clean slate and no stale
+  // cross-run marker can be mistaken for a live write (hygiene, not correctness
+  // — fs.watch only reports changes, never pre-existing files). Best-effort,
+  // mirrors captureStore.clear().
+  const guardSeenDir = join(userData, 'guard-seen')
+  try {
+    rmSync(guardSeenDir, { recursive: true, force: true })
+  } catch {
+    /* best-effort */
+  }
+  try {
+    mkdirSync(guardSeenDir, { recursive: true })
+  } catch {
+    /* best-effort */
+  }
   const guardProvider = (): import('./guard-hook').ResolvedGuard | null =>
-    guardBin ? { bin: guardBin, auditLog: guardAuditLog, packs: registry.getGuardPacks() } : null
+    guardBin
+      ? {
+          bin: guardBin,
+          auditLog: guardAuditLog,
+          packs: registry.getGuardPacks(),
+          seenDir: guardSeenDir
+        }
+      : null
   const operatorGuard = makeOperatorGuard({
     resolveBinary: () => guardBin, // resolved once at line 180; null when none bundled
     getPacks: () => registry.getGuardPacks() // AgentRegistry — same source G2 hooks use
@@ -271,9 +324,14 @@ app.whenReady().then(async () => {
       }
     }
   })
+  const stopGuardSeenWatch = startGuardSeenWatch({
+    dir: guardSeenDir,
+    onSeen: (tag) => manager.markGuardObserved(tag)
+  })
   app.on('before-quit', () => {
     control.close()
     stopGuardTail()
+    stopGuardSeenWatch()
     // The scratch dir only holds handoff assets for live sessions; nothing in
     // it is meaningful across a restart (captures themselves are in-memory).
     captureStore.clear()
@@ -364,6 +422,14 @@ app.whenReady().then(async () => {
     const env = manager.list().find((s) => s.id === id)?.environment ?? 1
     consoleBus.emit(toStatusEvent(id, env, entry))
   })
+  // No-clobber invariant: auto-save may overwrite sessions.json ONLY when the
+  // load proved it safe (ENOENT first run, a clean load, or corruption whose
+  // backup succeeded). If the file was unreadable — or corruption we couldn't
+  // back up — the intact bytes are still on disk, so we must NOT save empty
+  // over them. Assigned from the load below (before the restore loop, which
+  // itself fires onSessionsChanged); defaults false so nothing can race a save
+  // ahead of the decision.
+  let persistenceSafe = false
   manager.onSessionsChanged(() => {
     const currentIds = new Set(manager.list().map((s) => s.id))
     for (const id of launchTracker.trackedIds()) {
@@ -372,7 +438,10 @@ app.whenReady().then(async () => {
         if (env !== null) revokeOperator(env)
       }
     }
-    saveState(sessionsFile, {
+    // The load couldn't guarantee the on-disk file is disposable — skip the
+    // write so a transient glitch can't reset the workspace to empty.
+    if (!persistenceSafe) return
+    const result = saveState(sessionsFile, {
       sessions: manager
         .list()
         .map(({ id, cwd, agentId, command, name, environment, kind, url, groupId }) => ({
@@ -388,9 +457,16 @@ app.whenReady().then(async () => {
         })),
       groups: manager.listGroups()
     })
+    // Router de-dupes an already-shown error and buffers one raised before the
+    // window exists (flushed on did-finish-load), so a cold-start save failure
+    // still reaches the user instead of being permanently muted.
+    persistenceNotices.report(result.ok ? null : result.error)
   })
 
   const savedState = loadSavedState(sessionsFile)
+  persistenceSafe = savedState.safeToPersist
+  const persistenceStartupNotice = savedState.error ?? null
+  ipcMain.handle('persistence:getNotice', () => persistenceStartupNotice)
   manager.restoreGroups(savedState.groups)
   for (const saved of savedState.sessions) {
     if (saved.kind === 'browser') {
@@ -836,7 +912,22 @@ app.whenReady().then(async () => {
   ipcMain.on('console:setPrefs', (_e, prefs: ConsolePrefs) => registry.setConsolePrefs(prefs))
 
   ipcMain.handle('guard:getPacks', () => registry.getGuardPacks())
-  ipcMain.on('guard:setPacks', (_e, packs: string[]) => registry.setGuardPacks(packs))
+  // Security-relevant setting (which lfguard packs are enforced): a bare
+  // ipcMain.on fire-and-forget here would mean a config.json write failure
+  // (disk full, permission revoked) left the renderer's checkbox showing a
+  // pack as enabled while it was never persisted — surfaced instead as a
+  // structured result, same shape as keybindings:set / agents:setOverride.
+  ipcMain.handle('guard:setPacks', (_e, packs: string[]): GuardPacksResult => {
+    if (!Array.isArray(packs) || !packs.every((p) => typeof p === 'string')) {
+      return { ok: false, reason: 'invalid pack list' }
+    }
+    try {
+      registry.setGuardPacks(packs)
+      return { ok: true, packs: registry.getGuardPacks() }
+    } catch (err) {
+      return { ok: false, reason: (err as Error).message }
+    }
+  })
 
   createWindow()
 })

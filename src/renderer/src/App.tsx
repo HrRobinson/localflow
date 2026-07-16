@@ -112,8 +112,19 @@ export default function App(): React.JSX.Element {
   const [caps, setCaps] = useState<Capabilities | null>(null)
   const [editorNotice, setEditorNotice] = useState<string | null>(null)
   const [consoleNotice, setConsoleNotice] = useState<string | null>(null)
+  // Corrupt-sessions.json-at-startup notice, plus any later save failure
+  // pushed from main — same shape as themeNotice (getX-on-mount, onXChanged
+  // push), see persistence.ts's loadSavedState/saveState.
+  const [persistenceNotice, setPersistenceNotice] = useState<string | null>(null)
   useEffect(() => {
     void window.localflow.getCapabilities().then(setCaps)
+  }, [])
+  useEffect(() => {
+    void window.localflow.getPersistenceNotice().then((notice) => {
+      if (notice) setPersistenceNotice(notice)
+    })
+    const off = window.localflow.onPersistenceNotice((message) => setPersistenceNotice(message))
+    return () => off()
   }, [])
   // Which environments currently have an operator, for the sidebar indicator.
   const [grantedEnvs, setGrantedEnvs] = useState<Set<number>>(new Set())
@@ -777,6 +788,18 @@ export default function App(): React.JSX.Element {
           <button
             className="ml-2 text-yellow-200/60 hover:text-yellow-100"
             onClick={() => setConsoleNotice(null)}
+          >
+            dismiss
+          </button>
+        </div>
+      )}
+      {persistenceNotice && (
+        <div className="persistence-notice fixed top-[8rem] left-1/2 z-50 -translate-x-1/2 rounded-md border border-yellow-500/50 bg-yellow-500/15 px-3 py-1.5 text-[12px] text-yellow-200">
+          {persistenceNotice}
+          <button
+            className="ml-3 cursor-pointer border-0 bg-transparent text-yellow-200/70 hover:text-white"
+            onClick={() => setPersistenceNotice(null)}
+            onMouseDown={(e) => e.preventDefault()}
           >
             dismiss
           </button>

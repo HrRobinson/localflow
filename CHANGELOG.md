@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.9.0](https://github.com/HrRobinson/localflow/compare/v1.8.0...v1.9.0) (2026-07-16)
+
+
+### Features
+
+* add renderer error boundary and rejection net ([#89](https://github.com/HrRobinson/localflow/issues/89)) ([1fd5a27](https://github.com/HrRobinson/localflow/commit/1fd5a2706fbb5ea19a8a6d906f59f94f2780d625))
+* codex guard self-verification badge ([#87](https://github.com/HrRobinson/localflow/issues/87)) ([db77d74](https://github.com/HrRobinson/localflow/commit/db77d74bdad89928d4c628de01561aa05cf8b964))
+
+
+### Bug Fixes
+
+* resolve login-shell PATH for agent spawns ([#88](https://github.com/HrRobinson/localflow/issues/88)) ([1ada77f](https://github.com/HrRobinson/localflow/commit/1ada77fbba2a95f83579228f531286cae9d7a8eb))
+* surface persistence and guard-pack save failures ([#90](https://github.com/HrRobinson/localflow/issues/90)) ([4d6e4da](https://github.com/HrRobinson/localflow/commit/4d6e4da758da26863581f0afbc430a05840ce880))
+* surface which guard pack blocked and why ([#96](https://github.com/HrRobinson/localflow/issues/96)) ([ffb11b8](https://github.com/HrRobinson/localflow/commit/ffb11b856fdf1ee05af5eab24d61ab452e6da038))
+
 ## [1.8.0](https://github.com/HrRobinson/localflow/compare/v1.7.0...v1.8.0) (2026-07-16)
 
 

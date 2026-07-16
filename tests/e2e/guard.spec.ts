@@ -56,7 +56,8 @@ function launchApp(
       LOCALFLOW_OPENCLAW_CONFIG: join(userData, 'openclaw.json'),
       LOCALFLOW_LAZYGIT_BIN: '/nonexistent/lazygit',
       LOCALFLOW_EDITOR_BIN: '/nonexistent/code',
-      LOCALFLOW_E2E_GO: join(userData, 'e2e-go')
+      LOCALFLOW_E2E_GO: join(userData, 'e2e-go'),
+      LOCALFLOW_E2E_GUARD_GO: join(userData, 'guard-go')
     }
   })
 }
@@ -201,6 +202,72 @@ test('codex + gemini: guard hook wired into per-agent spawn args/settings', asyn
   const geminiSettings = JSON.parse(readFileSync(geminiHooksFile, 'utf8'))
   expect(geminiSettings.hooks?.BeforeTool?.[0]?.matcher).toBe('run_shell_command')
   expect(geminiSettings.hooks?.BeforeTool?.[0]?.hooks?.[0]?.command).toContain('lfguard')
+
+  await app.close()
+})
+
+test('codex: self-verify badge clears on the first observed guard invocation', async () => {
+  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const app = await launchApp(userData, {
+    codex: join(here, '../fixtures/fake-codex.sh')
+  })
+  const win = await app.firstWindow()
+  await expect(win.locator('.new-session')).toBeVisible()
+
+  const info = await createSessionIpc(win, 'codex', userData)
+  expect(info).not.toBeNull()
+  const row = win.locator(`[data-session-id="${info!.id}"]`)
+  await expect(row).toBeVisible()
+  await row.locator('.row-open').click()
+  const pane = win.locator(`[data-pane-id="${info!.id}"]`)
+  await expect(pane).toBeVisible()
+
+  // The guard rode this Codex pane's CLI (cli-args-notify + a resolved
+  // lfguard), so it starts 'unverified' — the amber pane-header badge shows.
+  const badge = pane.getByText('guard: not yet observed')
+  await expect(badge).toBeVisible()
+
+  // Release the guard invocation: fake-codex, gated on this marker file, runs
+  // the embedded `lfguard check --seen-dir --audit-tag <paneId>` with a
+  // PreToolUse payload — writing the marker localflow's watcher observes,
+  // flipping guardVerification to 'observed'. Proves the full local chain
+  // spawn → marker write → watcher → markGuardObserved → SessionInfo → render.
+  writeFileSync(join(userData, 'guard-go'), '')
+  await expect(badge).toBeHidden({ timeout: 15_000 })
+
+  await app.close()
+})
+
+test('codex: idle pane keeps its badge (status events never satisfy it)', async () => {
+  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const app = await launchApp(userData, {
+    codex: join(here, '../fixtures/fake-codex.sh')
+  })
+  const win = await app.firstWindow()
+  await expect(win.locator('.new-session')).toBeVisible()
+
+  const info = await createSessionIpc(win, 'codex', userData)
+  expect(info).not.toBeNull()
+  const row = win.locator(`[data-session-id="${info!.id}"]`)
+  await expect(row).toBeVisible()
+  await row.locator('.row-open').click()
+  const pane = win.locator(`[data-pane-id="${info!.id}"]`)
+  await expect(pane).toBeVisible()
+
+  const badge = pane.getByText('guard: not yet observed')
+  await expect(badge).toBeVisible()
+
+  // Fire the Codex notify (turn-complete → Stop) hook WITHOUT ever releasing
+  // the guard-go gate: a STATUS event flows, but no guard invocation does.
+  // The badge must survive — a Stop/status event must never be mistaken for
+  // guard-hook proof (regression guard against wiring HookEvent into the
+  // badge). guard-go is deliberately never written here.
+  writeFileSync(join(userData, 'e2e-go'), '')
+  // Give the status hook ample time to POST and be applied, then assert the
+  // badge is still present (silence is never proof; only an observed marker
+  // clears it).
+  await win.waitForTimeout(3_000)
+  await expect(badge).toBeVisible()
 
   await app.close()
 })

@@ -87,7 +87,12 @@ describe('buildGeminiHookSettings', () => {
 })
 
 describe('buildGeminiHookSettings BeforeTool', () => {
-  const guard: ResolvedGuard = { bin: '/g/lfguard', auditLog: '/g/audit.jsonl', packs: [] }
+  const guard: ResolvedGuard = {
+    bin: '/g/lfguard',
+    auditLog: '/g/audit.jsonl',
+    packs: [],
+    seenDir: '/g/guard-seen'
+  }
 
   it('adds a BeforeTool guard hook matched to run_shell_command', () => {
     const s = buildGeminiHookSettings('pane1', 8080, 'tok', guard) as {

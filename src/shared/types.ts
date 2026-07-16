@@ -117,6 +117,19 @@ export interface SessionInfo {
    * cleared the moment any later restart actually spawns.
    */
   resumeFailed?: boolean
+  /**
+   * Codex cli-args-* panes only: whether lfguard's guard hook has been observed
+   * firing for this pane since the current pty was spawned.
+   * - 'unverified': guard configured on this launch's CLI, but no invocation
+   *   observed yet (the pane may simply not have run a command — silence is not
+   *   proof of breakage).
+   * - 'observed': the guard hook ran at least once this session — direct proof
+   *   Codex accepted and honored the injected -c hooks.PreToolUse override.
+   * - undefined: not applicable (non-Codex pane, or a Codex pane with no guard
+   *   binary resolved / relaunched unguarded). The renderer shows NOTHING.
+   * In-memory only, never persisted; re-initialized on every spawn.
+   */
+  guardVerification?: 'unverified' | 'observed'
   /** Group ("session") this pane belongs to; absent = solo pane. */
   groupId?: string
 }
@@ -160,3 +173,13 @@ export interface AgentInfo {
  */
 export type AgentOverrideResult =
   { ok: true; agents: AgentInfo[] } | { ok: false; reserved: string[] }
+
+/**
+ * Result of a `guard:setPacks` write (mirrors `AgentOverrideResult`/
+ * `BindingChangeResult`): this is a security-relevant setting (which lfguard
+ * packs are enforced), so a disk-write failure must be surfaced rather than
+ * silently discarded — a checkbox that looks "on" while nothing was actually
+ * persisted would leave the user believing protection is active when it
+ * isn't.
+ */
+export type GuardPacksResult = { ok: true; packs: string[] } | { ok: false; reason: string }

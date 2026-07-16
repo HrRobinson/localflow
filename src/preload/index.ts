@@ -37,6 +37,12 @@ const api: LocalflowApi = {
   setSessionUrl: (id: string, url: string) => ipcRenderer.invoke('session:setUrl', id, url),
   openExternal: (url: string) => ipcRenderer.send('shell:openExternal', url),
   listSessions: () => ipcRenderer.invoke('session:list'),
+  getPersistenceNotice: () => ipcRenderer.invoke('persistence:getNotice'),
+  onPersistenceNotice: (cb) => {
+    const listener = (_e: IpcRendererEvent, message: string): void => cb(message)
+    ipcRenderer.on('persistence:notice', listener)
+    return () => ipcRenderer.removeListener('persistence:notice', listener)
+  },
   peekSession: (id: string, maxLines?: number) => ipcRenderer.invoke('session:peek', id, maxLines),
   listAgents: () => ipcRenderer.invoke('agents:list'),
   setAgentPath: (agentId: AgentId) => ipcRenderer.invoke('agents:setPath', agentId),
@@ -113,7 +119,7 @@ const api: LocalflowApi = {
   getConsolePrefs: () => ipcRenderer.invoke('console:getPrefs'),
   setConsolePrefs: (prefs: ConsolePrefs) => ipcRenderer.send('console:setPrefs', prefs),
   getGuardPacks: () => ipcRenderer.invoke('guard:getPacks'),
-  setGuardPacks: (packs: string[]) => ipcRenderer.send('guard:setPacks', packs),
+  setGuardPacks: (packs: string[]) => ipcRenderer.invoke('guard:setPacks', packs),
   gitStatus: (id: string) => ipcRenderer.invoke('git:status', id),
   gitDiff: (id: string, path: string, staged: boolean) =>
     ipcRenderer.invoke('git:diff', id, path, staged),

@@ -53,9 +53,31 @@ describe('startGuardAuditTail', () => {
       path: '/nonexistent/guard-audit-tail-test.log',
       onRecords: () => {}
     })
-    const fakeWatcher = vi.mocked(watch).mock.results[0]?.value as EventEmitter
+    const fakeWatcher = vi.mocked(watch).mock.results.at(-1)?.value as EventEmitter
     expect(fakeWatcher).toBeInstanceOf(EventEmitter)
     expect(() => fakeWatcher.emit('error', new Error('ENOENT: simulated'))).not.toThrow()
     stop()
+  })
+
+  // I32: this tailer is best-effort (observability, not enforcement — see
+  // module doc), but a persistently broken tail shouldn't be invisible
+  // forever. One warning per failure kind, not one per poll tick.
+  it('logs a warning once when watch setup throws, without crashing', async () => {
+    const { watch } = await import('node:fs')
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.mocked(watch).mockImplementationOnce(() => {
+      throw new Error('EMFILE: simulated')
+    })
+    try {
+      const stop = startGuardAuditTail({
+        path: '/nonexistent/guard-audit-tail-test-warn.log',
+        onRecords: () => {}
+      })
+      expect(warnSpy).toHaveBeenCalledTimes(1)
+      expect(warnSpy.mock.calls[0].join(' ')).toContain('watch setup failed')
+      stop()
+    } finally {
+      warnSpy.mockRestore()
+    }
   })
 })

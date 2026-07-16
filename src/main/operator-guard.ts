@@ -52,6 +52,13 @@ function parseDeny(stderr: string): { allowed: false; reason: string; pack: stri
   // so match the BLOCKED line specifically. `.` stops at newline, so <reason> is one line.
   const m = /lfguard: BLOCKED by (.+?): (.+)/.exec(stderr)
   if (m) return { allowed: false, pack: m[1], reason: m[2].trim() }
+  // The deny verdict itself (exit 1) is trusted regardless — only the pack/reason
+  // labeling falls back to a generic string here. Log the raw stderr so a lfguard
+  // release that changed its output format (or produced localized/garbled text)
+  // is visible instead of silently mislabeled as "unknown".
+  console.warn(
+    `lfguard: exit 1 (deny) but stderr didn't match the expected "BLOCKED by <pack>: <reason>" format — using a generic label. stderr: ${stderr.slice(0, 200)}`
+  )
   return { allowed: false, reason: 'blocked by command guard', pack: 'unknown' }
 }
 
@@ -67,11 +74,23 @@ export function makeOperatorGuard(opts: OperatorGuardOptions): OperatorGuard {
       let res: { code: number | null; stderr: string; timedOut: boolean }
       try {
         res = await run(bin, args, { timeout })
-      } catch {
+      } catch (err) {
+        // Fail-open policy is intentional and unconditional (see module doc),
+        // but a genuinely unexpected subprocess failure — distinct from the
+        // ENOENT/EACCES cases `defaultRunner` already normalizes to
+        // `code: null` — must not vanish with zero trace. Log the
+        // malfunction; the verdict stays `allowed: true` either way.
+        console.error('lfguard: guard runner threw unexpectedly — failing open (allow)', err)
         return { allowed: true } // runner threw → fail open
       }
       if (res.timedOut || res.code === null || res.code === 0) return { allowed: true }
       if (res.code === 1) return parseDeny(res.stderr)
+      // An exit code outside the documented 0/1 contract (e.g. a clap parse
+      // error, or a broken lfguard install) could otherwise mask a persistent
+      // guard malfunction as "no policy violations found" forever.
+      console.warn(
+        `lfguard: exited ${res.code} (expected 0 or 1) — failing open (allow). stderr: ${res.stderr.slice(0, 500)}`
+      )
       return { allowed: true } // any other exit code → fail open
     }
   }

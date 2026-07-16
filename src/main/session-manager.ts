@@ -17,6 +17,7 @@ import { transition } from './state-machine'
 import { hasHookAdapter, type HookAdapterKind } from '../shared/agents'
 import { buildHookInjection, removeHookInjectionFiles } from './hook-adapter'
 import { ANSI_RE, extractPeekLines } from './peek'
+import { TerminalScreen } from './terminal-screen'
 
 export interface PtyLike {
   onData(cb: (d: string) => void): void
@@ -86,6 +87,10 @@ interface Record_ {
   spawnedAt: number
   /** Rolling tail of recent output, used to explain instant exits. */
   tail: string
+  /** Headless xterm emulator rendering this pane's screen for the operator
+   * (peek/output/instant-exit). Absent on browser panes and restored
+   * placeholders — callers fall back to the byte tail. Disposed on close. */
+  screen?: TerminalScreen
   /** In-memory activity ring, last ACTIVITY_LIMIT entries; never persisted. */
   activity: ActivityEntry[]
   /** True only when the guard rode this launch's CLI args (Codex
@@ -305,8 +310,11 @@ export class SessionManager {
     skipGuard = false
   ): SessionInfo {
     // A restart replaces the pty (and the Record_), but the durable session's
-    // activity history must survive — carry the existing ring forward.
-    const activity = this.sessions.get(id)?.activity ?? []
+    // activity history must survive — carry the existing ring forward. Dispose
+    // the previous screen so a relaunch never leaks a headless emulator.
+    const prev = this.sessions.get(id)
+    prev?.screen?.dispose()
+    const activity = prev?.activity ?? []
     const info: SessionInfo = {
       id,
       cwd,
@@ -406,6 +414,7 @@ export class SessionManager {
       pty,
       spawnedAt: this.now(),
       tail: '',
+      screen: new TerminalScreen(80, 24),
       activity,
       guardOnCli
     }
@@ -419,6 +428,8 @@ export class SessionManager {
       // TUI agents redraw whole frames of ANSI per keystroke, so raw chars
       // are mostly escapes — 16 KiB keeps a real screenful of visible text.
       rec.tail = (rec.tail + d).slice(-16384)
+      // Also render into the headless screen — the operator's readable channel.
+      rec.screen?.write(d)
       this.dataCbs.forEach((cb) => cb(id, d))
     })
     pty.onExit((exitCode, signal) => {
@@ -534,11 +545,13 @@ export class SessionManager {
   }
 
   resize(id: string, cols: number, rows: number): void {
+    const rec = this.sessions.get(id)
     try {
-      this.sessions.get(id)?.pty?.resize(cols, rows)
+      rec?.pty?.resize(cols, rows)
     } catch {
       /* dead pty */
     }
+    rec?.screen?.resize(cols, rows)
   }
 
   /** Ends the pty, keeps the session record (durable session, ephemeral terminal). */
@@ -560,6 +573,8 @@ export class SessionManager {
       /* dead pty */
     }
     rec.pty = null
+    rec.screen?.dispose()
+    rec.screen = undefined
     this.setStatus(id, 'exited')
     this.recordActivity(id, 'closed')
     this.changedCbs.forEach((cb) => cb())
@@ -574,6 +589,7 @@ export class SessionManager {
     } catch {
       /* dead pty */
     }
+    rec.screen?.dispose()
     this.sessions.delete(id)
     // A group that just lost its last member is gone too — there is no UI
     // for an empty "session" and nothing else references it by id.
@@ -724,6 +740,7 @@ export class SessionManager {
         /* dead pty */
       }
       rec.pty = null
+      rec.screen?.dispose()
     }
   }
 
@@ -735,6 +752,20 @@ export class SessionManager {
   get(id: string): SessionInfo | null {
     const rec = this.sessions.get(id)
     return rec ? { ...rec.info } : null
+  }
+
+  /**
+   * The pane's full rendered screen (or the last `maxLines` non-empty lines),
+   * read from the headless emulator. Fail-safe: on an unavailable/empty screen
+   * (browser panes, restored placeholders, or a headless throw) it falls back
+   * to the ANSI-stripped byte tail — reading pane content never throws.
+   */
+  snapshot(id: string, maxLines?: number): string[] {
+    const rec = this.sessions.get(id)
+    if (!rec) return []
+    const lines = rec.screen?.snapshot(maxLines) ?? []
+    if (lines.length > 0) return lines
+    return extractPeekLines(rec.tail, maxLines ?? 200)
   }
 
   /** Last `maxLines` cleaned output lines — the approve control's peek. */

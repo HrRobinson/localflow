@@ -113,6 +113,28 @@ describe('SessionManager', () => {
     expect(msg).not.toContain('\u001b')
   })
 
+  it('feeds pty bytes into a headless screen readable via snapshot()', () => {
+    const info = mgr.create('/p', claudeSpec, 1)
+    ptys[0].dataCb?.('\x1b[2J\x1b[H\x1b[38;5;246mHello operator\x1b[0m\r\n')
+    const joined = mgr.snapshot(info.id).join('\n')
+    expect(joined).toContain('Hello operator')
+    expect(joined).not.toContain('246m')
+    expect(joined).not.toContain('\x1b')
+  })
+
+  it('forwards resize to the screen (a wide line wraps at the new width)', () => {
+    const info = mgr.create('/p', claudeSpec, 1)
+    mgr.resize(info.id, 20, 10)
+    ptys[0].dataCb?.('0123456789012345678901234')
+    expect(mgr.snapshot(info.id).length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('snapshot(maxLines) returns the last N non-empty rendered lines', () => {
+    const info = mgr.create('/p', claudeSpec, 1)
+    ptys[0].dataCb?.('one\r\ntwo\r\nthree\r\n')
+    expect(mgr.snapshot(info.id, 2)).toEqual(['two', 'three'])
+  })
+
   it('instant exit with no output still gets an explanatory message', () => {
     const info = mgr.create('/p', claudeSpec, 1)
     ptys[0].exitCb?.(0)

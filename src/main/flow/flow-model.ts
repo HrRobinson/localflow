@@ -127,16 +127,36 @@ export function parseFlowGraphResult(raw: unknown): ParseResult {
     edges.push(r.edge)
   }
 
-  // No orphans: every non-trigger node must be reachable — i.e. have at least
-  // one inbound edge. A node the walk can never reach is a modelling error the
-  // author should see, not a silent dead branch.
-  const hasInbound = new Set(edges.map((e) => e.to))
+  // Reachability: every node must be reachable from the trigger by following
+  // edges. This is STRONGER than "every node has an inbound edge" — that weaker
+  // check passes a trigger-DISCONNECTED CYCLE (e.g. b→c, c→b: each has an
+  // inbound edge, yet neither is reachable from the trigger), which the engine
+  // would never run and could deadlock a run waiting on it. A node the walk can
+  // never reach is a modelling error the author should see, not a silent dead
+  // branch. (BFS from the single trigger over the out-edge adjacency.)
   const triggerId = triggers[0].id
-  const orphan = nodes.find((n) => n.id !== triggerId && !hasInbound.has(n.id))
-  if (orphan)
+  const outEdges = new Map<string, string[]>()
+  for (const e of edges) {
+    const list = outEdges.get(e.from)
+    if (list) list.push(e.to)
+    else outEdges.set(e.from, [e.to])
+  }
+  const reachable = new Set<string>([triggerId])
+  const queue: string[] = [triggerId]
+  while (queue.length > 0) {
+    const cur = queue.shift() as string
+    for (const next of outEdges.get(cur) ?? []) {
+      if (!reachable.has(next)) {
+        reachable.add(next)
+        queue.push(next)
+      }
+    }
+  }
+  const unreachable = nodes.find((n) => !reachable.has(n.id))
+  if (unreachable)
     return {
       ok: false,
-      error: `flow '${raw.id}': node '${orphan.id}' is an orphan (no inbound edge)`
+      error: `flow '${raw.id}': node '${unreachable.id}' is unreachable from the trigger (orphan or trigger-disconnected cycle)`
     }
 
   return { ok: true, flow: { id: raw.id, name: raw.name, nodes, edges } }

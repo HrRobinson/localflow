@@ -50,6 +50,38 @@ describe('parseFlowGraph — valid graphs', () => {
     )
     expect(flow?.edges[0].condition).toEqual({ field: 'x.y', equals: 'bug' })
   })
+
+  it('rejects a trigger-disconnected cycle (each node has an inbound edge, none reachable)', () => {
+    // b→c and c→b: both have an inbound edge (the weak orphan check would pass),
+    // but neither is reachable from the trigger — the engine would never run
+    // them and could deadlock. Reachability from the trigger must reject this.
+    const cyclic = graph({
+      nodes: [
+        {
+          id: 't',
+          type: 'trigger',
+          integration: 'email',
+          ref: 'inbound',
+          config: {},
+          position: { x: 0, y: 0 }
+        },
+        { id: 'a', type: 'agent', ref: 'claude', config: {}, position: { x: 1, y: 0 } },
+        { id: 'b', type: 'agent', ref: 'claude', config: {}, position: { x: 2, y: 0 } },
+        { id: 'c', type: 'agent', ref: 'claude', config: {}, position: { x: 3, y: 0 } }
+      ],
+      edges: [
+        { id: 'e1', from: 't', to: 'a' },
+        { id: 'e2', from: 'b', to: 'c' },
+        { id: 'e3', from: 'c', to: 'b' }
+      ]
+    })
+    expect(parseFlowGraph(cyclic)).toBeNull()
+    const res = parseFlowGraphResult(cyclic)
+    expect(res.ok).toBe(false)
+    if (!res.ok) expect(res.error).toMatch(/unreachable from the trigger/i)
+    // The baseline trigger→agent graph still passes.
+    expect(parseFlowGraph(graph())).not.toBeNull()
+  })
 })
 
 describe('parseFlowGraph — invalid graphs disable loudly, never throw', () => {

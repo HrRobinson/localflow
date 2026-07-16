@@ -16,6 +16,7 @@ import { startHookServer } from './hook-server'
 import { SessionManager, type SpawnSpec } from './session-manager'
 import { loadSavedState, saveState } from './persistence'
 import { AgentRegistry, whichViaLoginShell } from './agent-registry'
+import { resolveShellPath } from './resolve-shell-path'
 import { resolveGuardBinary } from './guard-binary'
 import { makeOperatorGuard } from './operator-guard'
 import { ensureThemesSeeded, listThemeNames, resolveTheme } from './theme-store'
@@ -148,6 +149,17 @@ function buildAppMenu(): void {
 
 app.whenReady().then(async () => {
   buildAppMenu()
+
+  // A macOS app launched from Finder/Dock inherits only a minimal PATH (no
+  // ~/.local/bin, homebrew, nvm), so a bare agent command like `claude` isn't
+  // found and its pty exits instantly — nothing opens or resumes. Resolve the
+  // login-shell PATH once here, before any pane can spawn, so every later pty
+  // inherits it via process.env. Fail-safe: time-bounded (and the bound is
+  // enforced independently of the shell probe itself, so a pipe-holding
+  // grandchild can't extend it), never throws, and worst case leaves PATH
+  // unchanged; a no-op off macOS and in dev. Awaiting here yields the event
+  // loop rather than blocking it, and still completes before window creation.
+  process.env['PATH'] = await resolveShellPath()
 
   // Dev-mode dock icon (packaged builds get it from build/icon.png via
   // electron-builder; in dev Electron shows its default logo otherwise).

@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { execFile, type ExecFileException } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import type { AgentId, AgentInfo, AgentOverride, LastAgent } from '../shared/types'
 type StatusFidelity = AgentInfo['statusFidelity']
@@ -190,8 +190,10 @@ export function saveAgentConfig(file: string, config: AgentConfig): void {
 }
 
 /** Narrow shape of the error execFile hands its callback — enough to tell a
- * timed-out probe from a shell that genuinely couldn't find the binary. */
-type WhichExecError = (Error & { code?: string | number; killed?: boolean }) | null
+ * timed-out probe from a shell that genuinely couldn't find the binary.
+ * Aliased directly to node's own ExecFileException so the locally-defined
+ * shape never drifts from what execFile actually produces. */
+type WhichExecError = ExecFileException | null
 
 /** Injectable in place of node:child_process's execFile so tests can force
  * each failure mode deterministically instead of depending on the host's

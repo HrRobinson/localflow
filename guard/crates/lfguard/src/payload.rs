@@ -90,6 +90,48 @@ pub fn inline_payload(argv: &[String]) -> Option<String> {
     argv.get(idx + 1).cloned()
 }
 
+/// If `argv` is a `watch [OPTIONS] COMMAND [ARG]…` invocation, return the
+/// wrapped command line so the caller can recurse into it.
+///
+/// `watch` joins its remaining arguments with spaces and runs the result via
+/// `sh -c`, so both `watch rm -rf /` (multi-token) and `watch 'rm -rf /'`
+/// (single quoted string) mean the same thing; joining-and-recursing is
+/// faithful to that and covers both forms uniformly. Leading options are
+/// skipped, consuming the separate value token of `-n`/`--interval`; attached
+/// forms (`-n5`, `--interval=5`) are a single token. `argv[0]` must already be
+/// case-folded/dir-stripped (the engine does this before calling). Returns
+/// `None` for a non-`watch` argv or one with no command after its options.
+pub fn watch_payload(argv: &[String]) -> Option<String> {
+    if argv.first().map(String::as_str) != Some("watch") {
+        return None;
+    }
+    let mut rest = &argv[1..];
+    while let Some(tok) = rest.first() {
+        if !tok.starts_with('-') || tok == "-" {
+            break; // start of the command.
+        }
+        if tok == "--" {
+            rest = &rest[1..];
+            break;
+        }
+        if tok == "-n" || tok == "--interval" {
+            // Separate-token value form: consume the flag and its value.
+            rest = &rest[1..];
+            if !rest.is_empty() {
+                rest = &rest[1..];
+            }
+            continue;
+        }
+        // Any other option (boolean, bundled, or attached value like `-n5`)
+        // is a single token.
+        rest = &rest[1..];
+    }
+    if rest.is_empty() {
+        return None;
+    }
+    Some(rest.join(" "))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -193,6 +235,42 @@ mod tests {
             inline_payload(&argv(&["su", "-l", "root", "-c", "git reset --hard"])),
             Some("git reset --hard".to_string())
         );
+    }
+
+    #[test]
+    fn watch_payload_multi_token_and_single_string() {
+        assert_eq!(
+            watch_payload(&argv(&["watch", "rm", "-rf", "/"])),
+            Some("rm -rf /".to_string())
+        );
+        // single quoted string arrives as one token
+        assert_eq!(
+            watch_payload(&argv(&["watch", "rm -rf /"])),
+            Some("rm -rf /".to_string())
+        );
+    }
+
+    #[test]
+    fn watch_payload_skips_interval_option() {
+        assert_eq!(
+            watch_payload(&argv(&["watch", "-n", "5", "rm", "-rf", "/"])),
+            Some("rm -rf /".to_string())
+        );
+        assert_eq!(
+            watch_payload(&argv(&["watch", "-n5", "rm", "-rf", "/"])),
+            Some("rm -rf /".to_string())
+        );
+        assert_eq!(
+            watch_payload(&argv(&["watch", "--interval=5", "df", "-h"])),
+            Some("df -h".to_string())
+        );
+    }
+
+    #[test]
+    fn watch_payload_none_for_non_watch_or_no_command() {
+        assert_eq!(watch_payload(&argv(&["git", "status"])), None);
+        assert_eq!(watch_payload(&argv(&["watch"])), None);
+        assert_eq!(watch_payload(&argv(&["watch", "-n", "5"])), None);
     }
 
     #[test]

@@ -20,7 +20,9 @@ import { ANSI_RE, extractPeekLines } from './peek'
 
 export interface PtyLike {
   onData(cb: (d: string) => void): void
-  onExit(cb: () => void): void
+  /** node-pty's real exit payload — carried through so instant-exit messages
+   * can name the actual exit code/signal instead of going silent on it. */
+  onExit(cb: (exitCode: number, signal?: number) => void): void
   write(d: string): void
   resize(cols: number, rows: number): void
   kill(): void
@@ -50,7 +52,7 @@ const defaultSpawn: SpawnFn = (bin, args, opts) => {
   const pty = ptySpawn(bin, args, opts)
   return {
     onData: (cb) => pty.onData(cb),
-    onExit: (cb) => pty.onExit(() => cb()),
+    onExit: (cb) => pty.onExit(({ exitCode, signal }) => cb(exitCode, signal)),
     write: (d) => pty.write(d),
     resize: (c, r) => pty.resize(c, r),
     kill: () => pty.kill()
@@ -337,8 +339,19 @@ export class SessionManager {
           env: { ...process.env, ...injection.env, ...(spec.env ?? {}) }
         }
       )
-    } catch {
-      const message = `Could not start '${spec.command}'. Check the agent's path in the launcher.`
+    } catch (e) {
+      // `e` can come from either ptySpawn/spawnFn (ENOENT/EACCES/ENOTDIR/EMFILE
+      // — a real path problem) or buildHookInjection's settings-file write
+      // (a disk-full/permission error in userData that has nothing to do
+      // with the agent's path). Thread the real message/code through instead
+      // of always blaming the path.
+      const detail =
+        e instanceof Error
+          ? (e as NodeJS.ErrnoException).code
+            ? `${(e as NodeJS.ErrnoException).code}: ${e.message}`
+            : e.message
+          : String(e)
+      const message = `Could not start '${spec.command}' — ${detail}. Check its path in Settings → Agents.`
       info.status = 'exited'
       info.message = message
       this.sessions.set(id, {
@@ -390,7 +403,7 @@ export class SessionManager {
       rec.tail = (rec.tail + d).slice(-16384)
       this.dataCbs.forEach((cb) => cb(id, d))
     })
-    pty.onExit(() => {
+    pty.onExit((exitCode, signal) => {
       if (this.disposed) return
       // Bail unless this record is still the live one for `id` — a stale
       // exit from a pty that was replaced by restart() must not touch the
@@ -430,9 +443,11 @@ export class SessionManager {
       // "No conversation found" when --continue has nothing to resume).
       if (!rec.info.message && this.now() - rec.spawnedAt < INSTANT_EXIT_MS) {
         const tail = rec.tail.replace(ANSI_RE, '').replace(/\s+/g, ' ').trim().slice(-160)
+        const code = `exit code ${exitCode}${signal ? `, signal ${signal}` : ''}`
         rec.info.message = tail
-          ? `Exited right away — last output: \u201c${tail}\u201d`
-          : 'Exited right away with no output.'
+          ? `Exited right away (${code}) — last output: \u201c${tail}\u201d`
+          : `Exited right away (${code}) with no output — likely the agent binary failed ` +
+            `to start. Check '${spec.command}' in Settings → Agents.`
         // Only a resume attempt that died instantly implicates the resumed
         // conversation itself — a fresh start's instant exit is some other
         // launch failure and must not steer the user away from resuming.

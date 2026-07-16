@@ -1,8 +1,15 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { AgentRegistry, loadAgentConfig, saveAgentConfig } from '../../src/main/agent-registry'
+import {
+  AgentRegistry,
+  loadAgentConfig,
+  saveAgentConfig,
+  whichViaLoginShell,
+  describeWhichFailure,
+  type WhichExecFn
+} from '../../src/main/agent-registry'
 import { RESERVED_ENV_KEYS } from '../../src/main/hook-adapter'
 import { DEFAULT_CONSOLE_PREFS, type ConsolePrefs } from '../../src/shared/console'
 
@@ -532,5 +539,65 @@ describe('console prefs config', () => {
     writeFileSync(file, JSON.stringify({ guard: { packs: 'nope' } }))
     expect(new AgentRegistry(file).getGuardPacks()).toEqual([])
     rmSync(dir, { recursive: true, force: true })
+  })
+})
+
+describe('whichViaLoginShell PATH-probe diagnostics', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('describeWhichFailure distinguishes timeout, missing shell, and a genuine PATH miss', () => {
+    const timedOut = Object.assign(new Error('command timed out'), { killed: true })
+    expect(describeWhichFailure(timedOut, '/bin/zsh')).toContain('timed out')
+
+    const noShell = Object.assign(new Error('spawn /bin/nope ENOENT'), { code: 'ENOENT' })
+    expect(describeWhichFailure(noShell, '/bin/nope')).toContain("'/bin/nope' does not exist")
+
+    const notOnPath = Object.assign(new Error('Command failed: command -v foo'), { code: 1 })
+    expect(describeWhichFailure(notOnPath, '/bin/zsh')).toContain('not on PATH')
+  })
+
+  it('resolves the found path on success without logging anything', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const execFn: WhichExecFn = (_file, _args, _opts, cb) => cb(null, '/opt/bin/claude\n')
+    return whichViaLoginShell('claude', execFn).then((path) => {
+      expect(path).toBe('/opt/bin/claude')
+      expect(warn).not.toHaveBeenCalled()
+    })
+  })
+
+  it('a timed-out probe resolves null and logs a timeout-specific reason', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const execFn: WhichExecFn = (_file, _args, _opts, cb) =>
+      cb(Object.assign(new Error('command timed out'), { killed: true }), '')
+    return whichViaLoginShell('claude', execFn).then((path) => {
+      expect(path).toBeNull()
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(warn.mock.calls[0][0]).toContain('timed out')
+    })
+  })
+
+  it('a genuinely-missing binary resolves null and logs a not-on-PATH reason, distinct from timeout', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const execFn: WhichExecFn = (_file, _args, _opts, cb) =>
+      cb(Object.assign(new Error('Command failed'), { code: 1 }), '')
+    return whichViaLoginShell('does-not-exist', execFn).then((path) => {
+      expect(path).toBeNull()
+      expect(warn).toHaveBeenCalledTimes(1)
+      const logged = warn.mock.calls[0][0]
+      expect(logged).toContain('not on PATH')
+      expect(logged).not.toContain('timed out')
+    })
+  })
+
+  it('a broken/missing login shell resolves null and names the shell in the log', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const execFn: WhichExecFn = (_file, _args, _opts, cb) =>
+      cb(Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT' }), '')
+    return whichViaLoginShell('claude', execFn).then((path) => {
+      expect(path).toBeNull()
+      expect(warn.mock.calls[0][0]).toContain('does not exist')
+    })
   })
 })

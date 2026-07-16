@@ -471,9 +471,11 @@ export default function Landing({
             agents !== null &&
             !selectedAgent?.resolvedPath && (
               <p className="m-0 text-[13px] text-gray-500">
-                {selectedAgent?.label ?? selectedAgentId} not found ({selectedAgent?.command}).{' '}
+                {selectedAgent?.label ?? selectedAgentId} isn&apos;t on your PATH — looked for
+                &quot;{selectedAgent?.command}&quot;.{' '}
                 <button
                   className="cursor-pointer border-0 bg-transparent p-0 text-[13px] text-gray-300 underline hover:text-white"
+                  title="Set a path or install the agent from Settings → Agents"
                   onClick={onOpenSettings}
                   onMouseDown={(e) => e.preventDefault()}
                 >

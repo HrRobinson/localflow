@@ -29,7 +29,7 @@ use crate::lexer::Word;
 /// applied to argv[0] elsewhere in the pipeline (macOS's case-insensitive
 /// filesystem means `COMMAND rm -rf /` finds the same binary as `command`).
 const TRANSPARENT_PREFIXES: &[&str] =
-    &["command", "env", "nohup", "nice", "stdbuf", "ionice", "sudo"];
+    &["command", "env", "nohup", "nice", "stdbuf", "ionice", "sudo", "time"];
 
 /// `sudo` short options that take a value, e.g. `-u root`. Bundled/attached
 /// forms (`-uroot`) are also handled — see `unwrap_transparent_prefix`.
@@ -98,6 +98,13 @@ pub fn unwrap_transparent_prefix(seg: &[Word]) -> &[Word] {
                 }
             }
             "sudo" => rest = skip_sudo_options(rest),
+            "time" => {
+                // `time [-p] CMD` (shell builtin) and GNU `/usr/bin/time
+                // [OPTIONS] CMD` — value-taking `-o FILE`/`-f FMT` and their
+                // `--output`/`--format` long forms; no positionals precede
+                // the command.
+                rest = skip_options_then_positionals(rest, &['o', 'f'], &["output", "format"], 0, None);
+            }
             _ => {}
         }
     }
@@ -395,6 +402,62 @@ mod tests {
     fn helper_no_command_after_options_yields_empty() {
         let seg = vec![w("-x"), w("-n")];
         assert!(skip_options_then_positionals(&seg, &[], &[], 0, None).is_empty());
+    }
+
+    #[test]
+    fn unwraps_time_bare_and_portability_flag() {
+        assert_eq!(
+            texts(unwrap_transparent_prefix(&[w("time"), w("rm"), w("-rf"), w("/")])),
+            vec!["rm", "-rf", "/"]
+        );
+        assert_eq!(
+            texts(unwrap_transparent_prefix(&[
+                w("time"),
+                w("-p"),
+                w("rm"),
+                w("-rf"),
+                w("/")
+            ])),
+            vec!["rm", "-rf", "/"]
+        );
+    }
+
+    #[test]
+    fn unwraps_gnu_time_value_options() {
+        // -v boolean, -o FILE / -f FMT separate-value forms.
+        assert_eq!(
+            texts(unwrap_transparent_prefix(&[w("time"), w("-v"), w("rm"), w("-rf"), w("/")])),
+            vec!["rm", "-rf", "/"]
+        );
+        assert_eq!(
+            texts(unwrap_transparent_prefix(&[
+                w("time"),
+                w("-o"),
+                w("out.txt"),
+                w("rm"),
+                w("-rf"),
+                w("/")
+            ])),
+            vec!["rm", "-rf", "/"]
+        );
+        assert_eq!(
+            texts(unwrap_transparent_prefix(&[
+                w("time"),
+                w("--output=out.txt"),
+                w("rm"),
+                w("-rf"),
+                w("/")
+            ])),
+            vec!["rm", "-rf", "/"]
+        );
+    }
+
+    #[test]
+    fn time_on_benign_command_leaves_it_intact() {
+        assert_eq!(
+            texts(unwrap_transparent_prefix(&[w("time"), w("-p"), w("make")])),
+            vec!["make"]
+        );
     }
 
     #[test]

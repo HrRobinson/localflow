@@ -135,6 +135,18 @@ describe('SessionManager', () => {
     expect(mgr.snapshot(info.id, 2)).toEqual(['two', 'three'])
   })
 
+  it('instant-exit message uses the rendered screen, not the raw byte tail', () => {
+    const info = mgr.create('/p', claudeSpec, 1)
+    // Redraw sequence: clear + home + SGR 246 text. The old byte-tail path
+    // would leak escape fragments; the rendered screen reads cleanly.
+    ptys[0].dataCb?.('\x1b[2J\x1b[H\x1b[38;5;246mSession ended by server\x1b[0m')
+    ptys[0].exitCb?.()
+    const msg = mgr.list().find((s) => s.id === info.id)?.message ?? ''
+    expect(msg).toContain('Session ended by server')
+    expect(msg).not.toContain('246')
+    expect(msg).not.toContain('\x1b')
+  })
+
   it('instant exit with no output still gets an explanatory message', () => {
     const info = mgr.create('/p', claudeSpec, 1)
     ptys[0].exitCb?.(0)

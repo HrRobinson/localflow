@@ -471,7 +471,16 @@ export class SessionManager {
       // surface its last words in the restart overlay (e.g. claude's
       // "No conversation found" when --continue has nothing to resume).
       if (!rec.info.message && this.now() - rec.spawnedAt < INSTANT_EXIT_MS) {
-        const tail = rec.tail.replace(ANSI_RE, '').replace(/\s+/g, ' ').trim().slice(-160)
+        // Prefer the rendered screen (clean, no mid-escape truncation like the
+        // old "246m" leak); fall back to the ANSI-stripped byte tail when the
+        // screen is empty/unavailable.
+        const rendered = (rec.screen?.snapshot() ?? [])
+          .join(' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(-160)
+        const tail =
+          rendered || rec.tail.replace(ANSI_RE, '').replace(/\s+/g, ' ').trim().slice(-160)
         // exitCode is optional on the callback type (test doubles may fire
         // a bare 0-arg exit) — node-pty itself always supplies a real
         // number, so 'unknown' only ever shows up from a synthetic test

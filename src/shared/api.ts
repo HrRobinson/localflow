@@ -24,6 +24,16 @@ import type {
   Watchpoint
 } from './operator'
 import type { ConsoleEvent, ConsolePrefs } from './console'
+import type {
+  ClearSecretResult,
+  IntegrationId,
+  IntegrationView,
+  ResolvedIntegrationDescriptor,
+  SetEnabledResult,
+  SetFieldResult,
+  SetSecretResult
+} from './integrations'
+import type { FlowGraph, FlowSummary } from './flows'
 
 export interface LocalflowApi {
   /**
@@ -199,8 +209,50 @@ export interface LocalflowApi {
   openThemesFolder(): void
   /** Theme pushed from main after a set — the live-apply channel. */
   onThemeChanged(cb: (payload: { name: string; theme: Theme; error?: string }) => void): () => void
+  /**
+   * Integrations Hub views: descriptor metadata + enabled + per-field presence
+   * + live status, for all three integrations. Carries `hasValue` booleans for
+   * secret fields and non-secret `value`s from config.json — NEVER a secret
+   * value.
+   */
+  listIntegrations(): Promise<IntegrationView[]>
+  /** Persists an integration's enabled flag to config.json (optimistic-with-rollback). */
+  setIntegrationEnabled(id: IntegrationId, enabled: boolean): Promise<SetEnabledResult>
+  /** Writes one NON-secret config field; rejects a `secret:true` key (that must use setIntegrationSecret). */
+  setIntegrationField(id: IntegrationId, key: string, value: string): Promise<SetFieldResult>
+  /**
+   * Stores one secret field in the keychain (value INBOUND only; the response
+   * echoes status, never the value). Rejects a non-secret key.
+   */
+  setIntegrationSecret(id: IntegrationId, key: string, value: string): Promise<SetSecretResult>
+  /** Clears one secret field (or every field for the id when key is omitted). */
+  clearIntegrationSecret(id: IntegrationId, key?: string): Promise<ClearSecretResult>
   /** Browser panes report their guest webContents id so the operator API can drive them. */
   registerBrowser(handle: string, webContentsId: number): void
+  /**
+   * The integration registry that feeds the Flow Canvas palette + config panel.
+   * `status()` is resolved to a plain value at fetch time (a method can't cross
+   * the IPC boundary). Backed by the real Integrations Hub registry (#1) — the
+   * canvas reads only this resolved-descriptor seam.
+   */
+  listIntegrationDescriptors(): Promise<ResolvedIntegrationDescriptor[]>
+  /** All saved flows as lightweight summaries (Flow Canvas list view). */
+  listFlows(): Promise<FlowSummary[]>
+  /** Full flow graph by id; null if unknown/unreadable/corrupt. */
+  getFlow(id: string): Promise<FlowGraph | null>
+  /** Persists a flow (atomic). ok:false carries a human error (disk full, malformed graph, …). */
+  saveFlow(
+    graph: FlowGraph
+  ): Promise<{ ok: true; summary: FlowSummary } | { ok: false; error: string }>
+  /** Removes a saved flow. */
+  deleteFlow(id: string): Promise<void>
+  /** Hands the saved graph to the Flow Engine (#2 / stub). Returns a run id or a legible error. */
+  runFlow(id: string): Promise<{ ok: true; runId: string } | { ok: false; error: string }>
+  /**
+   * Pushed when a later flow save fails (mirrors onPersistenceNotice) — the
+   * editor keeps working in memory; this warns the on-disk copy is stale.
+   */
+  onFlowPersistenceNotice(cb: (message: string) => void): () => void
   /** Dropped on unmount/exit; a closed pane then resolves to 404 over the control API. */
   unregisterBrowser(handle: string): void
 }

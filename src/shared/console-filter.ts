@@ -36,7 +36,15 @@ function matchesScope(e: ConsoleEvent, scope: ConsoleScope): boolean {
 }
 
 export interface ConsoleFocus {
-  view: 'home' | 'environment' | 'settings' | 'changes' | 'activity' | 'cockpit'
+  view:
+    | 'home'
+    | 'environment'
+    | 'settings'
+    | 'changes'
+    | 'activity'
+    | 'cockpit'
+    | 'integrations'
+    | 'flows'
   enlarged: { id: string; level: 'pane' | 'session' } | null
   environment: number
 }

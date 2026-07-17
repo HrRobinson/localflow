@@ -46,6 +46,10 @@ describe('checkStoreUrl', () => {
     ['https://[::1]', 'loopback IPv6'],
     ['https://[fc00::1]', 'IPv6 unique-local'],
     ['https://[fe80::1]', 'IPv6 link-local'],
+    ['https://[::ffff:127.0.0.1]', 'IPv4-mapped loopback (dotted)'],
+    ['https://[::ffff:169.254.169.254]', 'IPv4-mapped cloud metadata (dotted)'],
+    ['https://[::ffff:10.0.0.1]', 'IPv4-mapped RFC-1918 (dotted)'],
+    ['https://[::ffff:192.168.1.1]', 'IPv4-mapped RFC-1918 (dotted)'],
     ['https://localhost', 'localhost name']
   ])('blocks a private/loopback/link-local target: %s (%s)', (url) => {
     const r = checkStoreUrl(url)
@@ -70,8 +74,24 @@ describe('blockedIpRange', () => {
     expect(blockedIpRange('fc00::abcd')).toMatch(/unique-local|private/i)
   })
 
+  it('flags IPv4-mapped IPv6 in the hex form WHATWG normalizes to (spec §5.1)', () => {
+    // `new URL('[::ffff:127.0.0.1]')` normalizes to `::ffff:7f00:1`, so the
+    // post-DNS hook sees the hex tail — it must still resolve to the IPv4 range.
+    expect(blockedIpRange('::ffff:7f00:1')).toMatch(/loopback/i)
+    expect(blockedIpRange('::ffff:a9fe:a9fe')).toMatch(/link-local/i)
+    expect(blockedIpRange('::ffff:0a00:0001')).toMatch(/private/i)
+    // Upper-case hex must be handled too.
+    expect(blockedIpRange('::FFFF:7F00:1')).toMatch(/loopback/i)
+  })
+
   it('returns null for a public resolved IP', () => {
     expect(blockedIpRange('93.184.216.34')).toBeNull()
     expect(blockedIpRange('2606:2800:220:1:248:1893:25c8:1946')).toBeNull()
+  })
+
+  it('does NOT over-block a genuinely public IPv4-mapped address', () => {
+    // ::ffff:5db8:d822 == 93.184.216.34 (a public host) — must NOT be blocked.
+    expect(blockedIpRange('::ffff:5db8:d822')).toBeNull()
+    expect(blockedIpRange('::ffff:93.184.216.34')).toBeNull()
   })
 })

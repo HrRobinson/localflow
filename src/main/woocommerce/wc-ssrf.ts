@@ -50,11 +50,35 @@ function blockedIpv6(host: string): string | null {
   const h = host.toLowerCase()
   if (h === '::1') return 'loopback (::1)'
   if (h === '::' || h === '::0') return 'unspecified (::)'
-  // ::ffff:127.0.0.1 style IPv4-mapped — defer to the IPv4 check on the tail.
-  const mapped = h.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/)
+  // IPv4-mapped IPv6 (::ffff:0:0/96). WHATWG `new URL()` normalizes
+  // `[::ffff:127.0.0.1]` to the HEX tail `::ffff:7f00:1`, so we must catch BOTH
+  // the dotted-decimal tail AND the hex tail, reconstruct the embedded IPv4, and
+  // run it through the existing IPv4 range check (so loopback/RFC-1918/link-local/
+  // metadata all apply). Anything ::ffff:-prefixed we can't cleanly reconstruct
+  // is rejected outright — mapped addresses have no legitimate public-store use.
+  const mapped = h.match(/^::ffff:(.+)$/)
   if (mapped) {
-    const v4 = parseIpv4(mapped[1])
-    if (v4) return blockedIpv4(v4)
+    const tail = mapped[1]
+    const v4dotted = parseIpv4(tail)
+    if (v4dotted) return blockedIpv4(v4dotted)
+    const groups = tail.split(':')
+    if (
+      groups.length >= 1 &&
+      groups.length <= 2 &&
+      groups.every((g) => /^[0-9a-f]{1,4}$/.test(g))
+    ) {
+      const nums = groups.map((g) => parseInt(g, 16))
+      const hi = groups.length === 2 ? nums[0] : 0
+      const lo = nums[groups.length - 1]
+      const octets: [number, number, number, number] = [
+        (hi >> 8) & 0xff,
+        hi & 0xff,
+        (lo >> 8) & 0xff,
+        lo & 0xff
+      ]
+      return blockedIpv4(octets)
+    }
+    return 'IPv4-mapped IPv6 (::ffff:0:0/96)'
   }
   const head = h.split(':')[0]
   // fc00::/7 → first hextet 0xfc00–0xfdff (fc/fd prefix).

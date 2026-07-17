@@ -175,7 +175,7 @@ from a templated/JSON field) — the common real case — while `status ==
 |---|---|---|
 | `eq` | `left` equals `value` | If both look numeric → numeric `===`. Else strict `===` first, then a `String(left) === String(value)` fallback so `"bug" == "bug"` and `130 == "130"` both hold. Legacy `equals` normalizes here, so legacy `===` semantics are preserved for the primitive cases the tests cover. |
 | `ne` | logical negation of `eq` | Same coercion as `eq`. `ne` on a missing field is **false** (missing ⇒ predicate false, §5 — `ne` does NOT invert missing-is-false into a spurious match). |
-| `gt` | `left > value` | Numeric compare when both look numeric; else string (lexicographic) compare. If `left` is missing/`undefined`/`null`, or is a non-numeric non-string (object/array/bool) against a numeric `value` → **false** (never throws, never NaN-routes). |
+| `gt` | `left > value` | Numeric compare when both look numeric; string (lexicographic) compare when **both** are non-numeric (e.g. ISO-date strings). A numeric/non-numeric **mismatch** (exactly one side looks numeric — e.g. `'N/A' > 100`, `'Infinity' > 100`, `'' < 0`) is **incomparable → false**, never a lexicographic fallback. If `left` is missing/`undefined`/`null`, or is a non-numeric non-string (object/array/bool) against a numeric `value` → **false** (never throws, never NaN-routes). |
 | `gte` | `left >= value` | As `gt`. |
 | `lt` | `left < value` | As `gt`. |
 | `lte` | `left <= value` | As `gt`. |

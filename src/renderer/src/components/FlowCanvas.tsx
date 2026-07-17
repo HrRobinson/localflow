@@ -11,6 +11,7 @@ import {
   connect,
   disconnect,
   emptyGraph,
+  instantiateTemplate,
   makeIdFn,
   moveNode,
   removeNode,
@@ -19,6 +20,7 @@ import {
   updateNodeConfig
 } from '../lib/flow-reducer'
 import type { FlowGraph, FlowSummary } from '../../../shared/flows'
+import type { FlowTemplate } from '../../../shared/flow-templates'
 import type { IntegrationId, ResolvedIntegrationDescriptor } from '../../../shared/integrations'
 
 /**
@@ -30,6 +32,7 @@ import type { IntegrationId, ResolvedIntegrationDescriptor } from '../../../shar
 export default function FlowCanvas(): React.JSX.Element {
   const [registry, setRegistry] = useState<ResolvedIntegrationDescriptor[]>([])
   const [flows, setFlows] = useState<FlowSummary[]>([])
+  const [templates, setTemplates] = useState<FlowTemplate[]>([])
   const [graph, setGraph] = useState<FlowGraph | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [dirty, setDirty] = useState(false)
@@ -44,6 +47,15 @@ export default function FlowCanvas(): React.JSX.Element {
   useEffect(() => {
     void window.localflow.listIntegrationDescriptors().then(setRegistry)
     void window.localflow.listFlows().then(setFlows)
+    // The built-in templates are a constant read; a failure just leaves the
+    // picker empty (the blank-flow path via custom-blank is unaffected once it
+    // returns), so we note it rather than bricking the canvas.
+    void window.localflow
+      .listFlowTemplates()
+      .then(setTemplates)
+      .catch(() =>
+        setNotice("Couldn't load the starter templates — you can still open your saved flows.")
+      )
   }, [])
 
   // A later flow-save failure is pushed here (mirrors persistence notices).
@@ -73,6 +85,29 @@ export default function FlowCanvas(): React.JSX.Element {
 
   const newFlow = (): void => {
     setGraph(emptyGraph(flowIds.current(), 'Untitled flow'))
+    setSelectedId(null)
+    setDirty(true)
+  }
+
+  // Clone a template into a fresh, unsaved draft and open it on the canvas —
+  // identical to `openFlow` but dirty (not yet on disk). Ids are re-minted and
+  // config deep-cloned by the pure `instantiateTemplate`; a template node on an
+  // unconnected integration surfaces through the SAME needsSetup/validation
+  // path as a dragged-in node — it loads/edits fine, and only Run is refused.
+  const instantiate = (templateId: string): void => {
+    const template = templates.find((t) => t.id === templateId)
+    if (!template) {
+      setNotice("That template couldn't be found — it may no longer be available.")
+      return
+    }
+    setGraph(
+      instantiateTemplate(template, {
+        flowId: flowIds.current(),
+        nodeIdFn: nodeIds.current,
+        edgeIdFn: edgeIds.current,
+        existingNames: flows.map((f) => f.name)
+      })
+    )
     setSelectedId(null)
     setDirty(true)
   }
@@ -157,7 +192,13 @@ export default function FlowCanvas(): React.JSX.Element {
     return (
       <div className="flex min-h-0 flex-1 flex-col">
         {notice && <Banner message={notice} onDismiss={() => setNotice(null)} />}
-        <FlowList flows={flows} onOpen={openFlow} onNew={newFlow} onDelete={deleteFlow} />
+        <FlowList
+          flows={flows}
+          templates={templates}
+          onOpen={openFlow}
+          onInstantiate={instantiate}
+          onDelete={deleteFlow}
+        />
       </div>
     )
   }

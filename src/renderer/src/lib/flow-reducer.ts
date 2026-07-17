@@ -10,6 +10,7 @@
 // detect a no-op with `next === prev`.
 import type { FlowEdge, FlowGraph, FlowNode, FlowNodeType } from '../../../shared/flows'
 import type { IntegrationId } from '../../../shared/integrations'
+import type { FlowTemplate } from '../../../shared/flow-templates'
 
 /** Monotonic id source, injected so tests can assert exact ids. */
 export type IdFn = () => string
@@ -123,4 +124,80 @@ export function setEdgeCondition(
 
 export function renameFlow(graph: FlowGraph, name: string): FlowGraph {
   return { ...graph, name }
+}
+
+// --- Templates ---------------------------------------------------------------
+
+/**
+ * Returns `base` unless it already appears in `existingNames`, in which case it
+ * appends the lowest free counter: `"Ecom Support Worker"` →
+ * `"Ecom Support Worker 2"` → `"… 3"`. Pure; a display nicety only (ids are the
+ * real key — instantiate always mints a fresh flow id, so there is never an
+ * actual storage collision). The counter starts at 2 so the first duplicate
+ * reads naturally ("… 2" is the second one).
+ */
+export function dedupeName(base: string, existingNames: string[]): string {
+  const taken = new Set(existingNames)
+  if (!taken.has(base)) return base
+  let n = 2
+  while (taken.has(`${base} ${n}`)) n++
+  return `${base} ${n}`
+}
+
+/** The id sources + de-dup context an instantiate needs. */
+export interface InstantiateOptions {
+  /** Fresh flow id (e.g. `flowIds.current()`). */
+  flowId: string
+  /** Fresh node ids (one call per template node). */
+  nodeIdFn: IdFn
+  /** Fresh edge ids (one call per template edge). */
+  edgeIdFn: IdFn
+  /** Existing flow names, for name de-dup. */
+  existingNames: string[]
+}
+
+/**
+ * Deep-clones a template's seed `FlowGraph` into a fresh, unsaved draft:
+ * every node/edge/flow id is re-minted from the injected id fns, `from`/`to`
+ * are re-mapped through the new node ids, and `config`/`condition`/`position`
+ * are DEEP-CLONED so the returned graph shares NO mutable reference with the
+ * template constant (mutating the draft never touches `BUILTIN_FLOW_TEMPLATES`).
+ * `integration`/`ref` are copied verbatim — they are refs, never secrets. Pure;
+ * ids injected so tests assert exact output. The result is a valid `FlowGraph`
+ * (every edge endpoint names a present node).
+ */
+export function instantiateTemplate(template: FlowTemplate, opts: InstantiateOptions): FlowGraph {
+  const idMap = new Map<string, string>()
+  for (const node of template.graph.nodes) idMap.set(node.id, opts.nodeIdFn())
+
+  const nodes: FlowNode[] = template.graph.nodes.map((n) => {
+    const node: FlowNode = {
+      id: idMap.get(n.id)!,
+      type: n.type,
+      config: structuredClone(n.config),
+      position: { ...n.position }
+    }
+    if (n.integration !== undefined) node.integration = n.integration
+    if (n.ref !== undefined) node.ref = n.ref
+    return node
+  })
+
+  const edges: FlowEdge[] = template.graph.edges.map((e) => {
+    const edge: FlowEdge = {
+      id: opts.edgeIdFn(),
+      // A template is authored with in-graph endpoints, so both are mapped; the
+      // `?? e.from` fallback keeps a stray endpoint intact rather than crashing.
+      from: idMap.get(e.from) ?? e.from,
+      to: idMap.get(e.to) ?? e.to
+    }
+    if (e.condition !== undefined) edge.condition = structuredClone(e.condition)
+    return edge
+  })
+
+  return {
+    id: opts.flowId,
+    name: dedupeName(template.name, opts.existingNames),
+    nodes,
+    edges
+  }
 }

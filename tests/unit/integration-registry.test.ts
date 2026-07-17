@@ -40,9 +40,9 @@ describe('IntegrationRegistry', () => {
   })
   afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
-  it('lists all three descriptors in the pinned order with a sync status()', () => {
+  it('lists all descriptors in the pinned order with a sync status()', () => {
     const ds = registry.descriptors()
-    expect(ds.map((d) => d.id)).toEqual(['linear', 'email', 'cloud', 'shopify'])
+    expect(ds.map((d) => d.id)).toEqual(['linear', 'email', 'cloud', 'shopify', 'woocommerce'])
     expect(typeof ds[0].status()).toBe('string')
   })
 
@@ -172,5 +172,30 @@ describe('IntegrationRegistry', () => {
     const off = registry.subscribe('linear', 'issue.delegated', () => {})
     expect(typeof off).toBe('function')
     expect(() => off()).not.toThrow()
+  })
+
+  it('registerConnector delegates invokeAction + subscribe to the connector', async () => {
+    const calls: { action?: [string, Record<string, unknown>]; trigger?: string } = {}
+    let unsubbed = false
+    registry.registerConnector('woocommerce', {
+      invokeAction: (actionId, params) => {
+        calls.action = [actionId, params]
+        return Promise.resolve({ ok: true })
+      },
+      subscribe: (triggerId) => {
+        calls.trigger = triggerId
+        return () => {
+          unsubbed = true
+        }
+      }
+    })
+    await expect(registry.invokeAction('woocommerce', 'getOrder', { id: '1' })).resolves.toEqual({
+      ok: true
+    })
+    expect(calls.action).toEqual(['getOrder', { id: '1' }])
+    const off = registry.subscribe('woocommerce', 'order.created', () => {})
+    expect(calls.trigger).toBe('order.created')
+    off()
+    expect(unsubbed).toBe(true)
   })
 })

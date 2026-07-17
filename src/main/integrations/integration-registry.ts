@@ -28,10 +28,11 @@ import { loadIntegrationsConfig, writeIntegrationEntry } from './integration-con
  * booleans, never bytes.
  *
  * `invokeAction`/`subscribe` are the pinned contract's live-dispatch surface.
- * A `LiveConnector` registered for an id (via `registerConnector`, §4.3) makes
- * them delegate to real work; an id with no connector keeps the legible
- * "no live connector wired" reject / no-op unsubscribe. Shopify is the first
- * live connector; Linear/email/cloud slot into the same map as they land.
+ * A `LiveConnector` (defined in shared/integrations.ts) registered for an id
+ * (via `registerConnector`, §4.3) makes them delegate to real work; an id with
+ * no connector keeps the legible "no live connector wired" reject / no-op
+ * unsubscribe. Shopify and WooCommerce are the first live connectors;
+ * Linear/email/cloud slot into the same map as they land.
  */
 export class IntegrationRegistry implements IntegrationRegistryContract {
   private readonly creds: CredentialStore

@@ -288,13 +288,25 @@ describe('flow-validate', () => {
     id: 'f',
     name: 'x',
     nodes: [
-      { id: 't', type: 'trigger', integration: 'linear', ref: 'issue.created', config: { team: 'ENG' }, position: { x: 0, y: 0 } },
+      {
+        id: 't',
+        type: 'trigger',
+        integration: 'linear',
+        ref: 'issue.created',
+        config: { team: 'ENG' },
+        position: { x: 0, y: 0 }
+      },
       { id: 'r', type: 'router', config: {}, position: { x: 0, y: 0 } },
       { id: 'a', type: 'agent', config: { agentId: 'claude' }, position: { x: 0, y: 0 } }
     ],
     edges: [
       { id: 'e1', from: 't', to: 'r' },
-      { id: 'e2', from: 'r', to: 'a', condition: condition as FlowGraph['edges'][number]['condition'] }
+      {
+        id: 'e2',
+        from: 'r',
+        to: 'a',
+        condition: condition as FlowGraph['edges'][number]['condition']
+      }
     ]
   })
 

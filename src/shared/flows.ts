@@ -22,15 +22,7 @@ export interface FlowNode {
  *  unary (they ignore `value`); the rest are binary. Pinned VERBATIM — connectors
  *  and flow templates consume this shape. */
 export type FlowConditionOp =
-  | 'eq'
-  | 'ne'
-  | 'gt'
-  | 'gte'
-  | 'lt'
-  | 'lte'
-  | 'contains'
-  | 'exists'
-  | 'truthy'
+  'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte' | 'contains' | 'exists' | 'truthy'
 
 /** A router/gate branch predicate: resolve `field` (a dotted path) against run
  *  context and compare it to `value` under `op`. `value` is optional because
@@ -164,7 +156,8 @@ function isValidConditionShape(c: unknown): boolean {
 function isEdge(e: unknown): e is FlowEdge {
   if (typeof e !== 'object' || e === null) return false
   const o = e as Record<string, unknown>
-  if (typeof o.id !== 'string' || typeof o.from !== 'string' || typeof o.to !== 'string') return false
+  if (typeof o.id !== 'string' || typeof o.from !== 'string' || typeof o.to !== 'string')
+    return false
   if (o.condition !== undefined && !isValidConditionShape(o.condition)) return false
   return true
 }

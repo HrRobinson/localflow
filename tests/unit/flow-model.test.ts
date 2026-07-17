@@ -55,7 +55,12 @@ describe('parseFlowGraph — valid graphs', () => {
     const flow = parseFlowGraph(
       graph({
         edges: [
-          { id: 'e1', from: 't', to: 'a', condition: { field: 'order.total', op: 'gt', value: 100 } }
+          {
+            id: 'e1',
+            from: 't',
+            to: 'a',
+            condition: { field: 'order.total', op: 'gt', value: 100 }
+          }
         ]
       })
     )
@@ -65,7 +70,9 @@ describe('parseFlowGraph — valid graphs', () => {
   it('accepts a unary op condition with no value', () => {
     const flow = parseFlowGraph(
       graph({
-        edges: [{ id: 'e1', from: 't', to: 'a', condition: { field: 'triage.category', op: 'exists' } }]
+        edges: [
+          { id: 'e1', from: 't', to: 'a', condition: { field: 'triage.category', op: 'exists' } }
+        ]
       })
     )
     expect(flow?.edges[0].condition).toEqual({ field: 'triage.category', op: 'exists' })

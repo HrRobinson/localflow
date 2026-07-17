@@ -113,14 +113,21 @@ describe('selectEdges', () => {
       id: 'g',
       name: 'g',
       nodes: [],
-      edges: [{ id: 'e', from: 'r', to: 't', condition: { field: 'triage.category', equals: 'bug' } }]
+      edges: [
+        { id: 'e', from: 'r', to: 't', condition: { field: 'triage.category', equals: 'bug' } }
+      ]
     }
     const modern: FlowGraph = {
       id: 'g',
       name: 'g',
       nodes: [],
       edges: [
-        { id: 'e', from: 'r', to: 't', condition: { field: 'triage.category', op: 'eq', value: 'bug' } }
+        {
+          id: 'e',
+          from: 'r',
+          to: 't',
+          condition: { field: 'triage.category', op: 'eq', value: 'bug' }
+        }
       ]
     }
     expect(selectEdges(legacy, 'r', ctx)).toEqual(selectEdges(modern, 'r', ctx))

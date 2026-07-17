@@ -1,4 +1,9 @@
-import type { FlowConditionOp, FlowEdge, FlowEdgeCondition, FlowNode } from '../../../../shared/flows'
+import type {
+  FlowConditionOp,
+  FlowEdge,
+  FlowEdgeCondition,
+  FlowNode
+} from '../../../../shared/flows'
 import { VALID_CONDITION_OPS } from '../../../../shared/flows'
 import type { IntegrationId, ResolvedIntegrationDescriptor } from '../../../../shared/integrations'
 
@@ -29,7 +34,8 @@ function readCondition(c: FlowEdge['condition']): {
   value: string
 } {
   if (!c) return { field: '', op: 'eq', value: '' }
-  if ('op' in c) return { field: c.field, op: c.op, value: c.value === undefined ? '' : String(c.value) }
+  if ('op' in c)
+    return { field: c.field, op: c.op, value: c.value === undefined ? '' : String(c.value) }
   return { field: c.field, op: 'eq', value: c.equals === undefined ? '' : String(c.equals) }
 }
 
@@ -285,7 +291,11 @@ function GateForm({
             data-config-field="gate-field"
             onChange={(e) => setCond(buildCondition(e.target.value, op, value))}
           />
-          <OpSelect value={op} testId="gate-op" onChange={(nextOp) => setCond(buildCondition(field, nextOp, value))} />
+          <OpSelect
+            value={op}
+            testId="gate-op"
+            onChange={(nextOp) => setCond(buildCondition(field, nextOp, value))}
+          />
           {!UNARY_OPS.has(op) && (
             <input
               className={inputCls}
@@ -325,12 +335,16 @@ function RouterForm({
                 placeholder="field"
                 value={field}
                 data-config-field="router-field"
-                onChange={(ev) => onSetEdgeCondition(e.id, buildCondition(ev.target.value, op, value))}
+                onChange={(ev) =>
+                  onSetEdgeCondition(e.id, buildCondition(ev.target.value, op, value))
+                }
               />
               <OpSelect
                 value={op}
                 testId="router-op"
-                onChange={(nextOp) => onSetEdgeCondition(e.id, buildCondition(field, nextOp, value))}
+                onChange={(nextOp) =>
+                  onSetEdgeCondition(e.id, buildCondition(field, nextOp, value))
+                }
               />
               {!UNARY_OPS.has(op) && (
                 <input
@@ -338,7 +352,9 @@ function RouterForm({
                   placeholder="value"
                   value={value}
                   data-config-field="router-value"
-                  onChange={(ev) => onSetEdgeCondition(e.id, buildCondition(field, op, ev.target.value))}
+                  onChange={(ev) =>
+                    onSetEdgeCondition(e.id, buildCondition(field, op, ev.target.value))
+                  }
                 />
               )}
             </div>

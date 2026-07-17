@@ -8,7 +8,7 @@
 
 // ── Pinned contract (verbatim; #2/#3 consume these names) ────────────────────
 
-export type IntegrationId = 'linear' | 'email' | 'cloud'
+export type IntegrationId = 'linear' | 'email' | 'cloud' | 'woocommerce'
 
 export interface IntegrationConfigField {
   key: string
@@ -55,7 +55,7 @@ export interface IntegrationRegistry {
 export type IntegrationStatus = 'connected' | 'needs-config' | 'error' | 'disabled'
 
 /** Stable order for `descriptors()` / the tabs — the contract 2/3 rely on. */
-export const INTEGRATION_IDS: readonly IntegrationId[] = ['linear', 'email', 'cloud']
+export const INTEGRATION_IDS: readonly IntegrationId[] = ['linear', 'email', 'cloud', 'woocommerce']
 
 /**
  * The value type a non-secret config field carries in config.json. Drives

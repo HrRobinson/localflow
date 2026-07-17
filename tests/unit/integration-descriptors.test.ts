@@ -3,9 +3,9 @@ import { descriptorDefs, DESCRIPTOR_DEFS } from '../../src/main/integrations/des
 import { INTEGRATION_IDS } from '../../src/shared/integrations'
 
 describe('integration descriptors', () => {
-  it('exposes all three ids in the pinned stable order', () => {
-    expect(descriptorDefs.map((d) => d.id)).toEqual(['linear', 'email', 'cloud'])
-    expect([...INTEGRATION_IDS]).toEqual(['linear', 'email', 'cloud'])
+  it('exposes all ids in the pinned stable order', () => {
+    expect(descriptorDefs.map((d) => d.id)).toEqual(['linear', 'email', 'cloud', 'woocommerce'])
+    expect([...INTEGRATION_IDS]).toEqual(['linear', 'email', 'cloud', 'woocommerce'])
   })
 
   it('marks the exact secret fields per §7', () => {
@@ -14,6 +14,9 @@ describe('integration descriptors', () => {
     expect(secretKeys('linear')).toEqual(['oauthToken', 'webhookSecret'])
     expect(secretKeys('email')).toEqual(['refreshToken', 'clientSecret'])
     expect(secretKeys('cloud')).toEqual([]) // keyless model — zero secret fields
+    // WooCommerce: consumer key/secret + webhook secret are keychain-only; the
+    // store URL is a non-secret ref (spec §5).
+    expect(secretKeys('woocommerce')).toEqual(['consumerKey', 'consumerSecret', 'webhookSecret'])
   })
 
   it('marks the exact required fields per §7', () => {
@@ -27,6 +30,13 @@ describe('integration descriptors', () => {
     ])
     expect(requiredKeys('email')).toEqual(['refreshToken', 'address', 'oauthAppRef', 'environment'])
     expect(requiredKeys('cloud')).toEqual(['roleArn', 'externalId', 'region'])
+    expect(requiredKeys('woocommerce')).toEqual([
+      'storeUrl',
+      'consumerKey',
+      'consumerSecret',
+      'webhookSecret',
+      'environment'
+    ])
   })
 
   it('leaves cloud action-only (no triggers) and keeps trigger/action ids stable', () => {
@@ -52,6 +62,19 @@ describe('integration descriptors', () => {
         id: 'cloud',
         triggers: [],
         actions: ['mintCredential', 'terraform.plan', 'terraform.applyApproved']
+      },
+      {
+        id: 'woocommerce',
+        triggers: ['order.created', 'order.refundRequested'],
+        actions: [
+          'getOrder',
+          'getCustomer',
+          'searchOrders',
+          'refundOrder',
+          'cancelOrder',
+          'updateShippingAddress',
+          'addOrderNote'
+        ]
       }
     ])
   })

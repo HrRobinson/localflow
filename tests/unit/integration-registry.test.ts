@@ -40,9 +40,9 @@ describe('IntegrationRegistry', () => {
   })
   afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
-  it('lists all three descriptors in the pinned order with a sync status()', () => {
+  it('lists all descriptors in the pinned order with a sync status()', () => {
     const ds = registry.descriptors()
-    expect(ds.map((d) => d.id)).toEqual(['linear', 'email', 'cloud'])
+    expect(ds.map((d) => d.id)).toEqual(['linear', 'email', 'cloud', 'woocommerce'])
     expect(typeof ds[0].status()).toBe('string')
   })
 

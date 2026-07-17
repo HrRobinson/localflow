@@ -69,14 +69,31 @@ describe('ShopifyConnector — action dispatch', () => {
     )
   })
 
-  it('rejects updateShippingAddress on an already-fulfilled order, before mutating', async () => {
-    const fulfilled: RawOrderNode = { ...orderNode, displayFulfillmentStatus: 'FULFILLED' }
-    const api = new MockShopifyApi({ orders: { '42': fulfilled } })
+  // Pre-fulfillment only: only a fully 'unfulfilled' order may be edited. Every
+  // other fulfillment state (partial shipment, fulfilled, restocked) is rejected
+  // BEFORE the mutation runs.
+  it.each([
+    ['FULFILLED', 'fulfilled'],
+    ['PARTIALLY_FULFILLED', 'partial'],
+    ['RESTOCKED', 'restocked']
+  ])(
+    'rejects updateShippingAddress on a %s (non-unfulfilled) order, before mutating',
+    async (rawStatus, normalized) => {
+      const order: RawOrderNode = { ...orderNode, displayFulfillmentStatus: rawStatus }
+      const api = new MockShopifyApi({ orders: { '42': order } })
+      const c = new ShopifyConnector({ api })
+      await expect(
+        c.invokeAction('updateShippingAddress', { id: '42', address: { city: 'NYC' } })
+      ).rejects.toThrow(new RegExp(`is '${normalized}', not unfulfilled`))
+      expect(api.calls.orderUpdate).toHaveLength(0)
+    }
+  )
+
+  it('allows updateShippingAddress on an unfulfilled order', async () => {
+    const api = new MockShopifyApi({ orders: { '42': orderNode } })
     const c = new ShopifyConnector({ api })
-    await expect(
-      c.invokeAction('updateShippingAddress', { id: '42', address: { city: 'NYC' } })
-    ).rejects.toThrow(/already fulfilled/)
-    expect(api.calls.orderUpdate).toHaveLength(0)
+    await c.invokeAction('updateShippingAddress', { id: '42', address: { city: 'NYC' } })
+    expect(api.calls.orderUpdate).toEqual([{ orderId: '42', shippingAddress: { city: 'NYC' } }])
   })
 
   it('rejects a missing id and an unknown action legibly', async () => {

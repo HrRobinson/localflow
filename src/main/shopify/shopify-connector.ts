@@ -105,12 +105,14 @@ export class ShopifyConnector implements LiveConnector {
         "Shopify action 'updateShippingAddress' needs an 'address' object (address1, city, province, country, zip)."
       )
     }
-    // Pre-fulfillment only (§6.2): a fulfilled order's address can't be edited —
-    // reject legibly BEFORE the mutation rather than let Shopify fail obscurely.
+    // Pre-fulfillment only (§6.2): once any item has shipped (or been restocked)
+    // the address can't be safely edited — only a fully 'unfulfilled' order may
+    // be changed. Reject 'partial'/'fulfilled'/'restocked' legibly BEFORE the
+    // mutation rather than let Shopify fail obscurely.
     const current = normalizeOrder(await this.api.order(orderId))
-    if (current.order.fulfillmentStatus === 'fulfilled') {
+    if (current.order.fulfillmentStatus !== 'unfulfilled') {
       throw new Error(
-        `Shopify order '${orderId}' is already fulfilled — its shipping address can't be changed. Contact the carrier instead.`
+        `Shopify order '${orderId}' is '${current.order.fulfillmentStatus}', not unfulfilled — its shipping address can only be changed before fulfillment begins. Contact the carrier instead.`
       )
     }
     return this.api.orderUpdate({ orderId, shippingAddress: params.address })

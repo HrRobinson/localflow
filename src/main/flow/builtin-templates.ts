@@ -8,13 +8,12 @@
 // SECRET HYGIENE: every `config` here is non-secret (a prompt, a router field,
 // a gate reason). Never a token/key/password — enforced by the denylist test.
 //
-// SHIPPABLE vs. FUTURE: `IntegrationId` is `'linear' | 'email' | 'cloud'` today
-// — there is NO `'shopify'` yet. So the Ecom template triggers on `email` and
-// replies over `email` in its SHIPPABLE form. When the Shopify connector adds
-// `'shopify'` to IntegrationId, `t-trigger` becomes
-// `integration:'shopify', ref:'order.created'` and the reply/escalate actions
-// gain `getOrder`/`refundOrder` — a PURE DATA edit to this constant, no model
-// change. The template stays valid against the CURRENT registry until then.
+// SHIPPABLE vs. FUTURE: the Ecom template triggers on `email` and replies over
+// `email` in its SHIPPABLE form, which works against every connected store.
+// `'shopify'`/`'woocommerce'` are now in `IntegrationId`, so an ecom variant can
+// trigger on `integration:'shopify', ref:'order.created'` and use the
+// `getOrder`/`refundOrder` actions — a PURE DATA edit to this constant, no model
+// change. The built-in stays email-triggered so it is useful with zero store setup.
 import type { FlowTemplate } from '../../shared/flow-templates'
 import type { FlowGraph } from '../../shared/flows'
 

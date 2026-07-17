@@ -162,13 +162,13 @@ describe('IntegrationRegistry', () => {
     expect(registry.view('linear').fields.find((f) => f.key === 'oauthToken')!.hasValue).toBe(false)
   })
 
-  it('invokeAction rejects with a legible not-wired-yet error (stub)', async () => {
+  it('invokeAction rejects legibly for an id with no live connector wired', async () => {
     await expect(registry.invokeAction('linear', 'comment.create', {})).rejects.toThrow(
-      /isn't wired yet/i
+      /no live connector wired/i
     )
   })
 
-  it('subscribe returns a no-op unsubscribe (stub)', () => {
+  it('subscribe returns a no-op unsubscribe when no connector is registered', () => {
     const off = registry.subscribe('linear', 'issue.delegated', () => {})
     expect(typeof off).toBe('function')
     expect(() => off()).not.toThrow()

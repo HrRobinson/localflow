@@ -62,17 +62,29 @@ describe('integration secret safety', () => {
     expect(surfaced).not.toContain(KNOWN_SECRET)
   })
 
-  it('keeps revealForConnector as the sole plaintext exit — no IPC/renderer caller', () => {
-    // The ONLY file under src/ allowed to reference the plaintext exit is its
-    // own definition (credential-store.ts). Any caller in preload/renderer or an
-    // ipcMain.handle body would be a boundary leak — assert there are none yet.
+  it('keeps revealForConnector as a MAIN-ONLY plaintext exit — no IPC/renderer caller', () => {
+    // The plaintext exit is main-process-only. Its definition
+    // (credential-store.ts) and the sanctioned in-process connector token-stores
+    // (`*-token-store.ts`, e.g. Shopify) may reference it; ANY caller under
+    // src/preload or src/renderer, or in an ipcMain.handle body, would be a
+    // boundary leak — assert there are none.
     const root = join(__dirname, '..', '..', 'src')
     const offenders: string[] = []
     for (const file of walk(root)) {
       if (file.endsWith('credential-store.ts')) continue
-      if (readFileSync(file, 'utf8').includes('revealForConnector')) offenders.push(file)
+      if (file.endsWith('-token-store.ts')) continue // main-process connector exits
+      if (!readFileSync(file, 'utf8').includes('revealForConnector')) continue
+      // A reference anywhere ELSE — and especially in preload/renderer — leaks.
+      offenders.push(file)
     }
     expect(offenders).toEqual([])
+
+    // Belt-and-braces: the renderer/preload surfaces must NEVER name the exit.
+    for (const boundary of ['renderer', 'preload']) {
+      for (const file of walk(join(root, boundary))) {
+        expect(readFileSync(file, 'utf8')).not.toContain('revealForConnector')
+      }
+    }
   })
 })
 

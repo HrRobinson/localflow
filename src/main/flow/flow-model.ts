@@ -26,7 +26,12 @@ const NODE_TYPES: ReadonlySet<string> = new Set<FlowNodeType>([
   'gate',
   'router'
 ])
-const INTEGRATION_IDS: ReadonlySet<string> = new Set<IntegrationId>(['linear', 'email', 'cloud'])
+const INTEGRATION_IDS: ReadonlySet<string> = new Set<IntegrationId>([
+  'linear',
+  'email',
+  'cloud',
+  'shopify'
+])
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)

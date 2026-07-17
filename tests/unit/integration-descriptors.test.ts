@@ -4,8 +4,8 @@ import { INTEGRATION_IDS } from '../../src/shared/integrations'
 
 describe('integration descriptors', () => {
   it('exposes all three ids in the pinned stable order', () => {
-    expect(descriptorDefs.map((d) => d.id)).toEqual(['linear', 'email', 'cloud'])
-    expect([...INTEGRATION_IDS]).toEqual(['linear', 'email', 'cloud'])
+    expect(descriptorDefs.map((d) => d.id)).toEqual(['linear', 'email', 'cloud', 'shopify'])
+    expect([...INTEGRATION_IDS]).toEqual(['linear', 'email', 'cloud', 'shopify'])
   })
 
   it('marks the exact secret fields per §7', () => {
@@ -52,6 +52,19 @@ describe('integration descriptors', () => {
         id: 'cloud',
         triggers: [],
         actions: ['mintCredential', 'terraform.plan', 'terraform.applyApproved']
+      },
+      {
+        id: 'shopify',
+        triggers: ['order.created', 'order.refundRequested', 'order.flagged'],
+        actions: [
+          'getOrder',
+          'getCustomer',
+          'searchOrders',
+          'refundOrder',
+          'cancelOrder',
+          'updateShippingAddress',
+          'addOrderNote'
+        ]
       }
     ])
   })

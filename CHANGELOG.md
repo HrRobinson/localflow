@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.10.0](https://github.com/HrRobinson/localflow/compare/v1.9.0...v1.10.0) (2026-07-16)
+
+
+### Features
+
+* add-environment button in sidebar ([#100](https://github.com/HrRobinson/localflow/issues/100)) ([c25a698](https://github.com/HrRobinson/localflow/commit/c25a698087f940e2ed0743ec908f7f6989e305c2))
+* email execution layer foundation ([#102](https://github.com/HrRobinson/localflow/issues/102)) ([37f0916](https://github.com/HrRobinson/localflow/commit/37f09166672b80ac623ce51063d4d6443070b8fa))
+* lfguard cloud packs + cred-mint seam ([#103](https://github.com/HrRobinson/localflow/issues/103)) ([375b1b9](https://github.com/HrRobinson/localflow/commit/375b1b93b2c858c4f8b4123bc658bdcb5748cba5))
+* Linear integration foundation ([#101](https://github.com/HrRobinson/localflow/issues/101)) ([611ba33](https://github.com/HrRobinson/localflow/commit/611ba334a29c94d35602343bfa78ca6db286a0b1))
+* openclaw preset launches chat by default ([#99](https://github.com/HrRobinson/localflow/issues/99)) ([e8e7f06](https://github.com/HrRobinson/localflow/commit/e8e7f0618f4054f47d06a10f0109a7e0a45eb0a3))
+
+
+### Bug Fixes
+
+* actionable spawn and agent-not-found errors ([#91](https://github.com/HrRobinson/localflow/issues/91)) ([b834798](https://github.com/HrRobinson/localflow/commit/b83479840d2121f4efa9be9a1b62020f31787a39))
+
 ## [1.9.0](https://github.com/HrRobinson/localflow/compare/v1.8.0...v1.9.0) (2026-07-16)
 
 

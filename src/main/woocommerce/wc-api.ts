@@ -12,8 +12,9 @@ import { checkStoreUrl } from './wc-ssrf'
  *  - Every call passes the store URL through the SSRF guard (`wc-ssrf`) BEFORE a
  *    request is built (spec §5.1) — a private/loopback/non-https URL is refused.
  *  - The consumer key/secret are fetched at call time via the injected `reveal`
- *    (main-only `CredentialStore.revealForConnector`), used ONLY to build the
- *    Basic-auth header, and are NEVER logged or returned (spec §4.6, §5).
+ *    seam (bound, at live wiring, to the main-only CredentialStore plaintext
+ *    exit), used ONLY to build the Basic-auth header, and are NEVER logged or
+ *    returned (spec §4.6, §5).
  *  - Errors are human, actionable, and carry the real WC cause (spec §8); the
  *    client backs off on 429/5xx (no `Retry-After` to trust — spec §2.4).
  */

@@ -162,15 +162,40 @@ describe('IntegrationRegistry', () => {
     expect(registry.view('linear').fields.find((f) => f.key === 'oauthToken')!.hasValue).toBe(false)
   })
 
-  it('invokeAction rejects with a legible not-wired-yet error (stub)', async () => {
+  it('invokeAction rejects legibly when no live connector is wired', async () => {
     await expect(registry.invokeAction('linear', 'comment.create', {})).rejects.toThrow(
-      /isn't wired yet/i
+      /no live connector is wired/i
     )
   })
 
-  it('subscribe returns a no-op unsubscribe (stub)', () => {
+  it('subscribe returns a no-op unsubscribe when no live connector is wired', () => {
     const off = registry.subscribe('linear', 'issue.delegated', () => {})
     expect(typeof off).toBe('function')
     expect(() => off()).not.toThrow()
+  })
+
+  it('registerConnector delegates invokeAction + subscribe to the connector', async () => {
+    const calls: { action?: [string, Record<string, unknown>]; trigger?: string } = {}
+    let unsubbed = false
+    registry.registerConnector('woocommerce', {
+      invokeAction: (actionId, params) => {
+        calls.action = [actionId, params]
+        return Promise.resolve({ ok: true })
+      },
+      subscribe: (triggerId) => {
+        calls.trigger = triggerId
+        return () => {
+          unsubbed = true
+        }
+      }
+    })
+    await expect(registry.invokeAction('woocommerce', 'getOrder', { id: '1' })).resolves.toEqual({
+      ok: true
+    })
+    expect(calls.action).toEqual(['getOrder', { id: '1' }])
+    const off = registry.subscribe('woocommerce', 'order.created', () => {})
+    expect(calls.trigger).toBe('order.created')
+    off()
+    expect(unsubbed).toBe(true)
   })
 })

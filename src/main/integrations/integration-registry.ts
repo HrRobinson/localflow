@@ -19,6 +19,18 @@ import type { CredentialStore } from './credential-store'
 import { loadIntegrationsConfig, writeIntegrationEntry } from './integration-config'
 
 /**
+ * The live-dispatch seam a per-integration connector plugs into (spec §4.1).
+ * The registry's `invokeAction`/`subscribe` delegate to the connector registered
+ * for an id via `registerConnector`; absent one they reject/no-op legibly. This
+ * seam is SHARED with the Shopify sibling branch (each registers its own
+ * connector) — the two identical copies consolidate to one on merge.
+ */
+export interface LiveConnector {
+  invokeAction(actionId: string, params: Record<string, unknown>): Promise<unknown>
+  subscribe(triggerId: string, handler: (event: unknown) => void): () => void
+}
+
+/**
  * The single source of truth sub-projects 2 (Flow Engine) and 3 (Flow Canvas)
  * read. Holds the three descriptors and derives each one's SYNCHRONOUS,
  * presence-derived `status()` from config.json (§4.4) + `CredentialStore`
@@ -27,14 +39,17 @@ import { loadIntegrationsConfig, writeIntegrationEntry } from './integration-con
  * booleans, never bytes.
  *
  * `invokeAction`/`subscribe` are the pinned contract's live-dispatch surface;
- * in the foundation slice they are minimal stubs (a legible "not wired yet"
- * throw / a no-op unsubscribe) with the exact signatures sub-project 2 aligns
- * to — live connector calls are deferred to Phase 2.
+ * they delegate to the `LiveConnector` registered for an id via
+ * `registerConnector` (spec §4.1). With no connector registered they reject /
+ * no-op with a legible "no live connector wired" message, preserving the
+ * signatures sub-project 2 aligns to.
  */
 export class IntegrationRegistry implements IntegrationRegistryContract {
   private readonly creds: CredentialStore
   private readonly configFile: string
   private readonly notify?: (message: string) => void
+  /** Live connectors keyed by id; populated at wiring time (spec §4.1). */
+  private readonly connectors = new Map<IntegrationId, LiveConnector>()
 
   constructor(deps: {
     creds: CredentialStore
@@ -61,28 +76,34 @@ export class IntegrationRegistry implements IntegrationRegistryContract {
     return { ...def, status: (): IntegrationStatus => this.deriveStatus(id).status }
   }
 
+  /** Register the live connector that services an integration id (spec §4.1). */
+  registerConnector(id: IntegrationId, connector: LiveConnector): void {
+    this.connectors.set(id, connector)
+  }
+
   invokeAction(
     id: IntegrationId,
     actionId: string,
     params: Record<string, unknown>
   ): Promise<unknown> {
-    void params // deferred: the Flow Engine (sub-project 2) supplies real params
-    return Promise.reject(
-      new Error(
-        `The "${id}" action "${actionId}" isn't wired yet — live connector dispatch lands in the ` +
-          `Flow Engine (sub-project 2). For now the Integrations Hub only stores, validates, and ` +
-          `reports credential state.`
+    const connector = this.connectors.get(id)
+    if (!connector) {
+      return Promise.reject(
+        new Error(
+          `No live connector is wired for "${id}" — the "${actionId}" action can't run. ` +
+            `Its connector module registers at startup.`
+        )
       )
-    )
+    }
+    return connector.invokeAction(actionId, params)
   }
 
   subscribe(id: IntegrationId, triggerId: string, handler: (event: unknown) => void): () => void {
-    // No live trigger stream in the foundation slice — a no-op unsubscribe keeps
-    // the pinned signature so sub-project 2 can align.
-    void id
-    void triggerId
-    void handler
-    return () => {}
+    const connector = this.connectors.get(id)
+    // No connector registered ⇒ a no-op unsubscribe (nothing to tear down),
+    // keeping the pinned signature so the trigger-subscriber can align.
+    if (!connector) return () => {}
+    return connector.subscribe(triggerId, handler)
   }
 
   // ── Renderer DTOs (secret VALUES excluded by construction) ──────────────────

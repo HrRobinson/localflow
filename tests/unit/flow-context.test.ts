@@ -234,6 +234,19 @@ describe('evalCondition', () => {
       expect(evalCondition({ b: true }, cond('b', 'gt', 0))).toBe(false)
       expect(evalCondition({ arr: [1, 2] }, cond('arr', 'lt', 5))).toBe(false)
     })
+    it('fails closed on a numeric/non-numeric MISMATCH — never a lexicographic escape hatch', () => {
+      // 'N' > '1' lexically would say true; a non-numeric field against a
+      // numeric threshold must be incomparable, not a lucky string win.
+      expect(evalCondition({ order: { total: 'N/A' } }, cond('order.total', 'gt', 100))).toBe(false)
+      // "Infinity" is not `looksNumeric` (Number.isFinite(Infinity) is false),
+      // so it must not beat 100 via a lexicographic "I" > "1" fallback either.
+      expect(evalCondition({ order: { total: 'Infinity' } }, cond('order.total', 'gt', 100))).toBe(
+        false
+      )
+      // '' < '0' lexically would say true; empty string vs a numeric value
+      // must be incomparable, not a false "less than" pass.
+      expect(evalCondition({ order: { total: '' } }, cond('order.total', 'lt', 0))).toBe(false)
+    })
   })
 
   describe('contains', () => {

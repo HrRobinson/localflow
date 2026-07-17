@@ -121,13 +121,24 @@ function valuesEqual(left: unknown, value: unknown): boolean {
 
 /** Numeric-preferring ordering compare. Returns -1/0/1, or `null` when the two
  *  sides are not comparable (e.g. an object/array/boolean `left`) — the caller
- *  maps `null` to a FALSE predicate, never a throw and never a NaN route. */
+ *  maps `null` to a FALSE predicate, never a throw and never a NaN route.
+ *
+ *  Fail-closed on a numeric/non-numeric MISMATCH: if exactly one side "looks
+ *  numeric" (§ `looksNumeric`), the two are incomparable (`null`) rather than
+ *  falling back to a lexicographic string compare — that fallback let a
+ *  non-numeric field (e.g. `order.total: 'N/A'`) beat a numeric threshold
+ *  (`'N' > '1'` lexically) and route as if the gate passed. Only when BOTH
+ *  sides are non-numeric do we keep the intentional string compare (e.g.
+ *  ISO-date strings ordering lexically is valid). */
 function compareOrder(left: unknown, value: unknown): number | null {
-  if (looksNumeric(left) && looksNumeric(value)) {
+  const leftNumeric = looksNumeric(left)
+  const valueNumeric = looksNumeric(value)
+  if (leftNumeric && valueNumeric) {
     const a = Number(left)
     const b = Number(value)
     return a < b ? -1 : a > b ? 1 : 0
   }
+  if (leftNumeric !== valueNumeric) return null
   const strOrNum = (v: unknown): boolean => typeof v === 'string' || typeof v === 'number'
   if (strOrNum(left) && strOrNum(value)) {
     const a = String(left)

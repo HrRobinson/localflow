@@ -21,6 +21,7 @@ import { PersistenceNoticeRouter } from './persistence-notice'
 import { resolveDescriptors } from '../shared/integrations'
 import { isFlowGraph, summarize, type FlowGraph, type FlowSummary } from '../shared/flows'
 import { loadFlows, saveFlows } from './flow/flow-store'
+import { BUILTIN_FLOW_TEMPLATES } from './flow/builtin-templates'
 import { loadFlowsConfig } from './flow/flow-config'
 import { FlowEngine } from './flow/flow-engine'
 import { PaneDriver } from './flow/pane-driver'
@@ -1085,6 +1086,9 @@ app.whenReady().then(async () => {
   // descriptors). Flows persist through the engine's real flows.json store, and
   // `flow:run` drives the REAL engine (see the construction block above).
   ipcMain.handle('integration:list', () => resolveDescriptors(integrationRegistry.descriptors()))
+  // The built-in flow templates are config-as-code (a constant) — read-only,
+  // secret-free, no store round-trip. Seeds the canvas "New from template" picker.
+  ipcMain.handle('flow:list-templates', () => BUILTIN_FLOW_TEMPLATES)
   ipcMain.handle('flow:list', () => listFlowSummaries())
   ipcMain.handle('flow:get', (_e, id: string) => getFlow(id))
   ipcMain.handle('flow:save', (_e, graph: FlowGraph) => {

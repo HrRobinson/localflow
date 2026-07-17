@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AgentId, AgentInfo, SessionInfo } from '../../../shared/types'
 import type { SessionTemplate } from '../../../shared/templates'
+import type { FlowSummary } from '../../../shared/flows'
 import { AGENT_PRESETS } from '../../../shared/agents'
 import { normalizeHttpUrl } from '../../../shared/urls'
 import { deriveOverviewStats } from '../lib/overview-stats'
@@ -25,6 +26,8 @@ interface Props {
   onCreate: (agentId: AgentId, customCommand?: string) => void
   onCreateBrowser: (url: string) => void
   onCreateTemplate: (name: string) => void
+  /** Launches a saved flow (a "worker") through the engine via runFlow(id). */
+  onLaunchWorker: (flowId: string) => void
   onOpen: (id: string) => void
   onResume: (id: string, fresh: boolean) => void
   onDelete: (id: string) => void
@@ -63,11 +66,20 @@ export default function Landing({
   onOpenSettings,
   onCreateBrowser,
   onCreateTemplate,
+  onLaunchWorker,
   onJumpToAttention
 }: Props): React.JSX.Element {
   const [agents, setAgents] = useState<AgentInfo[] | null>(null)
   const [templates, setTemplates] = useState<SessionTemplate[] | null>(null)
-  const [selectedAgentId, setSelectedAgentId] = useState<AgentId | 'browser'>(AGENT_PRESETS[0].id)
+  // A "worker" is a saved FlowGraph run by the engine — a launcher pseudo-value
+  // alongside 'browser', NOT an AgentPreset (a worker is a graph, not a pty
+  // binary). Its picker is fed by the existing listFlows IPC and launches via
+  // the existing runFlow — zero new IPC.
+  const [selectedAgentId, setSelectedAgentId] = useState<AgentId | 'browser' | 'worker'>(
+    AGENT_PRESETS[0].id
+  )
+  const [workerFlows, setWorkerFlows] = useState<FlowSummary[] | null>(null)
+  const [selectedWorkerId, setSelectedWorkerId] = useState('')
   // Async agent detection resolves a fallback default (below), but it must not
   // clobber a selection the user already made while detection was in flight.
   const userPickedAgent = useRef(false)
@@ -150,19 +162,40 @@ export default function Landing({
     }
   }, [])
 
+  // Lazily fetch saved flows the first time the user picks "Worker…" — keeps
+  // the launcher list fresh without polling. Independent of agent detection.
+  useEffect(() => {
+    if (selectedAgentId !== 'worker') return
+    let cancelled = false
+    void window.localflow.listFlows().then((list) => {
+      if (!cancelled) setWorkerFlows(list)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [selectedAgentId])
+
   const selectedAgent =
-    selectedAgentId === 'browser' ? null : (agents?.find((a) => a.id === selectedAgentId) ?? null)
+    selectedAgentId === 'browser' || selectedAgentId === 'worker'
+      ? null
+      : (agents?.find((a) => a.id === selectedAgentId) ?? null)
   const launchable =
     selectedAgentId === 'browser'
       ? normalizeHttpUrl(urlInput) !== null
-      : selectedAgentId === 'custom'
-        ? customCommand.trim().length > 0
-        : !!selectedAgent?.resolvedPath
+      : selectedAgentId === 'worker'
+        ? selectedWorkerId !== '' && (workerFlows?.some((f) => f.id === selectedWorkerId) ?? false)
+        : selectedAgentId === 'custom'
+          ? customCommand.trim().length > 0
+          : !!selectedAgent?.resolvedPath
 
   const create = (): void => {
     if (!launchable) return
     if (selectedAgentId === 'browser') {
       onCreateBrowser(normalizeHttpUrl(urlInput)!)
+      return
+    }
+    if (selectedAgentId === 'worker') {
+      onLaunchWorker(selectedWorkerId)
       return
     }
     onCreate(selectedAgentId, selectedAgentId === 'custom' ? customCommand.trim() : undefined)
@@ -420,7 +453,7 @@ export default function Landing({
               value={selectedAgentId}
               onChange={(e) => {
                 userPickedAgent.current = true
-                setSelectedAgentId(e.target.value as AgentId | 'browser')
+                setSelectedAgentId(e.target.value as AgentId | 'browser' | 'worker')
               }}
               aria-label="Agent"
             >
@@ -431,6 +464,7 @@ export default function Landing({
               ))}
               <option value="custom">Custom command…</option>
               <option value="browser">Browser…</option>
+              <option value="worker">Worker…</option>
             </select>
             {selectedAgentId === 'custom' && (
               <input
@@ -454,7 +488,27 @@ export default function Landing({
                 }}
               />
             )}
+            {selectedAgentId === 'worker' && workerFlows !== null && workerFlows.length > 0 && (
+              <select
+                className="worker-select bg-surface-raised focus:border-working flex-1 rounded-md border border-white/[0.14] px-2.5 py-2 text-[13px] text-gray-200 outline-none"
+                value={selectedWorkerId}
+                onChange={(e) => setSelectedWorkerId(e.target.value)}
+                aria-label="Worker"
+              >
+                <option value="">Choose a saved worker…</option>
+                {workerFlows.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
+          {selectedAgentId === 'worker' && workerFlows !== null && workerFlows.length === 0 && (
+            <p className="m-0 text-[13px] text-gray-500">
+              No saved workers yet — build and save a flow in Flows, then launch it here.
+            </p>
+          )}
           <button
             className="new-session w-full cursor-pointer rounded-md border-0 bg-blue-600 py-2 text-center text-[13px] text-white disabled:cursor-default disabled:opacity-[0.45]"
             disabled={!launchable}

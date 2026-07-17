@@ -18,11 +18,36 @@ export interface FlowNode {
   config: Record<string, unknown>
   position: { x: number; y: number }
 }
+/**
+ * The richer branch condition owned by the conditions sibling branch. Pinned
+ * VERBATIM so this branch and the conditions branch agree byte-for-byte on the
+ * shape (consolidation dedupes this single declaration). A `field` is compared
+ * against `value` under `op`; `value` is omitted for the nullary ops
+ * (`exists` / `truthy`).
+ */
+export interface FlowEdgeCondition {
+  field: string
+  op: 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte' | 'contains' | 'exists' | 'truthy'
+  value?: unknown
+}
 export interface FlowEdge {
   id: string
   from: string
   to: string
-  condition?: { field: string; equals: unknown }
+  /**
+   * Router branch condition. TRANSITIONAL widening while the richer-conditions
+   * sibling branch lands: the legacy `{ field, equals }` and the pinned
+   * `FlowEdgeCondition { field, op, value? }` coexist here. Every reader keys on
+   * `.field`; `equals` (legacy) and `op`/`value` (rich) are each optional so
+   * BOTH forms type-check without touching any reader/writer. CONSOLIDATION:
+   * collapse this to `FlowEdgeCondition` once the conditions branch merges.
+   */
+  condition?: {
+    field: string
+    equals?: unknown
+    op?: FlowEdgeCondition['op']
+    value?: unknown
+  }
 }
 export interface FlowGraph {
   id: string

@@ -8,9 +8,13 @@ import {
   connect,
   disconnect,
   setEdgeCondition,
-  renameFlow
+  renameFlow,
+  instantiateTemplate,
+  dedupeName
 } from '../../src/renderer/src/lib/flow-reducer'
 import type { FlowGraph } from '../../src/shared/flows'
+import type { FlowTemplate } from '../../src/shared/flow-templates'
+import { isFlowGraph } from '../../src/shared/flows'
 
 // Deterministic id generator (the SessionManager injected-clock pattern): each
 // call returns the next id in the list, so tests assert exact ids.
@@ -156,5 +160,127 @@ describe('flow-reducer: renameFlow', () => {
     const g1 = renameFlow(g0, 'Renamed')
     expect(g1.name).toBe('Renamed')
     expect(g0.name).toBe('My flow')
+  })
+})
+
+describe('flow-reducer: dedupeName', () => {
+  it('returns the base name unchanged when no collision', () => {
+    expect(dedupeName('Ecom Support Worker', [])).toBe('Ecom Support Worker')
+    expect(dedupeName('Ecom Support Worker', ['Other'])).toBe('Ecom Support Worker')
+  })
+  it('appends " 2" on the first collision', () => {
+    expect(dedupeName('Ecom Support Worker', ['Ecom Support Worker'])).toBe('Ecom Support Worker 2')
+  })
+  it('finds the next free counter across a run of collisions', () => {
+    expect(dedupeName('Worker', ['Worker', 'Worker 2', 'Worker 3'])).toBe('Worker 4')
+  })
+  it('fills a gap in the counter sequence', () => {
+    // "Worker 2" is free even though "Worker" and "Worker 3" are taken.
+    expect(dedupeName('Worker', ['Worker', 'Worker 3'])).toBe('Worker 2')
+  })
+})
+
+describe('flow-reducer: instantiateTemplate', () => {
+  // A template with placeholder ids, a router condition (new shape), and nested
+  // config — the shape instantiate must deep-clone + re-id.
+  const template = (): FlowTemplate => ({
+    id: 'ecom-support',
+    name: 'Ecom Support Worker',
+    description: 'x',
+    category: 'ecom',
+    graph: {
+      id: 't-graph',
+      name: 'Ecom Support Worker',
+      nodes: [
+        {
+          id: 't-trigger',
+          type: 'trigger',
+          integration: 'email',
+          ref: 'inbound',
+          config: {},
+          position: { x: 1, y: 2 }
+        },
+        {
+          id: 't-agent',
+          type: 'agent',
+          ref: 'claude',
+          config: { prompt: 'draft a reply', nested: { a: 1 } },
+          position: { x: 3, y: 4 }
+        },
+        { id: 't-router', type: 'router', config: {}, position: { x: 5, y: 6 } }
+      ],
+      edges: [
+        { id: 't-e1', from: 't-trigger', to: 't-agent' },
+        {
+          id: 't-e2',
+          from: 't-agent',
+          to: 't-router',
+          condition: { field: 'order.total', op: 'gt', value: 100 }
+        }
+      ]
+    }
+  })
+
+  const opts = (existingNames: string[] = []): Parameters<typeof instantiateTemplate>[1] => ({
+    flowId: 'flow-1',
+    nodeIdFn: seqIds('n1', 'n2', 'n3'),
+    edgeIdFn: seqIds('e1', 'e2'),
+    existingNames
+  })
+
+  it('mints the injected flow id + a fresh, de-duplicated name', () => {
+    const g = instantiateTemplate(template(), opts(['Ecom Support Worker']))
+    expect(g.id).toBe('flow-1')
+    expect(g.name).toBe('Ecom Support Worker 2')
+  })
+
+  it('re-mints every node id from nodeIdFn (no template placeholder survives)', () => {
+    const g = instantiateTemplate(template(), opts())
+    expect(g.nodes.map((n) => n.id)).toEqual(['n1', 'n2', 'n3'])
+    expect(g.nodes.some((n) => n.id.startsWith('t-'))).toBe(false)
+  })
+
+  it('re-mints edge ids and re-maps from/to consistently to the new node ids', () => {
+    const g = instantiateTemplate(template(), opts())
+    expect(g.edges.map((e) => e.id)).toEqual(['e1', 'e2'])
+    expect(g.edges).toEqual([
+      { id: 'e1', from: 'n1', to: 'n2' },
+      { id: 'e2', from: 'n2', to: 'n3', condition: { field: 'order.total', op: 'gt', value: 100 } }
+    ])
+  })
+
+  it('produces a structurally valid FlowGraph', () => {
+    const g = instantiateTemplate(template(), opts())
+    expect(isFlowGraph(g)).toBe(true)
+  })
+
+  it('preserves node types, integration + ref refs, and counts exactly', () => {
+    const t = template()
+    const g = instantiateTemplate(t, opts())
+    expect(g.nodes.map((n) => n.type)).toEqual(['trigger', 'agent', 'router'])
+    expect(g.nodes.length).toBe(t.graph.nodes.length)
+    expect(g.edges.length).toBe(t.graph.edges.length)
+    expect(g.nodes[0]).toMatchObject({ integration: 'email', ref: 'inbound' })
+    expect(g.nodes[1]).toMatchObject({ ref: 'claude' })
+  })
+
+  it('DEEP-CLONES config/condition/position — mutating the result never touches the template', () => {
+    const t = template()
+    const g = instantiateTemplate(t, opts())
+    // Mutate every nested clone on the result.
+    ;(g.nodes[1].config.nested as { a: number }).a = 999
+    g.nodes[0].position.x = -1
+    ;(g.edges[1].condition as { value: number }).value = -1
+    // The template constant is untouched.
+    expect((t.graph.nodes[1].config.nested as { a: number }).a).toBe(1)
+    expect(t.graph.nodes[0].position.x).toBe(1)
+    expect(t.graph.edges[1].condition).toEqual({ field: 'order.total', op: 'gt', value: 100 })
+  })
+
+  it('does not mutate the input template', () => {
+    const t = template()
+    const before = JSON.stringify(t)
+    instantiateTemplate(t, opts())
+    expect(JSON.stringify(t)).toBe(before)
   })
 })

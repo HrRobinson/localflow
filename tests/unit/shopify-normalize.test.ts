@@ -111,7 +111,12 @@ describe('webhook → trigger payload', () => {
       id: 5123456789,
       email: 'buyer@example.com'
     })
-    expect(payload).toEqual({ orderId: '5123456789', email: 'buyer@example.com', flagged: false, topic: 'orders/create' })
+    expect(payload).toEqual({
+      orderId: '5123456789',
+      email: 'buyer@example.com',
+      flagged: false,
+      topic: 'orders/create'
+    })
     expect(triggersForTopic('orders/create', payload!)).toEqual(['order.created'])
   })
 
@@ -129,6 +134,8 @@ describe('webhook → trigger payload', () => {
 
   it('drops an unknown/unsupported topic (no run seeds)', () => {
     expect(webhookToPayload('orders/create', {})).toBeNull()
-    expect(triggersForTopic('orders/edited', { orderId: '1', flagged: false, topic: 'orders/edited' })).toEqual([])
+    expect(
+      triggersForTopic('orders/edited', { orderId: '1', flagged: false, topic: 'orders/edited' })
+    ).toEqual([])
   })
 })

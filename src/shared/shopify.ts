@@ -32,8 +32,7 @@ export const SHOPIFY_MUTATION_ACTION_IDS = [
 ] as const
 
 export type ShopifyActionId =
-  | (typeof SHOPIFY_READ_ACTION_IDS)[number]
-  | (typeof SHOPIFY_MUTATION_ACTION_IDS)[number]
+  (typeof SHOPIFY_READ_ACTION_IDS)[number] | (typeof SHOPIFY_MUTATION_ACTION_IDS)[number]
 
 // ── Normalized status enums (lowercase — exact `eq`/`ne` compares, §10) ──────
 

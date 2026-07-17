@@ -60,6 +60,8 @@ import { startGuardAuditTail } from './guard-audit-tail'
 import { CredentialStore } from './integrations/credential-store'
 import { IntegrationRegistry } from './integrations/integration-registry'
 import type { IntegrationId } from '../shared/integrations'
+import { ShopifyConnector } from './shopify/shopify-connector'
+import { ShopifyAdminApi, deferredLiveTransport } from './shopify/shopify-admin'
 import { startGuardSeenWatch } from './guard-seen-watch'
 import type { ActivityEntry, GrantInfo, OperatorStatus } from '../shared/operator'
 import type { Capabilities } from '../shared/git'
@@ -223,16 +225,30 @@ app.whenReady().then(async () => {
   // Integrations Hub: the CredentialStore (secrets → safeStorage-encrypted
   // sidecar, never config.json) + the registry the flow engine/canvas consume.
   // safeStorage is Electron's real backend; the seam keeps it unit-testable.
+  const integrationCreds = new CredentialStore({
+    backend: safeStorage,
+    file: join(userData, 'integration-secrets.enc')
+  })
   const integrationRegistry = new IntegrationRegistry({
-    creds: new CredentialStore({
-      backend: safeStorage,
-      file: join(userData, 'integration-secrets.enc')
-    }),
+    creds: integrationCreds,
     configFile: join(userData, 'config.json'),
     // Config-boundary notices (e.g. a secret hand-edited into config.json) —
     // legible, actionable, and NEVER carrying the secret value itself.
     notify: (message) => console.warn(`integrations: ${message}`)
   })
+
+  // Shopify connector: the FIRST live dispatch behind the registry seam (§4.3).
+  // The live GraphQL transport and the webhook tunnel are DEFERRED (foundation
+  // slice) — `deferredLiveTransport` fails loudly if an action reaches the wire,
+  // so the descriptor, normalizer, and mock-tested dispatch are all in place
+  // while real Shopify calls land in a later phase. No webhook server is started
+  // (cloud ingress deferred); trigger subscriptions register but stay dormant.
+  integrationRegistry.registerConnector(
+    'shopify',
+    new ShopifyConnector({
+      api: new ShopifyAdminApi({ transport: deferredLiveTransport('shopify') })
+    })
+  )
 
   const themesDir = join(userData, 'themes')
   ensureThemesSeeded(themesDir)

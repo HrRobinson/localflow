@@ -183,7 +183,10 @@ export class ShopifyAdminApi implements ShopifyApi {
     }
     const data = await this.execute(REFUND_CREATE_MUTATION, { input: refundInput })
     const payload = requirePayload(data, 'refundCreate')
-    const refund = (payload.refund ?? {}) as { id?: string; totalRefundedSet?: { shopMoney?: RawMoney } }
+    const refund = (payload.refund ?? {}) as {
+      id?: string
+      totalRefundedSet?: { shopMoney?: RawMoney }
+    }
     return {
       refundId: refund.id ? bareId(refund.id) : '',
       amount: Number(refund.totalRefundedSet?.shopMoney?.amount ?? input.amount ?? 0)
@@ -236,7 +239,8 @@ export class ShopifyAdminApi implements ShopifyApi {
           const avail = err.throttle?.currentlyAvailable ?? 0
           const rate = err.throttle?.restoreRate ?? 50
           throw new Error(
-            `Shopify throttled the request (cost bucket empty: ${avail} available, ${rate}/s restore) — retry in a moment.`
+            `Shopify throttled the request (cost bucket empty: ${avail} available, ${rate}/s restore) — retry in a moment.`,
+            { cause: err }
           )
         }
         throw err
@@ -275,10 +279,7 @@ export class ShopifyAdminApi implements ShopifyApi {
 }
 
 /** A mutation payload with a non-empty `userErrors[]` REJECTS verbatim (§6.2). */
-function requirePayload(
-  data: Record<string, unknown>,
-  field: string
-): Record<string, unknown> {
+function requirePayload(data: Record<string, unknown>, field: string): Record<string, unknown> {
   const payload = data[field]
   if (typeof payload !== 'object' || payload === null) {
     throw new Error(`Shopify returned no '${field}' result — the mutation may have been rejected.`)
@@ -295,9 +296,7 @@ function requirePayload(
 }
 
 function notFound(kind: 'order' | 'customer', id: string): Error {
-  return new Error(
-    `Shopify has no ${kind} '${id}' (it may be from another store or was deleted).`
-  )
+  return new Error(`Shopify has no ${kind} '${id}' (it may be from another store or was deleted).`)
 }
 
 function orderGid(id: string): string {

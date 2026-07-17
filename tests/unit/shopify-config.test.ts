@@ -15,7 +15,11 @@ describe('parseShopifyConfig', () => {
   it('defaults the api version and carries the optional webhook url', () => {
     const cfg = parseShopifyConfig({
       enabled: true,
-      values: { shopDomain: 'store.myshopify.com', environment: 3, webhookUrl: 'https://t/shopify/webhook' }
+      values: {
+        shopDomain: 'store.myshopify.com',
+        environment: 3,
+        webhookUrl: 'https://t/shopify/webhook'
+      }
     })
     expect(cfg).toEqual({
       shopDomain: 'store.myshopify.com',
@@ -28,6 +32,8 @@ describe('parseShopifyConfig', () => {
   it('returns null when required refs are absent (connector stays dormant)', () => {
     expect(parseShopifyConfig(undefined)).toBeNull()
     expect(parseShopifyConfig({ enabled: true, values: { environment: 3 } })).toBeNull()
-    expect(parseShopifyConfig({ enabled: true, values: { shopDomain: 'x.myshopify.com' } })).toBeNull()
+    expect(
+      parseShopifyConfig({ enabled: true, values: { shopDomain: 'x.myshopify.com' } })
+    ).toBeNull()
   })
 })

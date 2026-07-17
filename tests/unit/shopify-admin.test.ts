@@ -30,7 +30,14 @@ describe('ShopifyAdminApi (real client over an injected transport)', () => {
     const api = new ShopifyAdminApi({
       transport: async () => ({
         status: 200,
-        body: { errors: [{ message: 'Access denied for refundCreate. Requires write_orders.', extensions: { code: 'ACCESS_DENIED' } }] }
+        body: {
+          errors: [
+            {
+              message: 'Access denied for refundCreate. Requires write_orders.',
+              extensions: { code: 'ACCESS_DENIED' }
+            }
+          ]
+        }
       })
     })
     await expect(api.refundCreate({ orderId: '42' })).rejects.toThrow(/write_orders/)
@@ -50,9 +57,7 @@ describe('ShopifyAdminApi (real client over an injected transport)', () => {
         }
       })
     })
-    await expect(api.refundCreate({ orderId: '42' })).rejects.toThrow(
-      /already been fully refunded/
-    )
+    await expect(api.refundCreate({ orderId: '42' })).rejects.toThrow(/already been fully refunded/)
   })
 
   it('retries on THROTTLED honoring the bucket, then resolves', async () => {
@@ -103,7 +108,9 @@ describe('MockShopifyApi (the test seam)', () => {
     const mock = new MockShopifyApi({
       refundError: 'Order has already been fully refunded'
     })
-    await expect(mock.refundCreate({ orderId: '42' })).rejects.toThrow(/already been fully refunded/)
+    await expect(mock.refundCreate({ orderId: '42' })).rejects.toThrow(
+      /already been fully refunded/
+    )
   })
 
   it('rejects an unknown order id legibly (not a bare 404)', async () => {

@@ -1,7 +1,10 @@
 import { describe, it, expect, vi } from 'vitest'
 import { ShopifyConnector } from '../../src/main/shopify/shopify-connector'
 import { MockShopifyApi, type RawOrderNode } from '../../src/main/shopify/shopify-admin'
-import type { ShopifyWebhookDelivery, ShopifyWebhookServer } from '../../src/main/shopify/shopify-webhook-server'
+import type {
+  ShopifyWebhookDelivery,
+  ShopifyWebhookServer
+} from '../../src/main/shopify/shopify-webhook-server'
 
 const orderNode: RawOrderNode = {
   id: 'gid://shopify/Order/42',
@@ -14,7 +17,10 @@ const orderNode: RawOrderNode = {
 }
 
 /** A fake webhook server whose onEvent sink we can drive directly. */
-function fakeWebhook(): { server: ShopifyWebhookServer; deliver: (d: ShopifyWebhookDelivery) => void } {
+function fakeWebhook(): {
+  server: ShopifyWebhookServer
+  deliver: (d: ShopifyWebhookDelivery) => void
+} {
   let sink: ((d: ShopifyWebhookDelivery) => void) | null = null
   return {
     server: {
@@ -45,7 +51,10 @@ describe('ShopifyConnector — action dispatch', () => {
   })
 
   it('refundOrder maps params to refundCreate and resolves its result', async () => {
-    const api = new MockShopifyApi({ orders: { '42': orderNode }, refund: { refundId: 'r9', amount: 42.5 } })
+    const api = new MockShopifyApi({
+      orders: { '42': orderNode },
+      refund: { refundId: 'r9', amount: 42.5 }
+    })
     const c = new ShopifyConnector({ api })
     const out = await c.invokeAction('refundOrder', { id: '42', amount: '42.5', restock: 'true' })
     expect(out).toEqual({ refundId: 'r9', amount: 42.5 })
@@ -84,7 +93,12 @@ describe('ShopifyConnector — trigger subscription', () => {
     const seeds: unknown[] = []
     const off = c.subscribe('order.created', (e) => seeds.push(e))
     deliver({ webhookId: 'wh-1', topic: 'orders/create', payload: { id: 42, email: 'b@x.com' } })
-    expect(seeds).toEqual([{ eventId: 'wh-1', payload: { orderId: '42', email: 'b@x.com', flagged: false, topic: 'orders/create' } }])
+    expect(seeds).toEqual([
+      {
+        eventId: 'wh-1',
+        payload: { orderId: '42', email: 'b@x.com', flagged: false, topic: 'orders/create' }
+      }
+    ])
     off()
     deliver({ webhookId: 'wh-2', topic: 'orders/create', payload: { id: 43 } })
     expect(seeds).toHaveLength(1) // unsubscribed

@@ -52,13 +52,18 @@ describe('the admin token never leaks into any connector output or error', () =>
       const header = `X-Shopify-Access-Token: ${store.adminToken()}`
       expect(header).toContain(TOKEN)
       if (query.includes('order(')) {
-        return { status: 200, body: { data: { order: { id: 'gid://shopify/Order/42', name: '#1001' } } } }
+        return {
+          status: 200,
+          body: { data: { order: { id: 'gid://shopify/Order/42', name: '#1001' } } }
+        }
       }
       // A failure path: a mutation the store refuses.
       return {
         status: 200,
         body: {
-          data: { refundCreate: { refund: null, userErrors: [{ field: ['orderId'], message: 'nope' }] } }
+          data: {
+            refundCreate: { refund: null, userErrors: [{ field: ['orderId'], message: 'nope' }] }
+          }
         }
       }
     }

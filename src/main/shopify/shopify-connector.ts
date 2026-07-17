@@ -2,7 +2,12 @@ import { randomUUID } from 'node:crypto'
 import type { LiveConnector } from '../../shared/integrations'
 import { SHOPIFY_TRIGGER_IDS, type ShopifyTriggerId } from '../../shared/shopify'
 import type { ShopifyApi } from './shopify-admin'
-import { normalizeCustomer, normalizeOrder, triggersForTopic, webhookToPayload } from './shopify-normalize'
+import {
+  normalizeCustomer,
+  normalizeOrder,
+  triggersForTopic,
+  webhookToPayload
+} from './shopify-normalize'
 import type { ShopifyWebhookDelivery, ShopifyWebhookServer } from './shopify-webhook-server'
 
 /**

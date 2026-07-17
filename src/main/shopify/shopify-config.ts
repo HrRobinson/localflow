@@ -37,7 +37,9 @@ const isNonEmptyString = (v: unknown): v is string => typeof v === 'string' && v
  * dormant — the opt-in posture). The hub has already type-checked each field;
  * this only applies Shopify coercion and the version default.
  */
-export function parseShopifyConfig(entry: IntegrationConfigEntry | undefined): ShopifyConfig | null {
+export function parseShopifyConfig(
+  entry: IntegrationConfigEntry | undefined
+): ShopifyConfig | null {
   if (!entry) return null
   const values = entry.values
   if (!isNonEmptyString(values.shopDomain)) return null

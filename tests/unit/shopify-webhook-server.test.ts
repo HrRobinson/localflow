@@ -34,7 +34,11 @@ async function post(
 
 const hdrs = (
   body: string,
-  { topic = 'orders/create', id = 'wh-1', sig = sign(body) }: Partial<{ topic: string; id: string; sig: string }> = {}
+  {
+    topic = 'orders/create',
+    id = 'wh-1',
+    sig = sign(body)
+  }: Partial<{ topic: string; id: string; sig: string }> = {}
 ): Record<string, string> => ({
   'content-type': 'application/json',
   'x-shopify-hmac-sha256': sig,

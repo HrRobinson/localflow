@@ -151,7 +151,10 @@ export function webhookToPayload(topic: string, raw: unknown): ShopifyTriggerPay
  * additionally fires `order.flagged` when the payload is high-risk; an
  * unsupported topic fires nothing (§6.1).
  */
-export function triggersForTopic(topic: string, payload: ShopifyTriggerPayload): ShopifyTriggerId[] {
+export function triggersForTopic(
+  topic: string,
+  payload: ShopifyTriggerPayload
+): ShopifyTriggerId[] {
   if (topic === 'orders/create') {
     return payload.flagged ? ['order.created', 'order.flagged'] : ['order.created']
   }

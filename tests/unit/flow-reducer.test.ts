@@ -15,6 +15,14 @@ import {
 import type { FlowGraph } from '../../src/shared/flows'
 import type { FlowTemplate } from '../../src/shared/flow-templates'
 import { isFlowGraph } from '../../src/shared/flows'
+import { BUILTIN_FLOW_TEMPLATES } from '../../src/main/flow/builtin-templates'
+
+// A counter-backed id generator for the real built-ins (whose node/edge counts
+// vary): each call returns a fresh, unique id with the given prefix.
+function counterIds(prefix: string): () => string {
+  let i = 0
+  return () => `${prefix}-${i++}`
+}
 
 // Deterministic id generator (the SessionManager injected-clock pattern): each
 // call returns the next id in the list, so tests assert exact ids.
@@ -300,4 +308,40 @@ describe('flow-reducer: instantiateTemplate', () => {
     instantiateTemplate(t, opts())
     expect(JSON.stringify(t)).toBe(before)
   })
+})
+
+describe('flow-reducer: instantiateTemplate over the REAL built-ins', () => {
+  // Fold-in: exercise every shipped BUILTIN_FLOW_TEMPLATE (not a synthetic
+  // fixture) through instantiate, proving (a) the source constant is never
+  // mutated and (b) the result is a valid FlowGraph carrying only fresh ids.
+  it.each(BUILTIN_FLOW_TEMPLATES.map((t) => [t.id, t] as const))(
+    'instantiates %s without mutating the source and yields a valid, freshly-ided graph',
+    (_id, tmpl) => {
+      const before = JSON.stringify(tmpl)
+      const g = instantiateTemplate(tmpl, {
+        flowId: 'flow-real',
+        nodeIdFn: counterIds('node'),
+        edgeIdFn: counterIds('edge'),
+        existingNames: []
+      })
+
+      // (a) The shipped constant is untouched.
+      expect(JSON.stringify(tmpl)).toBe(before)
+
+      // (b) A valid FlowGraph with the injected flow id.
+      expect(isFlowGraph(g)).toBe(true)
+      expect(g.id).toBe('flow-real')
+      expect(g.nodes.length).toBe(tmpl.graph.nodes.length)
+      expect(g.edges.length).toBe(tmpl.graph.edges.length)
+
+      // (c) Every id is freshly minted — no template placeholder survives, and
+      // ids are unique within the instantiated graph.
+      const sourceNodeIds = new Set(tmpl.graph.nodes.map((n) => n.id))
+      for (const n of g.nodes) expect(sourceNodeIds.has(n.id)).toBe(false)
+      const nodeIds = g.nodes.map((n) => n.id)
+      expect(new Set(nodeIds).size).toBe(nodeIds.length)
+      const edgeIds = g.edges.map((e) => e.id)
+      expect(new Set(edgeIds).size).toBe(edgeIds.length)
+    }
+  )
 })

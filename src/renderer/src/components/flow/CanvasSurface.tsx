@@ -23,20 +23,9 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import FlowNodeCard, { type FlowNodeData, type FlowRFNode } from './FlowNodeCard'
-import type { FlowEdge, FlowGraph, FlowNodeType, ValidationResult } from '../../../../shared/flows'
+import type { FlowGraph, FlowNodeType, ValidationResult } from '../../../../shared/flows'
 import type { IntegrationId } from '../../../../shared/integrations'
-
-/** A compact edge label for a branch condition, handling both the new
- *  `{ field, op, value }` shape (unary ops omit the value) and the legacy
- *  `{ field, equals }` shape. */
-function edgeConditionLabel(c: FlowEdge['condition']): string | undefined {
-  if (!c) return undefined
-  if ('op' in c) {
-    if (c.op === 'exists' || c.op === 'truthy') return `${c.field} ${c.op}`
-    return `${c.field} ${c.op} ${String(c.value ?? '')}`
-  }
-  return `${c.field} = ${String(c.equals)}`
-}
+import { edgeConditionLabel } from '../../lib/edge-label'
 
 /** The drag payload a palette row writes into the HTML5 dataTransfer. */
 export interface PaletteDragPayload {

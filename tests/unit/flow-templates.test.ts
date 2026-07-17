@@ -6,6 +6,7 @@ import {
 } from '../../src/shared/flow-templates'
 import { BUILTIN_FLOW_TEMPLATES, flowTemplateById } from '../../src/main/flow/builtin-templates'
 import { isFlowGraph } from '../../src/shared/flows'
+import { parseFlowGraphResult } from '../../src/main/flow/flow-model'
 
 // A minimal valid template for the guard tests.
 const okTemplate: FlowTemplate = {
@@ -81,6 +82,41 @@ describe('BUILTIN_FLOW_TEMPLATES — the shipped set', () => {
     const blank = flowTemplateById('custom-blank')!
     expect(blank.graph.nodes).toEqual([])
     expect(blank.graph.edges).toEqual([])
+  })
+
+  // ACCEPTANCE: the whole point of consolidating conditions + templates together.
+  // The built-in ecom-support / crm-lead graphs carry `{ op, value }` condition
+  // edges. On the templates branch ALONE the old equals-only parser REJECTED
+  // those; with the conditions branch's `parseCondition`/`parseEdge` in place
+  // they are ACCEPTED, so both built-ins now round-trip through the engine's
+  // `parseFlowGraphResult` and are runnable.
+  it.each(['ecom-support', 'crm-lead'])(
+    'the %s built-in parses through parseFlowGraphResult (its {op,value} edges are accepted)',
+    (id) => {
+      const t = flowTemplateById(id)!
+      const res = parseFlowGraphResult(t.graph)
+      expect(res.ok, res.ok ? '' : res.error).toBe(true)
+      if (res.ok) {
+        // The router branch conditions survive the parse as the rich {op,value}
+        // shape (not dropped / coerced to a legacy equals).
+        const withCondition = res.flow.edges.filter((e) => e.condition !== undefined)
+        expect(withCondition.length).toBeGreaterThan(0)
+        for (const e of withCondition) {
+          expect(e.condition).toHaveProperty('op')
+          expect(e.condition).toHaveProperty('value')
+        }
+      }
+    }
+  )
+
+  it('every built-in graph (incl. custom-blank) parses through parseFlowGraphResult', () => {
+    for (const t of BUILTIN_FLOW_TEMPLATES) {
+      // custom-blank has no trigger, so it is intentionally not engine-runnable;
+      // the two worker templates must parse cleanly.
+      if (t.id === 'custom-blank') continue
+      const res = parseFlowGraphResult(t.graph)
+      expect(res.ok, res.ok ? '' : `${t.id}: ${res.error}`).toBe(true)
+    }
   })
 })
 

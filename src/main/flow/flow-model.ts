@@ -1,4 +1,11 @@
-import type { FlowEdge, FlowGraph, FlowNode, FlowNodeType } from '../../shared/flows'
+import type {
+  FlowConditionOp,
+  FlowEdge,
+  FlowGraph,
+  FlowNode,
+  FlowNodeType
+} from '../../shared/flows'
+import { VALID_CONDITION_OPS } from '../../shared/flows'
 import type { IntegrationId } from '../../shared/integrations'
 
 /**
@@ -58,6 +65,39 @@ function parseNode(
   return { ok: true, node }
 }
 
+/**
+ * STRICT validation of an edge condition. Accepts EITHER the new
+ * `{ field, op, value? }` shape (op ∈ VALID_CONDITION_OPS) OR the legacy
+ * `{ field, equals }` shape, preserving whichever it received (no on-disk
+ * migration, §10.3). Anything else — non-object, non-string field, or an unknown
+ * op with no legacy `equals` — is a loud, specific reject naming the edge.
+ */
+function parseCondition(
+  raw: unknown,
+  edgeId: string
+): { ok: true; condition: FlowEdge['condition'] } | { ok: false; error: string } {
+  if (!isObject(raw) || typeof raw.field !== 'string')
+    return {
+      ok: false,
+      error: `edge '${edgeId}' has an ill-typed condition (need { field: string, op } or legacy { field, equals })`
+    }
+  if (typeof raw.op === 'string' || (!('equals' in raw) && raw.op !== undefined)) {
+    if (typeof raw.op !== 'string' || !VALID_CONDITION_OPS.includes(raw.op as FlowConditionOp))
+      return {
+        ok: false,
+        error: `edge '${edgeId}' has an invalid condition op '${String(raw.op)}' (expected one of ${VALID_CONDITION_OPS.join(', ')})`
+      }
+    const condition: FlowEdge['condition'] = { field: raw.field, op: raw.op as FlowConditionOp }
+    if ('value' in raw) condition.value = raw.value
+    return { ok: true, condition }
+  }
+  if ('equals' in raw) return { ok: true, condition: { field: raw.field, equals: raw.equals } }
+  return {
+    ok: false,
+    error: `edge '${edgeId}' has an ill-typed condition (need { field: string, op } or legacy { field, equals })`
+  }
+}
+
 function parseEdge(
   raw: unknown,
   index: number
@@ -69,16 +109,9 @@ function parseEdge(
     return { ok: false, error: `edge '${raw.id}' has a non-string from/to` }
   const edge: FlowEdge = { id: raw.id, from: raw.from, to: raw.to }
   if (raw.condition !== undefined) {
-    if (
-      !isObject(raw.condition) ||
-      typeof raw.condition.field !== 'string' ||
-      !('equals' in raw.condition)
-    )
-      return {
-        ok: false,
-        error: `edge '${raw.id}' has an ill-typed condition (need { field: string, equals })`
-      }
-    edge.condition = { field: raw.condition.field, equals: raw.condition.equals }
+    const cond = parseCondition(raw.condition, raw.id)
+    if (!cond.ok) return { ok: false, error: cond.error }
+    edge.condition = cond.condition
   }
   return { ok: true, edge }
 }

@@ -67,7 +67,12 @@ describe('normalizeOrder', () => {
 describe('normalizeCustomer', () => {
   it('maps a registered customer record', () => {
     expect(
-      normalizeCustomer({ id: 7, email: 'ada@example.com', first_name: 'Ada', last_name: 'Lovelace' })
+      normalizeCustomer({
+        id: 7,
+        email: 'ada@example.com',
+        first_name: 'Ada',
+        last_name: 'Lovelace'
+      })
     ).toEqual({ id: '7', email: 'ada@example.com', name: 'Ada Lovelace' })
   })
 

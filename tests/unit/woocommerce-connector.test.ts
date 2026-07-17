@@ -30,7 +30,13 @@ const webhookEvent = (): WcWebhookEvent => ({
   topic: 'order.created',
   deliveryId: 'del-9',
   payload: {
-    order: { id: '4242', total: 129.95, currency: 'USD', status: 'processing', email: 'ada@example.com' },
+    order: {
+      id: '4242',
+      total: 129.95,
+      currency: 'USD',
+      status: 'processing',
+      email: 'ada@example.com'
+    },
     customer: { id: '7', email: 'ada@example.com', name: 'Ada Lovelace' }
   }
 })
@@ -43,13 +49,21 @@ describe('WoocommerceConnector — read dispatch', () => {
     })
     expect(t.requests[0].url).toBe('https://shop.example.com/wp-json/wc/v3/orders/4242')
     expect(out).toEqual({
-      order: { id: '4242', total: 129.95, currency: 'USD', status: 'processing', email: 'ada@example.com' },
+      order: {
+        id: '4242',
+        total: 129.95,
+        currency: 'USD',
+        status: 'processing',
+        email: 'ada@example.com'
+      },
       customer: { id: '7', email: 'ada@example.com', name: 'Ada Lovelace' }
     })
   })
 
   it('getCustomer → GET customers/<id>, normalized customer view', async () => {
-    const t = new MockWcTransport(() => ok({ id: 7, email: 'ada@example.com', first_name: 'Ada', last_name: 'Lovelace' }))
+    const t = new MockWcTransport(() =>
+      ok({ id: 7, email: 'ada@example.com', first_name: 'Ada', last_name: 'Lovelace' })
+    )
     const out = await new WoocommerceConnector({ api: buildApi(t) }).invokeAction('getCustomer', {
       customerId: '7'
     })
@@ -90,7 +104,9 @@ describe('WoocommerceConnector — gated mutation dispatch', () => {
 
   it('cancelOrder → PUT orders/<id> { status: cancelled }', async () => {
     const t = new MockWcTransport(() => ok({ id: 4242 }))
-    await new WoocommerceConnector({ api: buildApi(t) }).invokeAction('cancelOrder', { orderId: '4242' })
+    await new WoocommerceConnector({ api: buildApi(t) }).invokeAction('cancelOrder', {
+      orderId: '4242'
+    })
     expect(t.requests[0].method).toBe('PUT')
     expect(JSON.parse(t.requests[0].body ?? '{}')).toEqual({ status: 'cancelled' })
   })
@@ -187,7 +203,9 @@ describe('WoocommerceConnector — no secret leak', () => {
     let errMsg = ''
     try {
       const bad = new MockWcTransport(() => ({ status: 401, body: '' }))
-      await new WoocommerceConnector({ api: buildApi(bad) }).invokeAction('getOrder', { orderId: '1' })
+      await new WoocommerceConnector({ api: buildApi(bad) }).invokeAction('getOrder', {
+        orderId: '1'
+      })
     } catch (e) {
       errMsg = (e as Error).message
     }

@@ -60,6 +60,8 @@ import { startGuardAuditTail } from './guard-audit-tail'
 import { CredentialStore } from './integrations/credential-store'
 import { IntegrationRegistry } from './integrations/integration-registry'
 import type { IntegrationId } from '../shared/integrations'
+import { WcApi } from './woocommerce/wc-api'
+import { WoocommerceConnector } from './woocommerce/woocommerce-connector'
 import { startGuardSeenWatch } from './guard-seen-watch'
 import type { ActivityEntry, GrantInfo, OperatorStatus } from '../shared/operator'
 import type { Capabilities } from '../shared/git'
@@ -233,6 +235,32 @@ app.whenReady().then(async () => {
     // legible, actionable, and NEVER carrying the secret value itself.
     notify: (message) => console.warn(`integrations: ${message}`)
   })
+
+  // WooCommerce connector: register the LiveConnector into the registry so the
+  // flow engine can dispatch its actions/triggers (spec §4.1). The offline
+  // foundation ships the connector + its dispatch table + the SSRF/HMAC/normalize
+  // core; the LIVE transport and the CredentialStore reveal binding are DEFERRED
+  // (spec §11) — until they land, any live call rejects with a legible message
+  // rather than silently no-opping. `storeUrl` is a public placeholder so the
+  // SSRF guard passes and the deferred-reveal message is what surfaces.
+  const deferredWooError = (): never => {
+    throw new Error(
+      'WooCommerce live dispatch is not wired yet — the offline connector core is in place, ' +
+        'but real HTTP + credential access land in a follow-up (spec §11).'
+    )
+  }
+  integrationRegistry.registerConnector(
+    'woocommerce',
+    new WoocommerceConnector({
+      api: new WcApi({
+        transport: {
+          send: () => Promise.reject(new Error('WooCommerce HTTP transport is deferred.'))
+        },
+        storeUrl: 'https://woocommerce.deferred.invalid',
+        reveal: deferredWooError
+      })
+    })
+  )
 
   const themesDir = join(userData, 'themes')
   ensureThemesSeeded(themesDir)

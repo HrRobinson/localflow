@@ -60,7 +60,12 @@ function blockedIpv6(host: string): string | null {
   // fc00::/7 → first hextet 0xfc00–0xfdff (fc/fd prefix).
   if (head.startsWith('fc') || head.startsWith('fd')) return 'unique-local (fc00::/7)'
   // fe80::/10 → link-local.
-  if (head.startsWith('fe8') || head.startsWith('fe9') || head.startsWith('fea') || head.startsWith('feb'))
+  if (
+    head.startsWith('fe8') ||
+    head.startsWith('fe9') ||
+    head.startsWith('fea') ||
+    head.startsWith('feb')
+  )
     return 'link-local (fe80::/10)'
   return null
 }

@@ -80,7 +80,10 @@ describe('startWcWebhookServer', () => {
     server = await startWcWebhookServer({ secret: SECRET })
     server.onEvent((e) => received.push(e))
     const body = orderBody()
-    const res = await post(body, { [WC_SIGNATURE_HEADER]: sign(body, 'wrong'), [WC_TOPIC_HEADER]: 'order.created' })
+    const res = await post(body, {
+      [WC_SIGNATURE_HEADER]: sign(body, 'wrong'),
+      [WC_TOPIC_HEADER]: 'order.created'
+    })
     await flush()
     expect(res.status).toBe(401)
     expect(received).toHaveLength(0)
@@ -112,7 +115,10 @@ describe('startWcWebhookServer', () => {
     server.onEvent((e) => received.push(e))
     const huge = 'x'.repeat(WC_MAX_BODY_BYTES + 1)
     const body = JSON.stringify({ id: 1, pad: huge })
-    const res = await post(body, { [WC_SIGNATURE_HEADER]: sign(body), [WC_TOPIC_HEADER]: 'order.created' })
+    const res = await post(body, {
+      [WC_SIGNATURE_HEADER]: sign(body),
+      [WC_TOPIC_HEADER]: 'order.created'
+    })
     await flush()
     expect(res.status).toBe(413)
     expect(received).toHaveLength(0)
@@ -123,7 +129,10 @@ describe('startWcWebhookServer', () => {
     server = await startWcWebhookServer({ secret: SECRET })
     server.onEvent((e) => received.push(e))
     const body = 'definitely not json'
-    const res = await post(body, { [WC_SIGNATURE_HEADER]: sign(body), [WC_TOPIC_HEADER]: 'order.created' })
+    const res = await post(body, {
+      [WC_SIGNATURE_HEADER]: sign(body),
+      [WC_TOPIC_HEADER]: 'order.created'
+    })
     await flush()
     expect(res.status).toBe(400)
     expect(received).toHaveLength(0)
@@ -142,7 +151,10 @@ describe('startWcWebhookServer', () => {
       throw new Error('handler blew up')
     })
     const body = JSON.stringify({ id: 'order-body-marker', billing: { email: 'x@y.z' } })
-    await post(body, { [WC_SIGNATURE_HEADER]: sign(body, 'wrong'), [WC_TOPIC_HEADER]: 'order.created' })
+    await post(body, {
+      [WC_SIGNATURE_HEADER]: sign(body, 'wrong'),
+      [WC_TOPIC_HEADER]: 'order.created'
+    })
     await post(body, { [WC_SIGNATURE_HEADER]: sign(body), [WC_TOPIC_HEADER]: 'order.created' })
     await flush()
     const joined = logs.join('\n')

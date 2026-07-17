@@ -169,7 +169,10 @@ export class WcApi {
       // Non-retryable 4xx — map to the actionable §8 message and stop.
       throw mapClientError(res, path)
     }
-    throw lastErr ?? new Error(`WooCommerce request to ${host} failed after ${this.maxRetries} retries.`)
+    throw (
+      lastErr ??
+      new Error(`WooCommerce request to ${host} failed after ${this.maxRetries} retries.`)
+    )
   }
 
   /** Build the Basic-auth header from the keychain secrets. The key/secret are

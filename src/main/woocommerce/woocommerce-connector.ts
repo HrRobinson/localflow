@@ -41,7 +41,9 @@ function requireId(params: Record<string, unknown>, key: string, label: string):
   const raw = params[key] ?? params.id
   if (typeof raw === 'string' && raw.length > 0) return raw
   if (typeof raw === 'number' && Number.isFinite(raw)) return String(raw)
-  throw new Error(`WooCommerce ${label} needs a non-empty ${key} — none was supplied to the action.`)
+  throw new Error(
+    `WooCommerce ${label} needs a non-empty ${key} — none was supplied to the action.`
+  )
 }
 
 export class WoocommerceConnector implements LiveConnector {

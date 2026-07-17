@@ -34,6 +34,7 @@ import type {
   SetSecretResult
 } from './integrations'
 import type { FlowGraph, FlowSummary } from './flows'
+import type { FlowTemplate } from './flow-templates'
 
 export interface LocalflowApi {
   /**
@@ -236,6 +237,12 @@ export interface LocalflowApi {
    * canvas reads only this resolved-descriptor seam.
    */
   listIntegrationDescriptors(): Promise<ResolvedIntegrationDescriptor[]>
+  /**
+   * The built-in flow templates (config-as-code, read-only) that seed the
+   * "New from template" picker. Carries only integration refs + non-secret
+   * node config — never a credential. Mirrors `listTemplates`.
+   */
+  listFlowTemplates(): Promise<FlowTemplate[]>
   /** All saved flows as lightweight summaries (Flow Canvas list view). */
   listFlows(): Promise<FlowSummary[]>
   /** Full flow graph by id; null if unknown/unreadable/corrupt. */

@@ -153,6 +153,7 @@ const api: LocalflowApi = {
   clearIntegrationSecret: (id: IntegrationId, key?: string) =>
     ipcRenderer.invoke('integrations:clearSecret', id, key),
   listIntegrationDescriptors: () => ipcRenderer.invoke('integration:list'),
+  listFlowTemplates: () => ipcRenderer.invoke('flow:list-templates'),
   listFlows: () => ipcRenderer.invoke('flow:list'),
   getFlow: (id: string) => ipcRenderer.invoke('flow:get', id),
   saveFlow: (graph: FlowGraph) => ipcRenderer.invoke('flow:save', graph),

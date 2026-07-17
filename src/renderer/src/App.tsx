@@ -260,6 +260,17 @@ export default function App(): React.JSX.Element {
       await refresh()
     }
   }
+  // Launches a saved worker (a FlowGraph) through the engine via the existing
+  // runFlow IPC — no pane is opened; the engine produces a run. Surfaces the
+  // engine's legible result (run id, or its real error) as a notice.
+  const launchWorker = async (flowId: string): Promise<void> => {
+    const res = await window.localflow.runFlow(flowId)
+    setConsoleNotice(
+      res.ok
+        ? `Worker handed to the engine — run ${res.runId} started.`
+        : `Couldn't launch that worker — ${res.error}`
+    )
+  }
   // Adds a companion pane next to `sourceId` (main derives cwd/environment
   // from the source's own record — never trusted from here). Closes the
   // picker regardless of outcome; a null result (unknown source, invalid
@@ -989,6 +1000,7 @@ export default function App(): React.JSX.Element {
             onCreate={(agentId, cmd) => void createSession(agentId, cmd)}
             onCreateBrowser={(url) => void createBrowser(url)}
             onCreateTemplate={(name) => void createTemplate(name)}
+            onLaunchWorker={(flowId) => void launchWorker(flowId)}
             onOpen={openSession}
             onResume={(id, fresh) => void restart(id, fresh)}
             onDelete={(id) => void deleteSession(id)}

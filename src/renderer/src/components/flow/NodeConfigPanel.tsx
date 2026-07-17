@@ -1,8 +1,67 @@
-import type { FlowEdge, FlowNode } from '../../../../shared/flows'
+import type { FlowConditionOp, FlowEdge, FlowEdgeCondition, FlowNode } from '../../../../shared/flows'
+import { VALID_CONDITION_OPS } from '../../../../shared/flows'
 import type { IntegrationId, ResolvedIntegrationDescriptor } from '../../../../shared/integrations'
 
 /** The terminal agents an `agent` node may spawn (OPERATOR_TERMINAL_AGENTS). */
 const TERMINAL_AGENTS = ['claude', 'codex', 'gemini'] as const
+
+/** Human labels for the op dropdown, in the pinned op order. */
+const OP_LABELS: Record<FlowConditionOp, string> = {
+  eq: '= equals',
+  ne: '≠ not equals',
+  gt: '> greater than',
+  gte: '≥ at least',
+  lt: '< less than',
+  lte: '≤ at most',
+  contains: 'contains',
+  exists: 'exists',
+  truthy: 'is truthy'
+}
+
+/** Unary ops test the field alone and ignore `value` (the value input is hidden). */
+const UNARY_OPS: ReadonlySet<FlowConditionOp> = new Set<FlowConditionOp>(['exists', 'truthy'])
+
+/** Read a possibly-legacy edge/gate condition into editor fields (legacy
+ *  `{ field, equals }` surfaces as op `eq`). */
+function readCondition(c: FlowEdge['condition']): {
+  field: string
+  op: FlowConditionOp
+  value: string
+} {
+  if (!c) return { field: '', op: 'eq', value: '' }
+  if ('op' in c) return { field: c.field, op: c.op, value: c.value === undefined ? '' : String(c.value) }
+  return { field: c.field, op: 'eq', value: c.equals === undefined ? '' : String(c.equals) }
+}
+
+/** Build the canonical new-shape condition, omitting `value` for unary ops. */
+function buildCondition(field: string, op: FlowConditionOp, value: string): FlowEdgeCondition {
+  return UNARY_OPS.has(op) ? { field, op } : { field, op, value }
+}
+
+function OpSelect({
+  value,
+  testId,
+  onChange
+}: {
+  value: FlowConditionOp
+  testId: string
+  onChange: (op: FlowConditionOp) => void
+}): React.JSX.Element {
+  return (
+    <select
+      className={inputCls}
+      value={value}
+      data-config-field={testId}
+      onChange={(e) => onChange(e.target.value as FlowConditionOp)}
+    >
+      {VALID_CONDITION_OPS.map((op) => (
+        <option key={op} value={op}>
+          {OP_LABELS[op]}
+        </option>
+      ))}
+    </select>
+  )
+}
 
 interface Props {
   node: FlowNode
@@ -13,10 +72,7 @@ interface Props {
     configPatch: Record<string, unknown>,
     fields?: { integration?: IntegrationId; ref?: string }
   ) => void
-  onSetEdgeCondition: (
-    edgeId: string,
-    condition: { field: string; equals: unknown } | undefined
-  ) => void
+  onSetEdgeCondition: (edgeId: string, condition: FlowEdgeCondition | undefined) => void
   onOpenIntegrations: () => void
 }
 
@@ -200,7 +256,8 @@ function GateForm({
   onUpdateConfig
 }: Pick<Props, 'node' | 'onUpdateConfig'>): React.JSX.Element {
   const manual = node.config.manual === true || node.config.condition === undefined
-  const condition = (node.config.condition ?? {}) as { field?: string; equals?: unknown }
+  const { field, op, value } = readCondition(node.config.condition as FlowEdge['condition'])
+  const setCond = (next: FlowEdgeCondition): void => onUpdateConfig({ condition: next })
   return (
     <div className="flex flex-col gap-3">
       <div>
@@ -212,7 +269,7 @@ function GateForm({
           onChange={(e) =>
             e.target.value === 'manual'
               ? onUpdateConfig({ manual: true, condition: undefined })
-              : onUpdateConfig({ manual: false, condition: { field: '', equals: '' } })
+              : onUpdateConfig({ manual: false, condition: buildCondition('', 'eq', '') })
           }
         >
           <option value="manual">Manual approval (needs-you)</option>
@@ -220,23 +277,24 @@ function GateForm({
         </select>
       </div>
       {!manual && (
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2">
           <input
             className={inputCls}
             placeholder="field"
-            value={condition.field ?? ''}
+            value={field}
             data-config-field="gate-field"
-            onChange={(e) => onUpdateConfig({ condition: { ...condition, field: e.target.value } })}
+            onChange={(e) => setCond(buildCondition(e.target.value, op, value))}
           />
-          <input
-            className={inputCls}
-            placeholder="equals"
-            value={typeof condition.equals === 'string' ? condition.equals : ''}
-            data-config-field="gate-equals"
-            onChange={(e) =>
-              onUpdateConfig({ condition: { ...condition, equals: e.target.value } })
-            }
-          />
+          <OpSelect value={op} testId="gate-op" onChange={(nextOp) => setCond(buildCondition(field, nextOp, value))} />
+          {!UNARY_OPS.has(op) && (
+            <input
+              className={inputCls}
+              placeholder="value"
+              value={value}
+              data-config-field="gate-value"
+              onChange={(e) => setCond(buildCondition(field, op, e.target.value))}
+            />
+          )}
         </div>
       )}
     </div>
@@ -256,37 +314,37 @@ function RouterForm({
   }
   return (
     <div className="flex flex-col gap-3">
-      {outgoing.map((e) => (
-        <div key={e.id} className="rounded border border-white/10 p-2">
-          <div className="mb-1 text-[11px] text-gray-500">branch → {e.to}</div>
-          <div className="flex gap-2">
-            <input
-              className={inputCls}
-              placeholder="field"
-              value={e.condition?.field ?? ''}
-              data-config-field="router-field"
-              onChange={(ev) =>
-                onSetEdgeCondition(e.id, {
-                  field: ev.target.value,
-                  equals: e.condition?.equals ?? ''
-                })
-              }
-            />
-            <input
-              className={inputCls}
-              placeholder="equals"
-              value={typeof e.condition?.equals === 'string' ? e.condition.equals : ''}
-              data-config-field="router-equals"
-              onChange={(ev) =>
-                onSetEdgeCondition(e.id, {
-                  field: e.condition?.field ?? '',
-                  equals: ev.target.value
-                })
-              }
-            />
+      {outgoing.map((e) => {
+        const { field, op, value } = readCondition(e.condition)
+        return (
+          <div key={e.id} className="rounded border border-white/10 p-2">
+            <div className="mb-1 text-[11px] text-gray-500">branch → {e.to}</div>
+            <div className="flex flex-col gap-2">
+              <input
+                className={inputCls}
+                placeholder="field"
+                value={field}
+                data-config-field="router-field"
+                onChange={(ev) => onSetEdgeCondition(e.id, buildCondition(ev.target.value, op, value))}
+              />
+              <OpSelect
+                value={op}
+                testId="router-op"
+                onChange={(nextOp) => onSetEdgeCondition(e.id, buildCondition(field, nextOp, value))}
+              />
+              {!UNARY_OPS.has(op) && (
+                <input
+                  className={inputCls}
+                  placeholder="value"
+                  value={value}
+                  data-config-field="router-value"
+                  onChange={(ev) => onSetEdgeCondition(e.id, buildCondition(field, op, ev.target.value))}
+                />
+              )}
+            </div>
           </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }

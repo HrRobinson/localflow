@@ -8,7 +8,13 @@
 // clock, so tests are deterministic. Rejections (self-loop, duplicate edge,
 // unknown endpoint) return the SAME graph reference, so callers can cheaply
 // detect a no-op with `next === prev`.
-import type { FlowEdge, FlowGraph, FlowNode, FlowNodeType } from '../../../shared/flows'
+import type {
+  FlowEdge,
+  FlowEdgeCondition,
+  FlowGraph,
+  FlowNode,
+  FlowNodeType
+} from '../../../shared/flows'
 import type { IntegrationId } from '../../../shared/integrations'
 
 /** Monotonic id source, injected so tests can assert exact ids. */
@@ -105,7 +111,7 @@ export function disconnect(graph: FlowGraph, edgeId: string): FlowGraph {
 export function setEdgeCondition(
   graph: FlowGraph,
   edgeId: string,
-  condition: { field: string; equals: unknown } | undefined
+  condition: FlowEdgeCondition | undefined
 ): FlowGraph {
   return {
     ...graph,

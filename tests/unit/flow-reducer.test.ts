@@ -138,15 +138,32 @@ describe('flow-reducer: disconnect', () => {
 })
 
 describe('flow-reducer: setEdgeCondition', () => {
-  it('sets and clears the router condition on an edge', () => {
+  const routerGraph = (): FlowGraph => {
     let g = base()
     g = addNode(g, { type: 'router', position: { x: 0, y: 0 } }, seqIds('a'))
     g = addNode(g, { type: 'action', position: { x: 0, y: 0 } }, seqIds('b'))
-    g = connect(g, 'a', 'b', seqIds('e1'))
-    g = setEdgeCondition(g, 'e1', { field: 'priority', equals: 'high' })
-    expect(g.edges[0].condition).toEqual({ field: 'priority', equals: 'high' })
+    return connect(g, 'a', 'b', seqIds('e1'))
+  }
+
+  it('sets and clears a new-shape router condition on an edge', () => {
+    let g = routerGraph()
+    g = setEdgeCondition(g, 'e1', { field: 'order.total', op: 'gt', value: 100 })
+    expect(g.edges[0].condition).toEqual({ field: 'order.total', op: 'gt', value: 100 })
     g = setEdgeCondition(g, 'e1', undefined)
     expect(g.edges[0].condition).toBeUndefined()
+  })
+
+  it('stores a unary op condition without a value', () => {
+    let g = routerGraph()
+    g = setEdgeCondition(g, 'e1', { field: 'triage.category', op: 'exists' })
+    expect(g.edges[0].condition).toEqual({ field: 'triage.category', op: 'exists' })
+  })
+
+  it('returns a new graph and does not mutate the input', () => {
+    const g0 = routerGraph()
+    const g1 = setEdgeCondition(g0, 'e1', { field: 'x', op: 'eq', value: 'y' })
+    expect(g1).not.toBe(g0)
+    expect(g0.edges[0].condition).toBeUndefined()
   })
 })
 

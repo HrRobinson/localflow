@@ -15,7 +15,8 @@ describe('integration descriptors', () => {
       'slack',
       'http',
       'stripe',
-      'github'
+      'github',
+      'sentry'
     ])
     expect([...INTEGRATION_IDS]).toEqual([
       'linear',
@@ -28,7 +29,8 @@ describe('integration descriptors', () => {
       'slack',
       'http',
       'stripe',
-      'github'
+      'github',
+      'sentry'
     ])
   })
 
@@ -50,6 +52,9 @@ describe('integration descriptors', () => {
     // GitHub: the PAT, the App private key, and the webhook secret are keychain-
     // only; auth mode / App id / installation id / base URL / owner are refs (§5).
     expect(secretKeys('github')).toEqual(['pat', 'appPrivateKey', 'webhookSecret'])
+    // Sentry: bearer token + webhook Client Secret are keychain-only; the org/
+    // project slugs and self-host baseUrl are non-secret refs (spec §5, §8).
+    expect(secretKeys('sentry')).toEqual(['authToken', 'webhookSecret'])
   })
 
   it('marks the exact required fields per §7', () => {
@@ -83,6 +88,7 @@ describe('integration descriptors', () => {
     // and environment. The mode-specific secrets (pat / App triple) are
     // conditional on `authMode`, so `required: false` at the field level (§5).
     expect(requiredKeys('github')).toEqual(['authMode', 'webhookSecret', 'owner', 'environment'])
+    expect(requiredKeys('sentry')).toEqual(['authToken', 'webhookSecret', 'orgSlug', 'environment'])
   })
 
   it('leaves cloud action-only (no triggers) and keeps trigger/action ids stable', () => {
@@ -194,6 +200,19 @@ describe('integration descriptors', () => {
           'openPR',
           'dispatchWorkflow',
           'mergePR'
+        ]
+      },
+      {
+        id: 'sentry',
+        triggers: ['issue.created', 'issue.regressed', 'alert.triggered'],
+        actions: [
+          'getIssue',
+          'getEvent',
+          'searchIssues',
+          'resolveIssue',
+          'assignIssue',
+          'ignoreIssue',
+          'commentIssue'
         ]
       }
     ])

@@ -53,7 +53,8 @@ describe('IntegrationRegistry', () => {
       'slack',
       'http',
       'stripe',
-      'github'
+      'github',
+      'sentry'
     ])
     expect(typeof ds[0].status()).toBe('string')
   })

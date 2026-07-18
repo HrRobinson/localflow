@@ -11,6 +11,7 @@ import { PostHogCursorStore } from '../../src/main/posthog/posthog-cursor-store'
 import { runAction } from '../../src/main/flow/node-runners/action-runner'
 import { selectEdges } from '../../src/main/flow/context'
 import type { RunContext } from '../../src/main/flow/context'
+import { subscribeTriggers } from '../../src/main/flow/trigger-subscriber'
 import type { SeedEvent } from '../../src/main/flow/trigger-subscriber'
 import type { FlowGraph, FlowNode } from '../../src/shared/flows'
 
@@ -174,6 +175,40 @@ describe('offline PostHog product-analytics loop (spec §9)', () => {
     const outcome = await runAction({ registry }, rollbackNode, { flag: { flag: { id: 'ff-1' } } })
     expect(outcome.status).toBe('failed')
     expect(outcome.message).toMatch(/lacks \*write\* scope/)
+  })
+
+  it('the REAL subscribe path threads the trigger node config → a poll tick SEEDS a run', async () => {
+    // Drive the PRODUCTION wiring — `subscribeTriggers` → `registry.subscribe` →
+    // the connector — NOT `subscribeWithConfig` directly. The trigger NODE carries
+    // the poll's config (`insightId` + `threshold`); if that config is dropped on
+    // the way to the poller, `requireConfig`/`requireNumber` throw every tick and
+    // NO run is ever seeded. This asserts the config reaches the poller.
+    const api = new MockPostHogApi({
+      insight: { id: 'ins-1', name: 'checkout error rate', value: 1, unit: '%' }
+    })
+    const { registry, poller, advance } = buildEnv(api)
+
+    const triggerNode: FlowNode = {
+      id: 'trig',
+      type: 'trigger',
+      integration: 'posthog',
+      ref: 'insight.threshold',
+      config: { insightId: 'ins-1', threshold: 2 },
+      position: { x: 0, y: 0 }
+    }
+    const flow: FlowGraph = { id: 'f', name: 'poll flow', nodes: [triggerNode], edges: [] }
+
+    const seeds: SeedEvent[] = []
+    const unsub = subscribeTriggers(registry, [flow], (_flow, event) => seeds.push(event))
+
+    await poller.tick() // baseline 1% — no fire
+    api.data.insight = { id: 'ins-1', name: 'checkout error rate', value: 6, unit: '%' }
+    advance()
+    await poller.tick() // 1 → 6 crosses 2 — the run must be seeded
+
+    expect(seeds).toHaveLength(1)
+    expect(seeds[0].payload).toMatchObject({ insightId: 'ins-1', value: 6, threshold: 2 })
+    unsub()
   })
 
   it('refuses any PostHog node when the integration is not connected (before any call)', async () => {

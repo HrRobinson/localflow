@@ -4,7 +4,9 @@ import type { IntegrationRegistry } from '../../shared/integrations'
 
 /**
  * Wires each enabled flow's `trigger` node to the `IntegrationRegistry` trigger
- * stream: `registry.subscribe(node.integration, node.ref, handler)`. When a
+ * stream: `registry.subscribe(node.integration, node.ref, handler, node.config)`.
+ * The node's `config` is forwarded so a POLL connector (PostHog) knows WHAT to
+ * poll; webhook connectors ignore it. When a
  * matching event arrives, `onStart` is invoked to seed a run (design §3.1). A
  * trigger whose optional `config.filter` predicate doesn't match the event
  * simply starts NO run — that is the opt-in default (works with no flow
@@ -56,11 +58,19 @@ export function subscribeTriggers(
     // A trigger node names its integration + trigger id (`ref`). `cloud` is
     // action-only (empty triggers[]) so it never appears here — nothing to do.
     if (!trigger || !trigger.integration || !trigger.ref) continue
-    const unsub = registry.subscribe(trigger.integration, trigger.ref, (event) => {
-      const seed = coerceEvent(event)
-      if (!matchesFilter(trigger.config, seed.payload)) return
-      onStart(flow, seed)
-    })
+    const unsub = registry.subscribe(
+      trigger.integration,
+      trigger.ref,
+      (event) => {
+        const seed = coerceEvent(event)
+        if (!matchesFilter(trigger.config, seed.payload)) return
+        onStart(flow, seed)
+      },
+      // Forward the trigger NODE's config — a POLL connector (PostHog) needs it
+      // to know WHAT to poll (insightId / cohortId / threshold / event filter);
+      // webhook connectors ignore it.
+      trigger.config
+    )
     unsubs.push(unsub)
   }
   return () => {

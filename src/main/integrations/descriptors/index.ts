@@ -3,13 +3,17 @@ import { INTEGRATION_IDS } from '../../../shared/integrations'
 import { linearDescriptor } from './linear'
 import { emailDescriptor } from './email'
 import { cloudDescriptor } from './cloud'
+import { shopifyDescriptor } from '../../shopify/shopify-descriptor'
+import { woocommerceDescriptor } from './woocommerce'
 
-/** The three static descriptor defs, keyed by id. The registry composes the
- * full `IntegrationDescriptor` (attaching `status()`) from these. */
+/** The static descriptor defs, keyed by id. The registry composes the full
+ * `IntegrationDescriptor` (attaching `status()`) from these. */
 export const DESCRIPTOR_DEFS: Record<IntegrationId, IntegrationDescriptorDef> = {
   linear: linearDescriptor,
   email: emailDescriptor,
-  cloud: cloudDescriptor
+  cloud: cloudDescriptor,
+  shopify: shopifyDescriptor,
+  woocommerce: woocommerceDescriptor
 }
 
 /** In the pinned stable order (§11) sub-projects 2/3 rely on. */

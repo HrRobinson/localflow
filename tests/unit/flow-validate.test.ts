@@ -283,4 +283,61 @@ describe('flow-validate', () => {
     expect(cs).not.toContain('missing-config')
     expect(cs).not.toContain('integration-not-connected')
   })
+
+  const routerGraph = (condition: unknown): FlowGraph => ({
+    id: 'f',
+    name: 'x',
+    nodes: [
+      {
+        id: 't',
+        type: 'trigger',
+        integration: 'linear',
+        ref: 'issue.created',
+        config: { team: 'ENG' },
+        position: { x: 0, y: 0 }
+      },
+      { id: 'r', type: 'router', config: {}, position: { x: 0, y: 0 } },
+      { id: 'a', type: 'agent', config: { agentId: 'claude' }, position: { x: 0, y: 0 } }
+    ],
+    edges: [
+      { id: 'e1', from: 't', to: 'r' },
+      {
+        id: 'e2',
+        from: 'r',
+        to: 'a',
+        condition: condition as FlowGraph['edges'][number]['condition']
+      }
+    ]
+  })
+
+  it('warns (never errors) on a condition with an empty field', () => {
+    const res = validateFlow(routerGraph({ field: '', op: 'eq', value: 'x' }), registry)
+    const issue = res.issues.find((i) => i.code === 'incomplete-condition')
+    expect(issue).toBeDefined()
+    expect(issue!.severity).toBe('warning')
+    expect(issue!.edgeId).toBe('e2')
+    expect(issue!.message).toMatch(/a/i)
+    expect(res.ok).toBe(true)
+  })
+
+  it('warns on a binary op with a missing/blank value', () => {
+    const res = validateFlow(routerGraph({ field: 'order.total', op: 'gt', value: '' }), registry)
+    const issue = res.issues.find((i) => i.code === 'incomplete-condition')
+    expect(issue).toBeDefined()
+    expect(issue!.severity).toBe('warning')
+    expect(res.ok).toBe(true)
+  })
+
+  it('does NOT warn on a complete condition or a unary op with no value', () => {
+    expect(codes(routerGraph({ field: 'order.total', op: 'gt', value: 100 }))).not.toContain(
+      'incomplete-condition'
+    )
+    expect(codes(routerGraph({ field: 'triage.category', op: 'exists' }))).not.toContain(
+      'incomplete-condition'
+    )
+  })
+
+  it('does NOT warn on a complete legacy {field,equals} condition', () => {
+    expect(codes(routerGraph({ field: 'x', equals: 'bug' }))).not.toContain('incomplete-condition')
+  })
 })

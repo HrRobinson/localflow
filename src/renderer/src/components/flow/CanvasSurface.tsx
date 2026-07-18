@@ -25,6 +25,7 @@ import '@xyflow/react/dist/style.css'
 import FlowNodeCard, { type FlowNodeData, type FlowRFNode } from './FlowNodeCard'
 import type { FlowGraph, FlowNodeType, ValidationResult } from '../../../../shared/flows'
 import type { IntegrationId } from '../../../../shared/integrations'
+import { edgeConditionLabel } from '../../lib/edge-label'
 
 /** The drag payload a palette row writes into the HTML5 dataTransfer. */
 export interface PaletteDragPayload {
@@ -90,7 +91,7 @@ function SurfaceInner(props: Props): React.JSX.Element {
     id: e.id,
     source: e.from,
     target: e.to,
-    label: e.condition ? `${e.condition.field} = ${String(e.condition.equals)}` : undefined,
+    label: edgeConditionLabel(e.condition),
     'data-edge-id': e.id
   }))
 

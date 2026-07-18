@@ -18,11 +18,36 @@ export interface FlowNode {
   config: Record<string, unknown>
   position: { x: number; y: number }
 }
+/** The comparison operators an edge condition may use. `exists`/`truthy` are
+ *  unary (they ignore `value`); the rest are binary. Pinned VERBATIM — connectors
+ *  and flow templates consume this shape. */
+export type FlowConditionOp =
+  'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte' | 'contains' | 'exists' | 'truthy'
+
+/** A router/gate branch predicate: resolve `field` (a dotted path) against run
+ *  context and compare it to `value` under `op`. `value` is optional because
+ *  `exists`/`truthy` are unary. Evaluated purely + deterministically by
+ *  `evalCondition` (main/flow/context.ts). */
+export interface FlowEdgeCondition {
+  field: string
+  op: FlowConditionOp
+  value?: unknown
+}
+
+/** The legacy persisted condition shape (`{ field, equals }`). Still accepted on
+ *  disk and in older fixtures; normalized to `{ field, op:'eq', value: equals }`
+ *  at the single eval boundary (`normalizeCondition`). Kept in the union so
+ *  legacy documents type-check without an on-disk migration (design §2.1). */
+export interface LegacyEdgeCondition {
+  field: string
+  equals: unknown
+}
+
 export interface FlowEdge {
   id: string
   from: string
   to: string
-  condition?: { field: string; equals: unknown }
+  condition?: FlowEdgeCondition | LegacyEdgeCondition
 }
 export interface FlowGraph {
   id: string
@@ -36,6 +61,20 @@ export interface FlowGraph {
  *  boundary before it's cast to the narrower type — mirrors `VALID_AGENTS` in
  *  types.ts. */
 export const VALID_NODE_TYPES: FlowNodeType[] = ['trigger', 'agent', 'action', 'gate', 'router']
+
+/** Every `FlowConditionOp`, for validating an untrusted/persisted edge condition
+ *  at the boundary. Mirrors `VALID_NODE_TYPES`. */
+export const VALID_CONDITION_OPS: FlowConditionOp[] = [
+  'eq',
+  'ne',
+  'gt',
+  'gte',
+  'lt',
+  'lte',
+  'contains',
+  'exists',
+  'truthy'
+]
 
 /** Node types that source their `ref`/config from an integration descriptor. */
 export const INTEGRATION_NODE_TYPES: FlowNodeType[] = ['trigger', 'action']
@@ -53,6 +92,7 @@ export type ValidationCode =
   | 'missing-config'
   | 'integration-not-connected'
   | 'cycle'
+  | 'incomplete-condition'
 export interface ValidationIssue {
   severity: ValidationSeverity
   /** Badge target; absent = graph-level. */
@@ -101,10 +141,25 @@ function isNode(n: unknown): n is FlowNode {
   )
 }
 
+/** Permissive (structural, not semantic) check of an edge `condition`: when
+ *  present it must be an object with a string `field` and EITHER a valid `op`
+ *  (new shape) OR an `equals` key (legacy shape). A garbled condition is rejected
+ *  at the IPC save boundary; per-op semantic checks live in `flow-validate`. */
+function isValidConditionShape(c: unknown): boolean {
+  if (typeof c !== 'object' || c === null) return false
+  const o = c as Record<string, unknown>
+  if (typeof o.field !== 'string') return false
+  if (typeof o.op === 'string') return VALID_CONDITION_OPS.includes(o.op as FlowConditionOp)
+  return 'equals' in o
+}
+
 function isEdge(e: unknown): e is FlowEdge {
   if (typeof e !== 'object' || e === null) return false
   const o = e as Record<string, unknown>
-  return typeof o.id === 'string' && typeof o.from === 'string' && typeof o.to === 'string'
+  if (typeof o.id !== 'string' || typeof o.from !== 'string' || typeof o.to !== 'string')
+    return false
+  if (o.condition !== undefined && !isValidConditionShape(o.condition)) return false
+  return true
 }
 
 /** True when `g` is a structurally valid `FlowGraph` whose every edge endpoint

@@ -21,6 +21,7 @@ import { PersistenceNoticeRouter } from './persistence-notice'
 import { resolveDescriptors } from '../shared/integrations'
 import { isFlowGraph, summarize, type FlowGraph, type FlowSummary } from '../shared/flows'
 import { loadFlows, saveFlows } from './flow/flow-store'
+import { BUILTIN_FLOW_TEMPLATES } from './flow/builtin-templates'
 import { loadFlowsConfig } from './flow/flow-config'
 import { FlowEngine } from './flow/flow-engine'
 import { PaneDriver } from './flow/pane-driver'
@@ -60,6 +61,10 @@ import { startGuardAuditTail } from './guard-audit-tail'
 import { CredentialStore } from './integrations/credential-store'
 import { IntegrationRegistry } from './integrations/integration-registry'
 import type { IntegrationId } from '../shared/integrations'
+import { ShopifyConnector } from './shopify/shopify-connector'
+import { ShopifyAdminApi, deferredLiveTransport } from './shopify/shopify-admin'
+import { WcApi } from './woocommerce/wc-api'
+import { WoocommerceConnector } from './woocommerce/woocommerce-connector'
 import { startGuardSeenWatch } from './guard-seen-watch'
 import type { ActivityEntry, GrantInfo, OperatorStatus } from '../shared/operator'
 import type { Capabilities } from '../shared/git'
@@ -223,16 +228,56 @@ app.whenReady().then(async () => {
   // Integrations Hub: the CredentialStore (secrets → safeStorage-encrypted
   // sidecar, never config.json) + the registry the flow engine/canvas consume.
   // safeStorage is Electron's real backend; the seam keeps it unit-testable.
+  const integrationCreds = new CredentialStore({
+    backend: safeStorage,
+    file: join(userData, 'integration-secrets.enc')
+  })
   const integrationRegistry = new IntegrationRegistry({
-    creds: new CredentialStore({
-      backend: safeStorage,
-      file: join(userData, 'integration-secrets.enc')
-    }),
+    creds: integrationCreds,
     configFile: join(userData, 'config.json'),
     // Config-boundary notices (e.g. a secret hand-edited into config.json) —
     // legible, actionable, and NEVER carrying the secret value itself.
     notify: (message) => console.warn(`integrations: ${message}`)
   })
+
+  // Shopify connector: the FIRST live dispatch behind the registry seam (§4.3).
+  // The live GraphQL transport and the webhook tunnel are DEFERRED (foundation
+  // slice) — `deferredLiveTransport` fails loudly if an action reaches the wire,
+  // so the descriptor, normalizer, and mock-tested dispatch are all in place
+  // while real Shopify calls land in a later phase. No webhook server is started
+  // (cloud ingress deferred); trigger subscriptions register but stay dormant.
+  integrationRegistry.registerConnector(
+    'shopify',
+    new ShopifyConnector({
+      api: new ShopifyAdminApi({ transport: deferredLiveTransport('shopify') })
+    })
+  )
+
+  // WooCommerce connector: register the LiveConnector into the registry so the
+  // flow engine can dispatch its actions/triggers (spec §4.1). The offline
+  // foundation ships the connector + its dispatch table + the SSRF/HMAC/normalize
+  // core; the LIVE transport and the CredentialStore reveal binding are DEFERRED
+  // (spec §11) — until they land, any live call rejects with a legible message
+  // rather than silently no-opping. `storeUrl` is a public placeholder so the
+  // SSRF guard passes and the deferred-reveal message is what surfaces.
+  const deferredWooError = (): never => {
+    throw new Error(
+      'WooCommerce live dispatch is not wired yet — the offline connector core is in place, ' +
+        'but real HTTP + credential access land in a follow-up (spec §11).'
+    )
+  }
+  integrationRegistry.registerConnector(
+    'woocommerce',
+    new WoocommerceConnector({
+      api: new WcApi({
+        transport: {
+          send: () => Promise.reject(new Error('WooCommerce HTTP transport is deferred.'))
+        },
+        storeUrl: 'https://woocommerce.deferred.invalid',
+        reveal: deferredWooError
+      })
+    })
+  )
 
   const themesDir = join(userData, 'themes')
   ensureThemesSeeded(themesDir)
@@ -1085,6 +1130,9 @@ app.whenReady().then(async () => {
   // descriptors). Flows persist through the engine's real flows.json store, and
   // `flow:run` drives the REAL engine (see the construction block above).
   ipcMain.handle('integration:list', () => resolveDescriptors(integrationRegistry.descriptors()))
+  // The built-in flow templates are config-as-code (a constant) — read-only,
+  // secret-free, no store round-trip. Seeds the canvas "New from template" picker.
+  ipcMain.handle('flow:list-templates', () => BUILTIN_FLOW_TEMPLATES)
   ipcMain.handle('flow:list', () => listFlowSummaries())
   ipcMain.handle('flow:get', (_e, id: string) => getFlow(id))
   ipcMain.handle('flow:save', (_e, graph: FlowGraph) => {

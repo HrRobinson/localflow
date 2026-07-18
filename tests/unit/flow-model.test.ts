@@ -51,6 +51,46 @@ describe('parseFlowGraph — valid graphs', () => {
     expect(flow?.edges[0].condition).toEqual({ field: 'x.y', equals: 'bug' })
   })
 
+  it('accepts a new-shape op condition and round-trips it verbatim', () => {
+    const flow = parseFlowGraph(
+      graph({
+        edges: [
+          {
+            id: 'e1',
+            from: 't',
+            to: 'a',
+            condition: { field: 'order.total', op: 'gt', value: 100 }
+          }
+        ]
+      })
+    )
+    expect(flow?.edges[0].condition).toEqual({ field: 'order.total', op: 'gt', value: 100 })
+  })
+
+  it('accepts a unary op condition with no value', () => {
+    const flow = parseFlowGraph(
+      graph({
+        edges: [
+          { id: 'e1', from: 't', to: 'a', condition: { field: 'triage.category', op: 'exists' } }
+        ]
+      })
+    )
+    expect(flow?.edges[0].condition).toEqual({ field: 'triage.category', op: 'exists' })
+  })
+
+  it('rejects an unknown condition op with a loud, specific reason', () => {
+    const raw = graph({
+      edges: [{ id: 'e1', from: 't', to: 'a', condition: { field: 'x', op: 'bogus', value: 1 } }]
+    })
+    expect(parseFlowGraph(raw)).toBeNull()
+    const res = parseFlowGraphResult(raw)
+    expect(res.ok).toBe(false)
+    if (!res.ok) {
+      expect(res.error).toMatch(/invalid condition op/i)
+      expect(res.error).toMatch(/bogus/)
+    }
+  })
+
   it('rejects a trigger-disconnected cycle (each node has an inbound edge, none reachable)', () => {
     // b→c and c→b: both have an inbound edge (the weak orphan check would pass),
     // but neither is reachable from the trigger — the engine would never run

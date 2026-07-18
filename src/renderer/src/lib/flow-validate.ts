@@ -156,6 +156,43 @@ function hasValue(v: unknown): boolean {
   return true
 }
 
+/** Unary ops need no `value`; every other op is binary and requires one. */
+const UNARY_OPS = new Set(['exists', 'truthy'])
+
+/** Non-blocking issues for an incomplete edge condition: an empty `field`, or a
+ *  binary op with a missing/blank `value`. Handles both the new
+ *  `{ field, op, value }` and legacy `{ field, equals }` shapes. Warning only —
+ *  editing is never interrupted (mirrors the router-cycle posture). */
+function conditionIssues(graph: FlowGraph): ValidationIssue[] {
+  const issues: ValidationIssue[] = []
+  for (const e of graph.edges) {
+    const c = e.condition
+    if (!c) continue
+    const isNew = 'op' in c
+    const field = c.field
+    const op = isNew ? c.op : 'eq'
+    const value = isNew ? c.value : c.equals
+    if (!hasValue(field)) {
+      issues.push({
+        severity: 'warning',
+        edgeId: e.id,
+        code: 'incomplete-condition',
+        message: `Branch → ${e.to} has a condition with no field — set a field or remove the condition.`
+      })
+      continue
+    }
+    if (!UNARY_OPS.has(op) && !hasValue(value)) {
+      issues.push({
+        severity: 'warning',
+        edgeId: e.id,
+        code: 'incomplete-condition',
+        message: `Branch → ${e.to} has an operator but no value — set a value or remove the condition.`
+      })
+    }
+  }
+  return issues
+}
+
 export function validateFlow(
   graph: FlowGraph,
   registry: ResolvedIntegrationDescriptor[]
@@ -210,6 +247,9 @@ export function validateFlow(
 
   // integration node issues
   for (const n of graph.nodes) issues.push(...integrationIssues(n, registry))
+
+  // incomplete edge conditions (warning — never blocks save)
+  issues.push(...conditionIssues(graph))
 
   // cycles
   const { hasCycle, throughRouterOnly } = detectCycles(graph)

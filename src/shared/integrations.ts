@@ -8,7 +8,7 @@
 
 // ── Pinned contract (verbatim; #2/#3 consume these names) ────────────────────
 
-export type IntegrationId = 'linear' | 'email' | 'cloud'
+export type IntegrationId = 'linear' | 'email' | 'cloud' | 'shopify' | 'woocommerce'
 
 export interface IntegrationConfigField {
   key: string
@@ -44,6 +44,19 @@ export interface IntegrationRegistry {
   subscribe(id: IntegrationId, triggerId: string, handler: (event: unknown) => void): () => void
 }
 
+/**
+ * The MINIMAL live-dispatch seam a connector implements so the registry's pinned
+ * `invokeAction`/`subscribe` (today's stubs) can delegate to real Shopify/Linear/
+ * email/cloud work (§4.3). Per-integration (the id is already known when it is
+ * registered), so it drops the `id` argument the registry surface carries. Same
+ * FAILURE CONVENTION as the registry: an action signals failure by REJECTING the
+ * returned promise; a resolved value (incl. `undefined`) is success.
+ */
+export interface LiveConnector {
+  invokeAction(actionId: string, params: Record<string, unknown>): Promise<unknown>
+  subscribe(triggerId: string, handler: (event: unknown) => void): () => void
+}
+
 // ── Additions this sub-project owns (internal + UI DTOs) ─────────────────────
 
 /**
@@ -55,7 +68,13 @@ export interface IntegrationRegistry {
 export type IntegrationStatus = 'connected' | 'needs-config' | 'error' | 'disabled'
 
 /** Stable order for `descriptors()` / the tabs — the contract 2/3 rely on. */
-export const INTEGRATION_IDS: readonly IntegrationId[] = ['linear', 'email', 'cloud']
+export const INTEGRATION_IDS: readonly IntegrationId[] = [
+  'linear',
+  'email',
+  'cloud',
+  'shopify',
+  'woocommerce'
+]
 
 /**
  * The value type a non-secret config field carries in config.json. Drives

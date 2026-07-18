@@ -116,26 +116,28 @@ export class PostHogConnector implements LiveConnector {
 
   /**
    * Start a persisted-cursor reconcile poll for this trigger. The flow trigger
-   * node's `config` (insight id + threshold / cohort id / event filter) is read
-   * by the poller when it registers the subscription. Returns an unsubscribe
-   * that stops the poll. An unknown trigger id yields a no-op unsubscribe (the
-   * opt-in default — nothing polls), keeping the pinned `subscribe(): () => void`.
+   * node's `config` (insight id + threshold / cohort id / event filter) — forwarded
+   * by `subscribeTriggers` → `registry.subscribe` — is read by the poller when it
+   * registers the subscription. Returns an unsubscribe that stops the poll. An
+   * unknown trigger id yields a no-op unsubscribe (the opt-in default — nothing
+   * polls), keeping the pinned `subscribe(): () => void`.
    */
-  subscribe(triggerId: string, handler: (event: unknown) => void): () => void {
+  subscribe(
+    triggerId: string,
+    handler: (event: unknown) => void,
+    config: Record<string, unknown> = {}
+  ): () => void {
     if (!TRIGGER_IDS.has(triggerId)) return () => {}
-    // The trigger-subscriber passes the node's filter/config through; the poller
-    // reads the trigger-specific keys from it. `subscribe` is called by
-    // `subscribeTriggers`, which does not forward the node config today, so the
-    // connector accepts a config-carrying handler shim: the poller pulls config
-    // from the subscription registration. Here we register with an empty config
-    // baseline; live wiring passes the node config via `subscribeWithConfig`.
-    return this.subscribeWithConfig(triggerId as PostHogTriggerId, {}, (seed) => handler(seed))
+    // Pass the REAL trigger node config through to the poller — WITHOUT it, the
+    // poll's `requireConfig`/`requireNumber` throw every tick and no run is ever
+    // seeded (the backbone never fires).
+    return this.subscribeWithConfig(triggerId as PostHogTriggerId, config, (seed) => handler(seed))
   }
 
   /**
-   * The config-aware subscription the live wiring uses (the trigger-subscriber
-   * seam forwards the node config here). Kept separate from the pinned
-   * `subscribe` so the `LiveConnector` signature stays byte-identical.
+   * The config-aware subscription the poller registers against. `subscribe`
+   * delegates here after narrowing the trigger id; kept as a named seam so a
+   * test can drive a typed `PostHogTriggerId` + config directly.
    */
   subscribeWithConfig(
     triggerId: PostHogTriggerId,

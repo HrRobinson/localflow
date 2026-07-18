@@ -41,7 +41,12 @@ export interface IntegrationRegistry {
     actionId: string,
     params: Record<string, unknown>
   ): Promise<unknown>
-  subscribe(id: IntegrationId, triggerId: string, handler: (event: unknown) => void): () => void
+  subscribe(
+    id: IntegrationId,
+    triggerId: string,
+    handler: (event: unknown) => void,
+    config?: Record<string, unknown>
+  ): () => void
 }
 
 /**
@@ -54,7 +59,17 @@ export interface IntegrationRegistry {
  */
 export interface LiveConnector {
   invokeAction(actionId: string, params: Record<string, unknown>): Promise<unknown>
-  subscribe(triggerId: string, handler: (event: unknown) => void): () => void
+  /**
+   * Register a trigger subscription. The OPTIONAL `config` carries the flow
+   * trigger NODE's config — webhook connectors (Shopify/Woo/Linear/Stripe) don't
+   * need it and may keep the 2-arg form, but a POLL connector (PostHog) reads it
+   * to know WHAT to poll (insightId / cohortId / threshold / event filter).
+   */
+  subscribe(
+    triggerId: string,
+    handler: (event: unknown) => void,
+    config?: Record<string, unknown>
+  ): () => void
 }
 
 // ── Additions this sub-project owns (internal + UI DTOs) ─────────────────────

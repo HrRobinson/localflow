@@ -87,12 +87,19 @@ export class IntegrationRegistry implements IntegrationRegistryContract {
     return connector.invokeAction(actionId, params)
   }
 
-  subscribe(id: IntegrationId, triggerId: string, handler: (event: unknown) => void): () => void {
+  subscribe(
+    id: IntegrationId,
+    triggerId: string,
+    handler: (event: unknown) => void,
+    config?: Record<string, unknown>
+  ): () => void {
     const connector = this.connectors[id]
     // No connector for this id ⇒ no live trigger stream; a no-op unsubscribe
     // keeps the pinned signature (the opt-in default — nothing subscribes).
     if (!connector) return () => {}
-    return connector.subscribe(triggerId, handler)
+    // Forward the flow trigger node's config so a POLL connector knows WHAT to
+    // poll; webhook connectors ignore it (their `subscribe` stays 2-arg).
+    return connector.subscribe(triggerId, handler, config)
   }
 
   // ── Renderer DTOs (secret VALUES excluded by construction) ──────────────────

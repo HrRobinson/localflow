@@ -113,7 +113,6 @@ describe('blockedIpRange — dial-time pinned-IP allow (§5.1 DNS-rebind defense
     expect(blockedIpRange('192.168.1.55', { allowIps: ['192.168.1.10'] })).toMatch(/private/i)
   })
 
-
   it('admits the exact pinned IP the connector resolved for the self-host', () => {
     expect(blockedIpRange('192.168.1.10', { allowIps: ['192.168.1.10'] })).toBeNull()
   })

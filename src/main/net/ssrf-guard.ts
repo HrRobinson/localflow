@@ -62,11 +62,7 @@ function mappedIpv4(host: string): string | null {
   const dotted = parseIpv4(tail)
   if (dotted) return tail
   const groups = tail.split(':')
-  if (
-    groups.length >= 1 &&
-    groups.length <= 2 &&
-    groups.every((g) => /^[0-9a-f]{1,4}$/.test(g))
-  ) {
+  if (groups.length >= 1 && groups.length <= 2 && groups.every((g) => /^[0-9a-f]{1,4}$/.test(g))) {
     const nums = groups.map((g) => parseInt(g, 16))
     const hi = groups.length === 2 ? nums[0] : 0
     const lo = nums[groups.length - 1]

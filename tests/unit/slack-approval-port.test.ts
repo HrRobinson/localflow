@@ -72,7 +72,9 @@ describe('SlackApprovalPort — the first real ApprovalPort', () => {
     const update = api.calls.updateMessage[0]
     expect(JSON.stringify(update.blocks)).not.toContain('actions') // button-less
     expect(JSON.stringify(update.blocks)).toContain('Approved')
-    expect(decisions).toEqual([{ runId: 'run-1', nodeId: 'gate-1', approved: true, decidedBy: 'U42' }])
+    expect(decisions).toEqual([
+      { runId: 'run-1', nodeId: 'gate-1', approved: true, decidedBy: 'U42' }
+    ])
     expect(port.pendingCount()).toBe(0)
   })
 

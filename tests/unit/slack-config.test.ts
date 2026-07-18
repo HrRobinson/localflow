@@ -5,9 +5,7 @@ describe('parseSlackConfig', () => {
   it('returns null when required non-secret refs are absent (opt-in dormancy)', () => {
     expect(parseSlackConfig(undefined)).toBeNull()
     expect(parseSlackConfig({ enabled: true, values: {} })).toBeNull()
-    expect(
-      parseSlackConfig({ enabled: true, values: { defaultChannel: 'C1' } })
-    ).toBeNull()
+    expect(parseSlackConfig({ enabled: true, values: { defaultChannel: 'C1' } })).toBeNull()
   })
 
   it('defaults mode to socket (the zero-ingress path) when unset', () => {

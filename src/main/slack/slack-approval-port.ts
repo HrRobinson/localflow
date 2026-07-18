@@ -65,10 +65,13 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
  *  update, where we have no parked ref). Null when the shape lacks them. */
 function messageRefFromInteraction(raw: unknown): SlackMessageRef | null {
   if (!isObject(raw)) return null
-  const channel = isObject(raw.channel) && typeof raw.channel.id === 'string' ? raw.channel.id : undefined
+  const channel =
+    isObject(raw.channel) && typeof raw.channel.id === 'string' ? raw.channel.id : undefined
   const ts =
     (isObject(raw.message) && typeof raw.message.ts === 'string' && raw.message.ts) ||
-    (isObject(raw.container) && typeof raw.container.message_ts === 'string' && raw.container.message_ts) ||
+    (isObject(raw.container) &&
+      typeof raw.container.message_ts === 'string' &&
+      raw.container.message_ts) ||
     undefined
   if (!channel || !ts) return null
   return { channel, ts }
@@ -131,7 +134,9 @@ export class SlackApprovalPort implements ApprovalPort {
             text: 'This approval is no longer active (the run has ended or localflow restarted).',
             blocks: []
           })
-          .catch((err: unknown) => this.log(`slack approval: stale-tap update failed — ${reason(err)}`))
+          .catch((err: unknown) =>
+            this.log(`slack approval: stale-tap update failed — ${reason(err)}`)
+          )
       }
       this.log(`slack approval: interaction for unknown gate '${key}' — dropped`)
       return

@@ -31,7 +31,8 @@ import { CONTROL_COMMAND, type SlackControlBridge, type ControlReply } from './s
 const isTriggerId = (v: string): v is SlackTriggerId =>
   (SLACK_TRIGGER_IDS as readonly string[]).includes(v)
 
-const str = (v: unknown): string | undefined => (typeof v === 'string' && v.length > 0 ? v : undefined)
+const str = (v: unknown): string | undefined =>
+  typeof v === 'string' && v.length > 0 ? v : undefined
 
 /** The approval mechanism the connector shares with the gate path (§6.2). */
 export interface ApprovalMechanism {
@@ -114,7 +115,9 @@ export class SlackConnector implements LiveConnector {
       )
     }
     const prompt = this.requireText('postApproval', params, 'prompt')
-    const peek = Array.isArray(params.peek) ? params.peek.filter((p): p is string => typeof p === 'string') : []
+    const peek = Array.isArray(params.peek)
+      ? params.peek.filter((p): p is string => typeof p === 'string')
+      : []
     // A postApproval action self-correlates (the action-runner passes no run/node
     // id); it shares the port's pending-map + interaction routing (§6.2). A DENY
     // resolves { approved: false } — a routing fact, never a rejection.
@@ -201,7 +204,9 @@ export class SlackConnector implements LiveConnector {
       try {
         handler(seed)
       } catch (err) {
-        this.log(`slack connector: '${triggerId}' handler failed — ${err instanceof Error ? err.message : String(err)}`)
+        this.log(
+          `slack connector: '${triggerId}' handler failed — ${err instanceof Error ? err.message : String(err)}`
+        )
       }
     }
   }

@@ -32,7 +32,9 @@ describe('SlackControlBridge', () => {
   })
 
   it('an unknown flow yields a legible ephemeral error', () => {
-    const engine = seam({ startRun: vi.fn().mockReturnValue({ ok: false, error: "No flow named 'ghost'" }) })
+    const engine = seam({
+      startRun: vi.fn().mockReturnValue({ ok: false, error: "No flow named 'ghost'" })
+    })
     const reply = new SlackControlBridge(engine).handle(slash('run ghost'))
     expect(reply.text).toMatch(/No flow named 'ghost'/)
     expect(reply.ephemeral).toBe(true)

@@ -115,7 +115,9 @@ export class SlackWebApi implements SlackApi {
     if (input.threadTs !== undefined) params.thread_ts = input.threadTs
     const body = await this.call('chat.postMessage', params)
     if (typeof body.channel !== 'string' || typeof body.ts !== 'string') {
-      throw new Error('Slack `chat.postMessage` returned no channel/ts — the message was not posted.')
+      throw new Error(
+        'Slack `chat.postMessage` returned no channel/ts — the message was not posted.'
+      )
     }
     return { channel: body.channel, ts: body.ts }
   }
@@ -130,7 +132,9 @@ export class SlackWebApi implements SlackApi {
   async openConnection(): Promise<{ url: string }> {
     const body = await this.call('apps.connections.open', {})
     if (typeof body.url !== 'string') {
-      throw new Error('Slack `apps.connections.open` returned no url — the Socket Mode WS can\'t open.')
+      throw new Error(
+        "Slack `apps.connections.open` returned no url — the Socket Mode WS can't open."
+      )
     }
     return { url: body.url }
   }
@@ -145,7 +149,9 @@ export class SlackWebApi implements SlackApi {
       if (result.status === 429) {
         if (attempt >= MAX_RETRIES) {
           const secs = result.retryAfter ?? 1
-          throw new Error(`Slack throttled \`${method}\` (retry in ~${secs}s) — give it a moment and retry.`)
+          throw new Error(
+            `Slack throttled \`${method}\` (retry in ~${secs}s) — give it a moment and retry.`
+          )
         }
         await this.sleep((result.retryAfter ?? 1) * 1000)
         continue
@@ -197,7 +203,9 @@ export class MockSlackApi implements SlackApi {
   postMessage(input: PostMessageInput): Promise<SlackMessageRef> {
     this.calls.postMessage.push(input)
     if (this.script.postError) {
-      return Promise.reject(new Error(messageForError('chat.postMessage', { ok: false, error: this.script.postError })))
+      return Promise.reject(
+        new Error(messageForError('chat.postMessage', { ok: false, error: this.script.postError }))
+      )
     }
     this.ts += 1
     return Promise.resolve({ channel: input.channel, ts: `${this.ts}.000100` })
@@ -206,7 +214,9 @@ export class MockSlackApi implements SlackApi {
   updateMessage(input: UpdateMessageInput): Promise<void> {
     this.calls.updateMessage.push(input)
     if (this.script.updateError) {
-      return Promise.reject(new Error(messageForError('chat.update', { ok: false, error: this.script.updateError })))
+      return Promise.reject(
+        new Error(messageForError('chat.update', { ok: false, error: this.script.updateError }))
+      )
     }
     return Promise.resolve()
   }

@@ -51,9 +51,7 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
 /** The result of parsing a verified Events-API body: an inbound, the one-time
  *  challenge to echo, or null (unsupported/malformed). */
 export type SlackEventParse =
-  | { kind: 'inbound'; inbound: SlackInbound }
-  | { kind: 'challenge'; challenge: string }
-  | null
+  { kind: 'inbound'; inbound: SlackInbound } | { kind: 'challenge'; challenge: string } | null
 
 /**
  * Parse a verified Events-API JSON body. Answers the one-time `url_verification`

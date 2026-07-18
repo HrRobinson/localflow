@@ -227,7 +227,7 @@ describe('parseFlowGraph — invalid graphs disable loudly, never throw', () => 
           {
             id: 't',
             type: 'trigger',
-            integration: 'slack',
+            integration: 'telegram',
             ref: 'inbound',
             config: {},
             position: { x: 0, y: 0 }

@@ -89,9 +89,7 @@ export function buildResolvedMessage(
   const by = decidedBy ? ` by <@${decidedBy}>` : ''
   return {
     text: `${verb}${by}: ${req.prompt}`,
-    blocks: [
-      { type: 'section', text: { type: 'mrkdwn', text: `*${verb}*${by}\n${req.prompt}` } }
-    ]
+    blocks: [{ type: 'section', text: { type: 'mrkdwn', text: `*${verb}*${by}\n${req.prompt}` } }]
   }
 }
 
@@ -109,7 +107,10 @@ export function buildExpiredMessage(req: ApprovalRequest): { text: string; block
 }
 
 /** A plain notification / send (`postMessage`). */
-export function buildNotifyMessage(text: string, blocks?: unknown[]): { text: string; blocks?: unknown[] } {
+export function buildNotifyMessage(
+  text: string,
+  blocks?: unknown[]
+): { text: string; blocks?: unknown[] } {
   return blocks ? { text, blocks } : { text }
 }
 
@@ -118,7 +119,8 @@ export function buildNotifyMessage(text: string, blocks?: unknown[]): { text: st
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 
-const str = (v: unknown): string | undefined => (typeof v === 'string' && v.length > 0 ? v : undefined)
+const str = (v: unknown): string | undefined =>
+  typeof v === 'string' && v.length > 0 ? v : undefined
 
 /**
  * Parse a raw `block_actions` interaction payload into a normalized approval

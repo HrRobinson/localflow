@@ -42,9 +42,14 @@ export class SlackControlBridge {
   /** Handle a `/localflow …` slash payload → an ephemeral reply. */
   handle(payload: SlackSlashPayload): ControlReply {
     if (payload.command !== CONTROL_COMMAND) {
-      return ephemeral(`This bridge only handles \`${CONTROL_COMMAND}\` — got \`${payload.command}\`.`)
+      return ephemeral(
+        `This bridge only handles \`${CONTROL_COMMAND}\` — got \`${payload.command}\`.`
+      )
     }
-    const args = payload.text.trim().split(/\s+/).filter((s) => s.length > 0)
+    const args = payload.text
+      .trim()
+      .split(/\s+/)
+      .filter((s) => s.length > 0)
     const sub = args[0] ?? ''
     switch (sub) {
       case 'run':
@@ -65,7 +70,10 @@ export class SlackControlBridge {
   }
 
   private run(flowName: string): ControlReply {
-    if (!flowName) return ephemeral(`\`${CONTROL_COMMAND} run\` needs a flow name — e.g. \`${CONTROL_COMMAND} run refund-worker\`.`)
+    if (!flowName)
+      return ephemeral(
+        `\`${CONTROL_COMMAND} run\` needs a flow name — e.g. \`${CONTROL_COMMAND} run refund-worker\`.`
+      )
     const res = this.engine.startRun(flowName)
     if (!res.ok) {
       return ephemeral(`${res.error} — try \`${CONTROL_COMMAND} status\` to list runs.`)
@@ -77,7 +85,10 @@ export class SlackControlBridge {
     const runs = this.engine.listRuns()
     if (runId) {
       const run = runs.find((r) => r.runId === runId)
-      if (!run) return ephemeral(`No run '${runId}' — try \`${CONTROL_COMMAND} status\` to list active runs.`)
+      if (!run)
+        return ephemeral(
+          `No run '${runId}' — try \`${CONTROL_COMMAND} status\` to list active runs.`
+        )
       return ephemeral(`Run \`${run.runId}\` (${run.flowName}): ${run.status}.`)
     }
     if (runs.length === 0) return ephemeral('No active runs.')
@@ -86,7 +97,10 @@ export class SlackControlBridge {
   }
 
   private stop(runId?: string): ControlReply {
-    if (!runId) return ephemeral(`\`${CONTROL_COMMAND} stop\` needs a run id — see \`${CONTROL_COMMAND} status\`.`)
+    if (!runId)
+      return ephemeral(
+        `\`${CONTROL_COMMAND} stop\` needs a run id — see \`${CONTROL_COMMAND} status\`.`
+      )
     const res = this.engine.requestStop(runId)
     if (!res.ok) return ephemeral(`${res.error} — try \`${CONTROL_COMMAND} status\` to list runs.`)
     return ephemeral(`Stop requested for run \`${runId}\` — it won't be force-killed mid-action.`)

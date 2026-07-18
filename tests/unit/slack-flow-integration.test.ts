@@ -8,7 +8,11 @@ import { CredentialStore, type SecretBackend } from '../../src/main/integrations
 import { SlackConnector } from '../../src/main/slack/slack-connector'
 import { SlackApprovalPort } from '../../src/main/slack/slack-approval-port'
 import { MockSlackApi } from '../../src/main/slack/slack-client'
-import { APPROVE_ACTION_ID, DENY_ACTION_ID, correlationKey } from '../../src/main/slack/slack-blocks'
+import {
+  APPROVE_ACTION_ID,
+  DENY_ACTION_ID,
+  correlationKey
+} from '../../src/main/slack/slack-blocks'
 import type { FlowGraph, RunEvent } from '../../src/shared/flows'
 
 /**
@@ -48,7 +52,14 @@ const gatedFlow: FlowGraph = {
   id: 'refund-approval',
   name: 'gated refund',
   nodes: [
-    { id: 't', type: 'trigger', integration: 'slack', ref: 'message.received', config: {}, position: { x: 0, y: 0 } },
+    {
+      id: 't',
+      type: 'trigger',
+      integration: 'slack',
+      ref: 'message.received',
+      config: {},
+      position: { x: 0, y: 0 }
+    },
     { id: 'g', type: 'gate', config: { prompt: 'Approve the refund?' }, position: { x: 0, y: 0 } },
     {
       id: 'post',
@@ -65,7 +76,11 @@ const gatedFlow: FlowGraph = {
   ]
 }
 
-function buildEngine(api: MockSlackApi): { engine: FlowEngine; port: SlackApprovalPort; events: RunEvent[] } {
+function buildEngine(api: MockSlackApi): {
+  engine: FlowEngine
+  port: SlackApprovalPort
+  events: RunEvent[]
+} {
   const registry = connectedRegistry(api)
   const port = new SlackApprovalPort({ api, channel: 'C-approvals' })
   const engine = new FlowEngine({
@@ -123,6 +138,8 @@ describe('offline Slack approval loop through the real engine', () => {
     port.handleInteraction(tap(DENY_ACTION_ID, runId))
     await vi.waitFor(() => expect(engine.getRun(runId)?.status).toBe('rejected'))
     // The gated action never ran — only the approval post exists.
-    expect(api.calls.postMessage.every((p) => p.text !== 'Refund approved — proceeding.')).toBe(true)
+    expect(api.calls.postMessage.every((p) => p.text !== 'Refund approved — proceeding.')).toBe(
+      true
+    )
   })
 })

@@ -72,7 +72,13 @@ describe('slackVerifier over the shared webhook-receiver', () => {
 
   it('rejects a header without the v0= prefix', () => {
     const raw = createHmac('sha256', SECRET).update(`v0:${nowSec}:${body}`).digest('hex')
-    const ok = verifyWebhookSignature(Buffer.from(body), headers(raw, nowSec), slackVerifier, SECRET, now)
+    const ok = verifyWebhookSignature(
+      Buffer.from(body),
+      headers(raw, nowSec),
+      slackVerifier,
+      SECRET,
+      now
+    )
     expect(ok).toBe(false)
   })
 })

@@ -6,7 +6,10 @@ import {
   type SlackHttpTransport
 } from '../../src/main/slack/slack-client'
 
-const ok = (body: Record<string, unknown>): SlackHttpResult => ({ status: 200, body: { ok: true, ...body } })
+const ok = (body: Record<string, unknown>): SlackHttpResult => ({
+  status: 200,
+  body: { ok: true, ...body }
+})
 const fail = (error: string, extra: Record<string, unknown> = {}): SlackHttpResult => ({
   status: 200,
   body: { ok: false, error, ...extra }
@@ -20,7 +23,12 @@ describe('SlackWebApi', () => {
       return ok({ channel: req.params.channel, ts: '1700.0001' })
     }
     const api = new SlackWebApi({ transport })
-    const ref = await api.postMessage({ channel: 'C1', text: 'hi', blocks: [{ x: 1 }], threadTs: '99.9' })
+    const ref = await api.postMessage({
+      channel: 'C1',
+      text: 'hi',
+      blocks: [{ x: 1 }],
+      threadTs: '99.9'
+    })
     expect(ref).toEqual({ channel: 'C1', ts: '1700.0001' })
     expect(seen[0]).toEqual({
       method: 'chat.postMessage',
@@ -43,9 +51,12 @@ describe('SlackWebApi', () => {
   })
 
   it('rejects with the verbatim missing scope', async () => {
-    const transport: SlackHttpTransport = async () => fail('missing_scope', { needed: 'chat:write' })
+    const transport: SlackHttpTransport = async () =>
+      fail('missing_scope', { needed: 'chat:write' })
     const api = new SlackWebApi({ transport })
-    await expect(api.postMessage({ channel: 'C1', text: 'x' })).rejects.toThrow(/`chat:write` scope/)
+    await expect(api.postMessage({ channel: 'C1', text: 'x' })).rejects.toThrow(
+      /`chat:write` scope/
+    )
   })
 
   it('rejects legibly when the bot is not in the channel', async () => {
@@ -59,7 +70,8 @@ describe('SlackWebApi', () => {
     const slept: number[] = []
     const transport: SlackHttpTransport = async () => {
       calls++
-      if (calls < 3) return { status: 429, retryAfter: 2, body: { ok: false, error: 'ratelimited' } }
+      if (calls < 3)
+        return { status: 429, retryAfter: 2, body: { ok: false, error: 'ratelimited' } }
       return ok({ channel: 'C1', ts: '1.1' })
     }
     const api = new SlackWebApi({ transport, sleep: async (ms) => void slept.push(ms) })
@@ -76,7 +88,9 @@ describe('SlackWebApi', () => {
       body: { ok: false, error: 'ratelimited' }
     })
     const api = new SlackWebApi({ transport, sleep: async () => {} })
-    await expect(api.postMessage({ channel: 'C1', text: 'x' })).rejects.toThrow(/throttled.*retry in ~5s/)
+    await expect(api.postMessage({ channel: 'C1', text: 'x' })).rejects.toThrow(
+      /throttled.*retry in ~5s/
+    )
   })
 })
 
@@ -90,6 +104,8 @@ describe('MockSlackApi', () => {
 
   it('can be scripted to reject with a Slack error code', async () => {
     const api = new MockSlackApi({ postError: 'channel_not_found' })
-    await expect(api.postMessage({ channel: 'C9', text: 'yo' })).rejects.toThrow(/channel_not_found/)
+    await expect(api.postMessage({ channel: 'C9', text: 'yo' })).rejects.toThrow(
+      /channel_not_found/
+    )
   })
 })

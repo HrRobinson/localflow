@@ -37,9 +37,9 @@ describe('correlation key', () => {
 describe('buildApprovalMessage', () => {
   it('encodes the correlation key in BOTH button values', () => {
     const { blocks } = buildApprovalMessage(req)
-    const actions = (blocks as { type: string; elements?: { action_id: string; value: string }[] }[]).find(
-      (b) => b.type === 'actions'
-    )
+    const actions = (
+      blocks as { type: string; elements?: { action_id: string; value: string }[] }[]
+    ).find((b) => b.type === 'actions')
     const values = actions!.elements!.map((e) => e.value)
     expect(values).toEqual(['run-abc:gate1', 'run-abc:gate1'])
     const ids = actions!.elements!.map((e) => e.action_id)
@@ -88,7 +88,12 @@ describe('parseInteraction', () => {
     expect(parseInteraction({ type: 'view_submission' })).toBeNull()
     expect(parseInteraction(interaction('some_other_button', 'run-abc:gate1'))).toBeNull()
     expect(parseInteraction(interaction(APPROVE_ACTION_ID, 'bad'))).toBeNull()
-    expect(parseInteraction({ type: 'block_actions', actions: [{ action_id: APPROVE_ACTION_ID, value: 'r:n' }] })).toBeNull()
+    expect(
+      parseInteraction({
+        type: 'block_actions',
+        actions: [{ action_id: APPROVE_ACTION_ID, value: 'r:n' }]
+      })
+    ).toBeNull()
   })
 })
 
@@ -96,7 +101,9 @@ describe('parseMessageEvent', () => {
   it('normalizes a user message (bare event and event_callback wrapper)', () => {
     const bare = { type: 'message', channel: 'C1', user: 'U1', text: 'hello', ts: '1.1' }
     expect(parseMessageEvent(bare)).toEqual({ channel: 'C1', user: 'U1', text: 'hello', ts: '1.1' })
-    expect(parseMessageEvent({ type: 'event_callback', event: { ...bare, thread_ts: '0.9' } })).toEqual({
+    expect(
+      parseMessageEvent({ type: 'event_callback', event: { ...bare, thread_ts: '0.9' } })
+    ).toEqual({
       channel: 'C1',
       user: 'U1',
       text: 'hello',
@@ -105,8 +112,12 @@ describe('parseMessageEvent', () => {
     })
   })
   it('drops bot echoes and subtyped messages, and malformed input', () => {
-    expect(parseMessageEvent({ type: 'message', channel: 'C1', user: 'U1', ts: '1.1', bot_id: 'B1' })).toBeNull()
-    expect(parseMessageEvent({ type: 'message', channel: 'C1', ts: '1.1', subtype: 'channel_join' })).toBeNull()
+    expect(
+      parseMessageEvent({ type: 'message', channel: 'C1', user: 'U1', ts: '1.1', bot_id: 'B1' })
+    ).toBeNull()
+    expect(
+      parseMessageEvent({ type: 'message', channel: 'C1', ts: '1.1', subtype: 'channel_join' })
+    ).toBeNull()
     expect(parseMessageEvent({ type: 'reaction_added' })).toBeNull()
     expect(parseMessageEvent(42)).toBeNull()
   })

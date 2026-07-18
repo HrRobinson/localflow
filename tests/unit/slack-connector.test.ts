@@ -23,7 +23,9 @@ describe('SlackConnector — action dispatch', () => {
   it('replyInThread requires a threadTs and sets thread_ts', async () => {
     const api = new MockSlackApi()
     const c = new SlackConnector({ api, defaultChannel: 'C1' })
-    await expect(c.invokeAction('replyInThread', { text: 'hi' })).rejects.toThrow(/needs a 'threadTs'/)
+    await expect(c.invokeAction('replyInThread', { text: 'hi' })).rejects.toThrow(
+      /needs a 'threadTs'/
+    )
     await c.invokeAction('replyInThread', { text: 'hi', threadTs: '111.2' })
     expect(api.calls.postMessage[0].threadTs).toBe('111.2')
   })
@@ -48,7 +50,9 @@ describe('SlackConnector — action dispatch', () => {
       handleInteraction: vi.fn()
     }
     const c = new SlackConnector({ api: new MockSlackApi(), defaultChannel: 'C1', approvals })
-    await expect(c.invokeAction('postApproval', { prompt: 'x' })).resolves.toEqual({ approved: false })
+    await expect(c.invokeAction('postApproval', { prompt: 'x' })).resolves.toEqual({
+      approved: false
+    })
   })
 
   it('rejects an unknown action id legibly', async () => {
@@ -75,9 +79,14 @@ describe('SlackConnector — inbound routing', () => {
     c.subscribe('message.received', (e) => seen.push(e))
     c.handleInbound({
       type: 'events_api',
-      payload: { type: 'event_callback', event: { type: 'message', channel: 'C1', user: 'U1', text: 'hi', ts: '5.5' } }
+      payload: {
+        type: 'event_callback',
+        event: { type: 'message', channel: 'C1', user: 'U1', text: 'hi', ts: '5.5' }
+      }
     })
-    expect(seen).toEqual([{ eventId: '5.5', payload: { channel: 'C1', user: 'U1', text: 'hi', ts: '5.5' } }])
+    expect(seen).toEqual([
+      { eventId: '5.5', payload: { channel: 'C1', user: 'U1', text: 'hi', ts: '5.5' } }
+    ])
   })
 
   it('a non-/localflow slash fires slash.command; /localflow goes to the control bridge', () => {
@@ -94,13 +103,25 @@ describe('SlackConnector — inbound routing', () => {
 
     c.handleInbound({
       type: 'slash_commands',
-      payload: { command: '/deploy', text: 'now', channel_id: 'C1', user_id: 'U1', response_url: 'u' }
+      payload: {
+        command: '/deploy',
+        text: 'now',
+        channel_id: 'C1',
+        user_id: 'U1',
+        response_url: 'u'
+      }
     })
     expect(slashSeen).toHaveLength(1)
 
     c.handleInbound({
       type: 'slash_commands',
-      payload: { command: '/localflow', text: 'status', channel_id: 'C1', user_id: 'U1', response_url: 'u' }
+      payload: {
+        command: '/localflow',
+        text: 'status',
+        channel_id: 'C1',
+        user_id: 'U1',
+        response_url: 'u'
+      }
     })
     expect(control.handle).toHaveBeenCalled()
     expect(controlReplies).toEqual([{ text: 'ok', ephemeral: true }])
@@ -111,7 +132,12 @@ describe('SlackConnector — inbound routing', () => {
     const c = new SlackConnector({ api: new MockSlackApi(), defaultChannel: 'C1' })
     const seen: unknown[] = []
     c.subscribe('approval.responded', (e) => seen.push(e))
-    const decision: SlackApprovalDecision = { runId: 'r1', nodeId: 'g1', approved: true, decidedBy: 'U9' }
+    const decision: SlackApprovalDecision = {
+      runId: 'r1',
+      nodeId: 'g1',
+      approved: true,
+      decidedBy: 'U9'
+    }
     c.onApprovalDecision(decision)
     expect(seen).toEqual([{ eventId: 'r1:g1', payload: decision }])
   })

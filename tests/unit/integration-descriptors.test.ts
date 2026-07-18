@@ -9,9 +9,17 @@ describe('integration descriptors', () => {
       'email',
       'cloud',
       'shopify',
-      'woocommerce'
+      'woocommerce',
+      'slack'
     ])
-    expect([...INTEGRATION_IDS]).toEqual(['linear', 'email', 'cloud', 'shopify', 'woocommerce'])
+    expect([...INTEGRATION_IDS]).toEqual([
+      'linear',
+      'email',
+      'cloud',
+      'shopify',
+      'woocommerce',
+      'slack'
+    ])
   })
 
   it('marks the exact secret fields per §7', () => {
@@ -94,6 +102,11 @@ describe('integration descriptors', () => {
           'updateShippingAddress',
           'addOrderNote'
         ]
+      },
+      {
+        id: 'slack',
+        triggers: ['message.received', 'slash.command', 'approval.responded'],
+        actions: ['postMessage', 'postApproval', 'replyInThread']
       }
     ])
   })

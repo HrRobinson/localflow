@@ -44,7 +44,10 @@ describe('IntegrationRegistry live-connector seam', () => {
     registry.registerConnector('shopify', connector)
     const handler = (): void => {}
     const off = registry.subscribe('shopify', 'order.created', handler)
-    expect(connector.subscribe).toHaveBeenCalledWith('order.created', handler)
+    // The registry forwards the optional trigger-node config as a 3rd arg (a POLL
+    // connector reads it; a webhook connector like Shopify ignores it). Absent
+    // here, so it forwards `undefined`.
+    expect(connector.subscribe).toHaveBeenCalledWith('order.created', handler, undefined)
     off()
     expect(unsub).toHaveBeenCalledOnce()
   })

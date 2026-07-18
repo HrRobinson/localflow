@@ -77,6 +77,11 @@ import { PostHogPoller } from './posthog/posthog-poller'
 import { PostHogCursorStore } from './posthog/posthog-cursor-store'
 import { GitLabRestApi } from './gitlab/gitlab-api'
 import { GitLabConnector } from './gitlab/gitlab-connector'
+import { SlackConnector } from './slack/slack-connector'
+import { SlackWebApi, deferredLiveTransport as slackDeferredTransport } from './slack/slack-client'
+import { SlackApprovalPort } from './slack/slack-approval-port'
+import { parseSlackConfig } from './slack/slack-config'
+import { loadIntegrationsConfig } from './integrations/integration-config'
 import { startGuardSeenWatch } from './guard-seen-watch'
 import type { ActivityEntry, GrantInfo, OperatorStatus } from '../shared/operator'
 import type { Capabilities } from '../shared/git'
@@ -350,6 +355,38 @@ app.whenReady().then(async () => {
     })
   )
 
+  // Slack connector: the CROSS-CUTTING control connector whose headline export is
+  // localflow's FIRST real ApprovalPort (§3) — wired over the stub below. The
+  // live Socket-Mode WS + Web API HTTPS transport are DEFERRED (foundation
+  // slice), exactly like Shopify's live transport: the descriptor, block-kit
+  // builders, approval port, connector dispatch, and Events-path verifier are all
+  // in place and mock-tested; only the real network exit lands in a follow-up.
+  const slackConfig = parseSlackConfig(loadIntegrationsConfig(join(userData, 'config.json')).slack)
+  const slackChannel = slackConfig?.defaultChannel ?? ''
+  const slackApi = new SlackWebApi({ transport: slackDeferredTransport() })
+  const slackConnected =
+    integrationRegistry.get('slack')?.status() === 'connected' && slackChannel.length > 0
+  // The ApprovalPort is CONNECTOR-AGNOSTIC (§3, §7): built once, it services every
+  // gate in every flow. It only replaces the safe-reject stub when Slack is
+  // actually connected — otherwise a gate keeps stopping cleanly (never hanging).
+  // A holder breaks the port↔connector cycle: the port emits `approval.responded`
+  // through the connector, which is assigned just below (resolved at call time).
+  const slackRef: { connector?: SlackConnector } = {}
+  const slackApprovalPort = slackConnected
+    ? new SlackApprovalPort({
+        api: slackApi,
+        channel: slackChannel,
+        onDecision: (decision) => slackRef.connector?.onApprovalDecision(decision)
+      })
+    : undefined
+  const slackConnector = new SlackConnector({
+    api: slackApi,
+    defaultChannel: slackChannel,
+    approvals: slackApprovalPort
+  })
+  slackRef.connector = slackConnector
+  integrationRegistry.registerConnector('slack', slackConnector)
+
   const themesDir = join(userData, 'themes')
   ensureThemesSeeded(themesDir)
 
@@ -499,17 +536,19 @@ app.whenReady().then(async () => {
   const flowConfigFile = join(userData, 'config.json')
   const flowsConfig = loadFlowsConfig(flowConfigFile)
   const paneDriver = new PaneDriver({ controlDeps, grants })
-  // Gate approvals bind to the needs-you + ApproveButton primitive in a
-  // follow-up (design §10.5). Until that UI seam exists a gate cleanly REJECTS
-  // rather than silently auto-proceeding (a human "no" is not a failure), so a
-  // flow with a gate stops safely instead of hanging. NOTE: this is the one
-  // deliberately stubbed seam — see the integration report.
-  const flowApprovals: ApprovalPort = {
+  // The ApprovalPort: the Slack connector supplies localflow's FIRST real one
+  // (§3, §7). When Slack is `connected` it REPLACES the stub and services EVERY
+  // gate in every flow — any gated action becomes approvable from a phone. When
+  // Slack is not connected the safe-reject stub stays: a gate cleanly REJECTS
+  // rather than silently auto-proceeding or hanging (a human "no" is not a
+  // failure). The engine and gate-runner are untouched — both already take an
+  // `ApprovalPort`.
+  const flowApprovals: ApprovalPort = slackApprovalPort ?? {
     requestApproval: async (req) => {
       pushActivity(flowsConfig.environment, {
         at: Date.now(),
         route: 'flow:gate',
-        detail: `Gate '${req.nodeId}' needs approval — interactive gates aren't wired yet, rejecting safely.`
+        detail: `Gate '${req.nodeId}' needs approval — no approval surface is connected, rejecting safely.`
       })
       return false
     }

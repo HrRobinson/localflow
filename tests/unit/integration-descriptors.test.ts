@@ -11,7 +11,8 @@ describe('integration descriptors', () => {
       'shopify',
       'woocommerce',
       'posthog',
-      'gitlab'
+      'gitlab',
+      'slack'
     ])
     expect([...INTEGRATION_IDS]).toEqual([
       'linear',
@@ -20,7 +21,8 @@ describe('integration descriptors', () => {
       'shopify',
       'woocommerce',
       'posthog',
-      'gitlab'
+      'gitlab',
+      'slack'
     ])
   })
 
@@ -136,6 +138,11 @@ describe('integration descriptors', () => {
           'openMR',
           'mergeMR'
         ]
+      },
+      {
+        id: 'slack',
+        triggers: ['message.received', 'slash.command', 'approval.responded'],
+        actions: ['postMessage', 'postApproval', 'replyInThread']
       }
     ])
   })

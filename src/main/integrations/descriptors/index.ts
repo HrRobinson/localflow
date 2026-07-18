@@ -7,6 +7,7 @@ import { shopifyDescriptor } from '../../shopify/shopify-descriptor'
 import { woocommerceDescriptor } from './woocommerce'
 import { posthogDescriptor } from './posthog'
 import { gitlabDescriptor } from './gitlab'
+import { slackDescriptor } from '../../slack/slack-descriptor'
 
 /** The static descriptor defs, keyed by id. The registry composes the full
  * `IntegrationDescriptor` (attaching `status()`) from these. */
@@ -17,7 +18,8 @@ export const DESCRIPTOR_DEFS: Record<IntegrationId, IntegrationDescriptorDef> = 
   shopify: shopifyDescriptor,
   woocommerce: woocommerceDescriptor,
   posthog: posthogDescriptor,
-  gitlab: gitlabDescriptor
+  gitlab: gitlabDescriptor,
+  slack: slackDescriptor
 }
 
 /** In the pinned stable order (§11) sub-projects 2/3 rely on. */

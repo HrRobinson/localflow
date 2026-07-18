@@ -49,7 +49,8 @@ describe('IntegrationRegistry', () => {
       'shopify',
       'woocommerce',
       'posthog',
-      'gitlab'
+      'gitlab',
+      'slack'
     ])
     expect(typeof ds[0].status()).toBe('string')
   })

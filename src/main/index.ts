@@ -65,6 +65,13 @@ import { ShopifyConnector } from './shopify/shopify-connector'
 import { ShopifyAdminApi, deferredLiveTransport } from './shopify/shopify-admin'
 import { WcApi } from './woocommerce/wc-api'
 import { WoocommerceConnector } from './woocommerce/woocommerce-connector'
+import {
+  PostHogHttpApi,
+  deferredLiveTransport as deferredPostHogTransport
+} from './posthog/posthog-api'
+import { PostHogConnector } from './posthog/posthog-connector'
+import { PostHogPoller } from './posthog/posthog-poller'
+import { PostHogCursorStore } from './posthog/posthog-cursor-store'
 import { startGuardSeenWatch } from './guard-seen-watch'
 import type { ActivityEntry, GrantInfo, OperatorStatus } from '../shared/operator'
 import type { Capabilities } from '../shared/git'
@@ -277,6 +284,37 @@ app.whenReady().then(async () => {
         reveal: deferredWooError
       })
     })
+  )
+
+  // PostHog connector: the FIRST POLL-primary live connector (spec §7). The
+  // offline foundation ships the descriptor + dispatch table + the SSRF/normalize
+  // core + the persisted-cursor reconcile poller; the LIVE HTTP transport and the
+  // CredentialStore reveal binding are DEFERRED (spec §4.3) — until they land, any
+  // live call rejects with a legible message rather than silently no-opping. The
+  // poller's cadence timer is not started here (no live transport to poll yet);
+  // its cursor sidecar path is reserved so a restart-resume works once wired.
+  const deferredPostHogKey = (): never => {
+    throw new Error(
+      'PostHog live dispatch is not wired yet — the offline connector core (descriptor, ' +
+        'normalizer, poller, cursor store) is in place, but real HTTP + credential access land ' +
+        'in a follow-up (spec §4.3).'
+    )
+  }
+  const posthogApi = new PostHogHttpApi({
+    transport: deferredPostHogTransport(),
+    host: 'https://us.posthog.com',
+    projectApiKey: 'phc_deferred',
+    reveal: deferredPostHogKey
+  })
+  const posthogPoller = new PostHogPoller({
+    api: posthogApi,
+    cursors: new PostHogCursorStore({ file: join(userData, 'posthog-cursors.json') }),
+    now: () => Date.now(),
+    log: (message) => console.warn(`posthog: ${message}`)
+  })
+  integrationRegistry.registerConnector(
+    'posthog',
+    new PostHogConnector({ api: posthogApi, poller: posthogPoller })
   )
 
   const themesDir = join(userData, 'themes')

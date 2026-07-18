@@ -44,6 +44,16 @@ const defaultTimer: ApprovalTimer = (cb, ms) => {
 /** Default liveness window — 1 hour (§7.3). An unanswered gate never hangs. */
 export const DEFAULT_APPROVAL_TIMEOUT_MS = 3_600_000
 
+/**
+ * Cap on the `settled` double-tap tombstone set. It only needs to outlive the
+ * window between a gate resolving and Slack's last redelivery of that same tap;
+ * a long-running localflow would otherwise accumulate one entry per gate forever
+ * (an unbounded leak). Oldest entries are evicted FIFO past this cap — a
+ * redelivery older than the last `SETTLED_CAP` resolutions simply degrades to the
+ * legible "no longer active" card instead of a silent no-op, which is harmless.
+ */
+export const SETTLED_CAP = 1000
+
 export interface SlackApprovalPortDeps {
   api: SlackApi
   /** The channel approvals post to (`defaultChannel`). */
@@ -101,12 +111,32 @@ export class SlackApprovalPort implements ApprovalPort {
   /** The `ApprovalPort` seam: post the question, park a resolver, await a tap. */
   async requestApproval(req: ApprovalRequest): Promise<boolean> {
     const key = correlationKey(req.runId, req.nodeId)
+    // A pending entry for this exact (runId, nodeId) already exists — overwriting
+    // it in the Map would ORPHAN the prior resolver (its promise would hang until
+    // GC, a leaked gate). This is a caller bug (a gate is requested once per run),
+    // so reject LOUDLY before posting a duplicate Slack message rather than
+    // silently clobbering the first gate.
+    if (this.pending.has(key)) {
+      throw new Error(
+        `An approval for gate '${key}' is already pending — refusing to open a second one ` +
+          '(the first would be silently orphaned).'
+      )
+    }
     const { text, blocks } = buildApprovalMessage(req)
     // A failed POST is a REAL failure (bad channel / revoked token) — let it
     // reject with the client's legible cause; the gate-runner surfaces it. It is
     // NOT a human "no" (that is only a tap/timeout resolving `false`).
     const ref = await this.api.postMessage({ channel: this.channel, text, blocks })
-    return new Promise<boolean>((resolve) => {
+    return new Promise<boolean>((resolve, reject) => {
+      // Re-check atomically with the set: a concurrent same-key request could have
+      // raced past the pre-post check during the await above. Never overwrite a
+      // live resolver (the executor body runs with no await, so this is atomic).
+      if (this.pending.has(key)) {
+        reject(
+          new Error(`An approval for gate '${key}' is already pending — refusing to orphan it.`)
+        )
+        return
+      }
       const cancelTimer = this.timer(() => this.expire(key), this.timeoutMs)
       this.pending.set(key, { req, resolve, ref, cancelTimer })
     })
@@ -143,7 +173,7 @@ export class SlackApprovalPort implements ApprovalPort {
     }
     // Idempotency: delete + cancel the timer BEFORE any await (§7.2).
     this.pending.delete(key)
-    this.settled.add(key)
+    this.rememberSettled(key)
     entry.cancelTimer()
     entry.resolve(decision.approved)
     this.emitDecision(decision)
@@ -155,7 +185,7 @@ export class SlackApprovalPort implements ApprovalPort {
     const entry = this.pending.get(key)
     if (!entry) return
     this.pending.delete(key)
-    this.settled.add(key)
+    this.rememberSettled(key)
     entry.resolve(false)
     this.api
       .updateMessage({
@@ -184,9 +214,26 @@ export class SlackApprovalPort implements ApprovalPort {
     }
   }
 
+  /** Record a resolved key as a double-tap tombstone, bounding the set FIFO so it
+   *  can't grow without limit over a long-lived process (§7.2). `Set` preserves
+   *  insertion order, so the first key is the oldest. */
+  private rememberSettled(key: string): void {
+    this.settled.add(key)
+    while (this.settled.size > SETTLED_CAP) {
+      const oldest = this.settled.values().next().value
+      if (oldest === undefined) break
+      this.settled.delete(oldest)
+    }
+  }
+
   /** In-flight gates (test/inspection aid). */
   pendingCount(): number {
     return this.pending.size
+  }
+
+  /** Resolved-tombstone count (test/inspection aid). */
+  settledCount(): number {
+    return this.settled.size
   }
 }
 

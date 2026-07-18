@@ -1,5 +1,9 @@
 import { describe, it, expect, vi } from 'vitest'
-import { SlackApprovalPort, type ApprovalTimer } from '../../src/main/slack/slack-approval-port'
+import {
+  SlackApprovalPort,
+  SETTLED_CAP,
+  type ApprovalTimer
+} from '../../src/main/slack/slack-approval-port'
 import { MockSlackApi } from '../../src/main/slack/slack-client'
 import {
   APPROVE_ACTION_ID,
@@ -138,6 +142,69 @@ describe('SlackApprovalPort — the first real ApprovalPort', () => {
     const port = new SlackApprovalPort({ api, channel: 'Cbad' })
     await expect(port.requestApproval(req)).rejects.toThrow(/channel_not_found/)
     expect(port.pendingCount()).toBe(0)
+  })
+})
+
+describe('SlackApprovalPort — concurrency + resource hardening', () => {
+  it('two concurrent gates: a tap resolves ONLY its own run, the other stays pending', async () => {
+    const api = new MockSlackApi()
+    const port = new SlackApprovalPort({ api, channel: 'C1' })
+    const reqA: ApprovalRequest = { ...req, runId: 'run-A', nodeId: 'gate-1' }
+    const reqB: ApprovalRequest = { ...req, runId: 'run-B', nodeId: 'gate-1' }
+    let aResolved: boolean | null = null
+    let bResolved: boolean | null = null
+    const pA = port.requestApproval(reqA).then((v) => (aResolved = v))
+    const pB = port.requestApproval(reqB).then((v) => (bResolved = v))
+    await Promise.resolve()
+    expect(port.pendingCount()).toBe(2)
+
+    // Tap B only. A must remain parked; B resolves true.
+    port.handleInteraction(tap(APPROVE_ACTION_ID, 'run-B', 'gate-1'))
+    await pB
+    expect(bResolved).toBe(true)
+    expect(aResolved).toBeNull() // A untouched
+    expect(port.pendingCount()).toBe(1)
+
+    // Now resolve A (deny) — it gets its OWN decision, not B's.
+    port.handleInteraction(tap(DENY_ACTION_ID, 'run-A', 'gate-1'))
+    await pA
+    expect(aResolved).toBe(false)
+    expect(port.pendingCount()).toBe(0)
+  })
+
+  it('refuses to open a SECOND gate for an already-pending key (never orphans the first)', async () => {
+    const api = new MockSlackApi()
+    const port = new SlackApprovalPort({ api, channel: 'C1' })
+    const first = port.requestApproval(req)
+    await Promise.resolve()
+    expect(port.pendingCount()).toBe(1)
+    // A second request for the SAME (runId, nodeId) must reject, not clobber.
+    await expect(port.requestApproval(req)).rejects.toThrow(/already pending/)
+    // The FIRST gate is untouched — one pending, one Slack post (no duplicate).
+    expect(port.pendingCount()).toBe(1)
+    expect(api.calls.postMessage).toHaveLength(1)
+    // The original resolver still works.
+    port.handleInteraction(tap(APPROVE_ACTION_ID))
+    expect(await first).toBe(true)
+  })
+
+  it('bounds the settled tombstone set FIFO — it never grows past SETTLED_CAP', async () => {
+    const api = new MockSlackApi()
+    const port = new SlackApprovalPort({ api, channel: 'C1' })
+    for (let i = 0; i < SETTLED_CAP + 5; i++) {
+      const r: ApprovalRequest = { ...req, runId: `run-${i}`, nodeId: 'g' }
+      const p = port.requestApproval(r)
+      await Promise.resolve()
+      port.handleInteraction(tap(APPROVE_ACTION_ID, `run-${i}`, 'g'))
+      await p
+    }
+    expect(port.settledCount()).toBe(SETTLED_CAP)
+    // The evicted (oldest) tombstones degrade to the legible stale card, not a
+    // silent no-op — a redelivery of run-0 hits the "no longer active" path.
+    const before = api.calls.updateMessage.length
+    port.handleInteraction(tap(APPROVE_ACTION_ID, 'run-0', 'g'))
+    expect(api.calls.updateMessage).toHaveLength(before + 1)
+    expect(api.calls.updateMessage[before].text).toMatch(/no longer active/)
   })
 })
 

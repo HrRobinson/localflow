@@ -158,7 +158,14 @@ describe('offline Stripe × Shopify dispute→refund composition (§7.3)', () =>
       type: 'action',
       integration: 'stripe',
       ref: 'createRefund',
-      config: { params: { id: '{{t.chargeId}}', amount: '{{t.amount}}', reason: 'fraudulent' } },
+      config: {
+        params: {
+          id: '{{t.chargeId}}',
+          amount: '{{t.amount}}',
+          currency: '{{t.currency}}',
+          reason: 'fraudulent'
+        }
+      },
       position: { x: 0, y: 0 }
     }
     const refund = await runAction({ registry }, refundNode, context)

@@ -108,11 +108,20 @@ export class StripeConnector implements LiveConnector {
   private async createRefund(actionId: string, params: Record<string, unknown>): Promise<unknown> {
     const chargeId = this.requireId(actionId, params)
     const amountMajor = optionalNumber(params.amount)
-    const currency = optionalString(params.currency) ?? 'USD'
-    this.enforceRefundLimit(amountMajor, currency)
+    const currency = optionalString(params.currency)
+    // A partial refund's `amount` is MAJOR-unit and needs the charge's own currency
+    // to convert to minor units — guessing USD silently over/under-refunds any
+    // non-2-decimal currency (JPY/BHD, §9). A full refund (no amount) needs none.
+    if (amountMajor !== undefined && currency === undefined) {
+      throw new Error(
+        `Stripe action 'createRefund' needs the charge's currency to convert ${amountMajor} to ` +
+          `minor units — pass currency (e.g. from the charge context, {{stripe.charge.currency}}).`
+      )
+    }
+    this.enforceRefundLimit(amountMajor, currency ?? 'USD')
     const input = {
       chargeId,
-      amount: amountMajor === undefined ? undefined : majorToMinor(amountMajor, currency),
+      amount: amountMajor === undefined ? undefined : majorToMinor(amountMajor, currency as string),
       reason: optionalString(params.reason)
     }
     return this.api.createRefund({

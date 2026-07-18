@@ -58,6 +58,7 @@ describe('StripeConnector — gated money mutations', () => {
     const out = await c.invokeAction('createRefund', {
       id: 'ch_42',
       amount: 50,
+      currency: 'USD',
       reason: 'fraudulent'
     })
     expect(out).toEqual({ refundId: 're_1', amount: 50, currency: 'USD' })
@@ -75,12 +76,12 @@ describe('StripeConnector — gated money mutations', () => {
   it('derives the SAME idempotency key for identical params (a retry never double-refunds)', async () => {
     const api = new MockStripeApi({})
     const c = new StripeConnector({ api })
-    await c.invokeAction('createRefund', { id: 'ch_42', amount: 50 })
-    await c.invokeAction('createRefund', { id: 'ch_42', amount: 50 })
+    await c.invokeAction('createRefund', { id: 'ch_42', amount: 50, currency: 'USD' })
+    await c.invokeAction('createRefund', { id: 'ch_42', amount: 50, currency: 'USD' })
     const [a, b] = api.calls.createRefund
     expect(a.idempotencyKey).toBe(b.idempotencyKey)
     // A different amount ⇒ a different key.
-    await c.invokeAction('createRefund', { id: 'ch_42', amount: 25 })
+    await c.invokeAction('createRefund', { id: 'ch_42', amount: 25, currency: 'USD' })
     expect(api.calls.createRefund[2].idempotencyKey).not.toBe(a.idempotencyKey)
   })
 
@@ -92,6 +93,39 @@ describe('StripeConnector — gated money mutations', () => {
     await expect(c.invokeAction('createRefund', { id: 'ch_42' })).rejects.toThrow(
       /already fully refunded/
     )
+  })
+
+  it('a full refund (no amount) needs no currency', async () => {
+    const api = new MockStripeApi({})
+    const c = new StripeConnector({ api })
+    await c.invokeAction('createRefund', { id: 'ch_42' })
+    expect(api.calls.createRefund).toHaveLength(1)
+    expect(api.calls.createRefund[0]).toMatchObject({ chargeId: 'ch_42', amount: undefined })
+  })
+
+  it('a JPY partial refund with explicit currency converts at the ZERO-decimal scale', async () => {
+    const api = new MockStripeApi({})
+    const c = new StripeConnector({ api })
+    // 500 JPY major === 500 JPY minor (zero-decimal) — NOT 50000 (the USD-guess bug).
+    await c.invokeAction('createRefund', { id: 'ch_42', amount: 500, currency: 'JPY' })
+    expect(api.calls.createRefund[0]).toMatchObject({ chargeId: 'ch_42', amount: 500 })
+  })
+
+  it('a BHD partial refund with explicit currency converts at the THREE-decimal scale', async () => {
+    const api = new MockStripeApi({})
+    const c = new StripeConnector({ api })
+    // 4.2 BHD major === 4200 BHD minor (three-decimal) — NOT 420 (the USD-guess bug).
+    await c.invokeAction('createRefund', { id: 'ch_42', amount: 4.2, currency: 'BHD' })
+    expect(api.calls.createRefund[0]).toMatchObject({ chargeId: 'ch_42', amount: 4200 })
+  })
+
+  it('rejects a partial refund (amount set) with NO currency — never guesses USD', async () => {
+    const api = new MockStripeApi({})
+    const c = new StripeConnector({ api })
+    await expect(c.invokeAction('createRefund', { id: 'ch_42', amount: 500 })).rejects.toThrow(
+      /needs the charge's currency to convert 500 to minor units.*pass currency/
+    )
+    expect(api.calls.createRefund).toHaveLength(0) // never reached the mock with a guessed scale
   })
 
   it('respondToDispute contests with evidence or accepts with close:true', async () => {
@@ -134,16 +168,16 @@ describe('StripeConnector — the deterministic backstop (§9) rejects BEFORE th
       api,
       limits: { refundMaxAmount: 100, refundMaxCurrency: 'USD' }
     })
-    await expect(c.invokeAction('createRefund', { id: 'ch_42', amount: 250 })).rejects.toThrow(
-      /refund 250 USD exceeds the configured 100 USD Stripe limit/
-    )
+    await expect(
+      c.invokeAction('createRefund', { id: 'ch_42', amount: 250, currency: 'USD' })
+    ).rejects.toThrow(/refund 250 USD exceeds the configured 100 USD Stripe limit/)
     expect(api.calls.createRefund).toHaveLength(0) // never reached the mock
   })
 
   it('allows an at-or-under-limit refund', async () => {
     const api = new MockStripeApi({})
     const c = new StripeConnector({ api, limits: { refundMaxAmount: 100 } })
-    await c.invokeAction('createRefund', { id: 'ch_42', amount: 100 })
+    await c.invokeAction('createRefund', { id: 'ch_42', amount: 100, currency: 'USD' })
     expect(api.calls.createRefund).toHaveLength(1)
   })
 })

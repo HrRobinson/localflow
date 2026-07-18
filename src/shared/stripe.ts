@@ -152,7 +152,10 @@ export interface CreateRefundParams {
   id: string
   /** Refund amount in MAJOR units; omitted → Stripe-calculated full refund. */
   amount?: number
-  /** ISO 4217 currency for the amount (major→minor conversion); defaults to USD. */
+  /** ISO 4217 currency for the amount (major→minor conversion); required when
+   *  `amount` is set — source it from the charge (e.g. {{stripe.charge.currency}}).
+   *  Never guess a currency: the minor-unit exponent varies by currency (JPY=0,
+   *  BHD=3), so a wrong guess mis-scales the refund by 10x/100x. */
   currency?: string
   /** Optional Stripe refund reason, e.g. "fraudulent", "requested_by_customer". */
   reason?: string

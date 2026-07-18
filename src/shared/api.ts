@@ -5,6 +5,7 @@ import type {
   AgentInfo,
   AgentOverride,
   AgentOverrideResult,
+  AgentPathTypedResult,
   GuardPacksResult,
   LastAgent,
   SessionGroup,
@@ -38,10 +39,12 @@ import type { FlowTemplate } from './flow-templates'
 
 export interface LocalflowApi {
   /**
-   * Start a session for an agent. The `cwd` parameter is honored only under
-   * LOCALFLOW_E2E=1 (test harness); production always opens the folder
-   * picker. `customCommand` is required when agentId is 'custom'.
-   * `environment` defaults to 1.
+   * Start a session for an agent. `cwd` is honored whenever it's a
+   * non-empty absolute (or `~`-prefixed) path — Landing always supplies one
+   * (a default, or the user's typed/picked choice), so the native folder
+   * picker only opens as a fallback when `cwd` is absent/invalid.
+   * `customCommand` is required when agentId is 'custom'. `environment`
+   * defaults to 1.
    */
   createSession(
     agentId: AgentId,
@@ -114,6 +117,17 @@ export interface LocalflowApi {
   listAgents(): Promise<AgentInfo[]>
   /** Opens a file picker to locate the agent binary; returns the updated list. */
   setAgentPath(agentId: AgentId): Promise<AgentInfo[] | null>
+  /**
+   * Sets an agent binary's path from typed/pasted text instead of the
+   * picker (only surfaced in the UI when allowTypedPaths is on). Validated
+   * as a non-empty absolute (or `~`-prefixed) path; `{ok:false, reason}`
+   * when main's authoritative `expandTypedPath` rejects a value the
+   * renderer's looser pre-check accepted (e.g. `~otheruser/proj`), so the
+   * caller can surface why instead of silently doing nothing. Null only for
+   * a malformed call (unknown/'custom' agentId, non-string path) — a caller
+   * bug, not a user-facing rejection.
+   */
+  setAgentPathTyped(agentId: AgentId, path: string): Promise<AgentPathTypedResult | null>
   /** Sets the launcher's default agent; returns the refreshed list. */
   setDefaultAgent(agentId: AgentId): Promise<AgentInfo[] | null>
   /**
@@ -190,6 +204,14 @@ export interface LocalflowApi {
    * be active.
    */
   setGuardPacks(packs: string[]): Promise<GuardPacksResult>
+  /** Whether typed-path text inputs are shown alongside Finder pickers. */
+  getAllowTypedPaths(): Promise<boolean>
+  /** Persists the typed-paths toggle; applies to Settings and Landing immediately. */
+  setAllowTypedPaths(allow: boolean): void
+  /** Sensible default new-session cwd: the most recent terminal session's cwd, else home. */
+  getDefaultCwd(): Promise<string>
+  /** Opens the same folder picker session:create falls back to; null if canceled. */
+  chooseFolder(): Promise<string | null>
   /** Working-tree status for a session's repo. `repo:false` when the cwd isn't a git repo (or the session has none). */
   gitStatus(id: string): Promise<GitStatus>
   /** Diff text for one path at one layer. Untracked files come back as full additions; size-capped. */

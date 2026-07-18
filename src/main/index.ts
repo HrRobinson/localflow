@@ -3,16 +3,19 @@ import { join, basename } from 'node:path'
 import { existsSync, readFileSync, writeFileSync, rmSync, mkdirSync, statSync } from 'node:fs'
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
+import { homedir } from 'node:os'
 import {
   VALID_AGENTS,
   type AgentId,
   type AgentOverride,
   type AgentOverrideResult,
+  type AgentPathTypedResult,
   type GuardPacksResult,
   type SessionInfo
 } from '../shared/types'
 import { clampEnvironment } from '../shared/environment'
 import { normalizeHttpUrl, isHttpUrl } from '../shared/urls'
+import { expandTypedPath, resolveDefaultCwd } from '../shared/paths'
 import { parseSessionTemplates, type SessionTemplate } from '../shared/templates'
 import { startHookServer } from './hook-server'
 import { SessionManager, type SpawnSpec } from './session-manager'
@@ -331,7 +334,8 @@ app.whenReady().then(async () => {
     settingsDir: userData,
     port: endpoint.port,
     token: endpoint.token,
-    guard: guardProvider
+    guard: guardProvider,
+    pathExists: existsSync
   })
   managerRef = manager
 
@@ -669,7 +673,10 @@ app.whenReady().then(async () => {
       // VALID_AGENTS guard above.
       if (customCommand !== undefined && typeof customCommand !== 'string') return null
       if (agentId === 'custom' && !customCommand?.trim()) return null
-      let dir = process.env['LOCALFLOW_E2E'] === '1' ? cwd : undefined
+      // Landing always sends a resolved cwd now (a default, or the user's
+      // typed/picked choice) — the dialog is a fallback for the rare caller
+      // that doesn't (an old/malformed IPC call), not the primary path.
+      let dir = typeof cwd === 'string' ? (expandTypedPath(cwd, homedir()) ?? undefined) : undefined
       if (!dir) {
         const result = await dialog.showOpenDialog(win!, {
           properties: ['openDirectory', 'createDirectory'],
@@ -698,6 +705,19 @@ app.whenReady().then(async () => {
       return created
     }
   )
+  // Sensible default new-session cwd (M-pathux): most recent terminal
+  // session's cwd, else home — lets Landing skip the folder picker by
+  // default while keeping it one click away via session:chooseFolder.
+  ipcMain.handle('session:defaultCwd', () =>
+    resolveDefaultCwd(manager.list(), homedir(), existsSync)
+  )
+  ipcMain.handle('session:chooseFolder', async () => {
+    const result = await dialog.showOpenDialog(win!, {
+      properties: ['openDirectory', 'createDirectory'],
+      title: 'Choose a project folder for the new session'
+    })
+    return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0]
+  })
   ipcMain.handle('session:restart', (_e, id: string, fresh?: boolean) => {
     // Restarting a launched OpenClaw session after its grant was revoked
     // (cockpit toggle, operatorRevokeOnExit, app restart) would spawn it with
@@ -990,6 +1010,29 @@ app.whenReady().then(async () => {
     registry.setPath(agentId, result.filePaths[0])
     return registry.list()
   })
+  ipcMain.handle(
+    'agents:setPathTyped',
+    async (_e, agentId: AgentId, path: string): Promise<AgentPathTypedResult | null> => {
+      if (!VALID_AGENTS.includes(agentId) || agentId === 'custom') return null
+      if (typeof path !== 'string') return null
+      const expanded = expandTypedPath(path, homedir())
+      if (!expanded) {
+        // The renderer's looksLikeTypedPath is a looser syntactic pre-check
+        // (it enables the "Use path" button); this authoritative check can
+        // still reject something it accepted — e.g. ~otheruser/proj (no
+        // portable way to resolve another user's home) or a typo missing
+        // the leading / or ~. Name the real reason instead of returning
+        // null and leaving the renderer to silently do nothing.
+        return {
+          ok: false,
+          reason:
+            "That isn't a valid absolute path — use /… or ~/… (another user's ~ isn't supported)."
+        }
+      }
+      registry.setPath(agentId, expanded)
+      return { ok: true, agents: await registry.list() }
+    }
+  )
   ipcMain.handle('operator:grant', (_e, environment: number): GrantInfo => {
     const env = clampEnvironment(environment)
     const token = grantOperator(env)
@@ -1098,6 +1141,10 @@ app.whenReady().then(async () => {
     } catch (err) {
       return { ok: false, reason: (err as Error).message }
     }
+  })
+  ipcMain.handle('settings:getAllowTypedPaths', () => registry.getAllowTypedPaths())
+  ipcMain.on('settings:setAllowTypedPaths', (_e, allow: boolean) => {
+    if (typeof allow === 'boolean') registry.setAllowTypedPaths(allow)
   })
 
   // Integrations Hub IPC (§4.6). Every handler returns presence/status only —

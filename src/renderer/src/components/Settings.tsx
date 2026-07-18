@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { AgentId, AgentInfo } from '../../../shared/types'
+import { looksLikeTypedPath } from '../../../shared/paths'
+import { applyTypedPathResult } from './settingsLogic'
 import KeybindingsEditor from './KeybindingsEditor'
 
 const card =
@@ -33,6 +35,15 @@ export default function Settings(): React.JSX.Element {
   const [themeError, setThemeError] = useState<string | null>(null)
   const [guardPacks, setGuardPacks] = useState<string[]>([])
   const [guardPacksNotice, setGuardPacksNotice] = useState<string | null>(null)
+  const [allowTypedPaths, setAllowTypedPaths] = useState(false)
+  // Per-agent typed-path input drafts (Paths section, opt-in). Controlled so
+  // the "Use path" button can be disabled until the draft looks like a path.
+  const [typedPathDrafts, setTypedPathDrafts] = useState<Partial<Record<AgentId, string>>>({})
+  // Main's authoritative expandTypedPath check rejected a draft the
+  // renderer's looser looksLikeTypedPath pre-check accepted (e.g.
+  // ~otheruser/proj, a typo) — the reason surfaces here instead of the
+  // "Use path" click silently doing nothing.
+  const [typedPathErrors, setTypedPathErrors] = useState<Partial<Record<AgentId, string>>>({})
 
   useEffect(() => {
     let cancelled = false
@@ -54,6 +65,9 @@ export default function Settings(): React.JSX.Element {
     void window.localflow.getGuardPacks().then((p) => {
       if (!cancelled) setGuardPacks(p)
     })
+    void window.localflow.getAllowTypedPaths().then((allow) => {
+      if (!cancelled) setAllowTypedPaths(allow)
+    })
     return () => {
       cancelled = true
     }
@@ -62,6 +76,24 @@ export default function Settings(): React.JSX.Element {
   const setPath = async (agentId: AgentId): Promise<void> => {
     const updated = await window.localflow.setAgentPath(agentId)
     if (updated) setAgents(updated)
+  }
+
+  const setPathTyped = async (agentId: AgentId): Promise<void> => {
+    const draft = typedPathDrafts[agentId] ?? ''
+    if (!looksLikeTypedPath(draft)) return
+    const result = await window.localflow.setAgentPathTyped(agentId, draft)
+    const applied = applyTypedPathResult(result)
+    if (applied.agents) setAgents(applied.agents)
+    // Keep the draft in place on rejection so the user can fix it in place,
+    // rather than clearing (or leaving stuck-but-unexplained) input.
+    setTypedPathErrors((prev) => ({ ...prev, [agentId]: applied.error ?? undefined }))
+    if (applied.clearDraft) setTypedPathDrafts((prev) => ({ ...prev, [agentId]: '' }))
+  }
+
+  const toggleAllowTypedPaths = (): void => {
+    const next = !allowTypedPaths
+    setAllowTypedPaths(next)
+    window.localflow.setAllowTypedPaths(next)
   }
 
   const saveOverride = async (
@@ -105,6 +137,23 @@ export default function Settings(): React.JSX.Element {
 
   return (
     <div className="mx-auto flex w-full max-w-[720px] flex-1 flex-col items-stretch gap-7 overflow-auto px-6 py-8 text-left">
+      <section className="flex flex-col gap-3">
+        <h3 className="m-0 text-[15px] font-semibold tracking-[-0.01em]">Paths</h3>
+        <p className="m-0 text-[13px] text-gray-500">
+          By default, paths below are chosen only via the Finder picker. Turn this on to also type
+          or paste one — handy for dotfolder binaries like ~/.volta/bin/openclaw.
+        </p>
+        <label className="flex items-center gap-2 text-[13px] text-gray-300">
+          <input
+            type="checkbox"
+            className="allow-typed-paths"
+            checked={allowTypedPaths}
+            onChange={toggleAllowTypedPaths}
+          />
+          Allow typing paths, in addition to the Finder picker
+        </label>
+      </section>
+
       <section className="flex flex-col gap-3">
         <h3 className="m-0 text-[15px] font-semibold tracking-[-0.01em]">Agents</h3>
         <p className="m-0 text-[13px] text-gray-500">
@@ -159,6 +208,41 @@ export default function Settings(): React.JSX.Element {
                   {agent.resolvedPath ? 'Change path…' : 'Set path…'}
                 </button>
               </div>
+              {allowTypedPaths && (
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2">
+                    <input
+                      className="agent-path-typed bg-surface min-w-0 flex-1 rounded-md border border-white/[0.14] px-2.5 py-1.5 font-mono text-[11px] text-gray-200 outline-none focus:border-white/40"
+                      placeholder="e.g. ~/.volta/bin/openclaw"
+                      value={typedPathDrafts[agent.id] ?? ''}
+                      onChange={(e) => {
+                        const value = e.target.value
+                        setTypedPathDrafts((prev) => ({ ...prev, [agent.id]: value }))
+                        // Editing after a rejection clears the stale error —
+                        // it re-appears (with a fresh reason, if any) only
+                        // after the next "Use path" attempt.
+                        setTypedPathErrors((prev) => ({ ...prev, [agent.id]: undefined }))
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') void setPathTyped(agent.id)
+                      }}
+                    />
+                    <button
+                      className={`${rowBtn} disabled:cursor-default disabled:opacity-[0.45]`}
+                      disabled={!looksLikeTypedPath(typedPathDrafts[agent.id] ?? '')}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => void setPathTyped(agent.id)}
+                    >
+                      Use path
+                    </button>
+                  </div>
+                  {typedPathErrors[agent.id] && (
+                    <p className="agent-path-typed-error m-0 text-[11px] text-red-400">
+                      {typedPathErrors[agent.id]}
+                    </p>
+                  )}
+                </div>
+              )}
               <label className="flex items-center gap-2 text-[12px] text-gray-400">
                 <input
                   type="radio"

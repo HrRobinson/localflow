@@ -4,6 +4,7 @@ import type { SessionTemplate } from '../../../shared/templates'
 import type { FlowSummary } from '../../../shared/flows'
 import { AGENT_PRESETS } from '../../../shared/agents'
 import { normalizeHttpUrl } from '../../../shared/urls'
+import { looksLikeTypedPath } from '../../../shared/paths'
 import { deriveOverviewStats } from '../lib/overview-stats'
 import { humanDuration } from '../lib/activity-format'
 import ApproveButton from './ApproveButton'
@@ -23,7 +24,7 @@ function templateSummary(template: SessionTemplate): string {
 
 interface Props {
   sessions: SessionInfo[]
-  onCreate: (agentId: AgentId, customCommand?: string) => void
+  onCreate: (agentId: AgentId, customCommand?: string, cwd?: string) => void
   onCreateBrowser: (url: string) => void
   onCreateTemplate: (name: string) => void
   /** Launches a saved flow (a "worker") through the engine via runFlow(id). */
@@ -85,6 +86,11 @@ export default function Landing({
   const userPickedAgent = useRef(false)
   const [urlInput, setUrlInput] = useState('')
   const [customCommand, setCustomCommand] = useState('')
+  // Working-directory row for the New session launcher (path-input UX):
+  // seeded from main's default-cwd resolution, editable when allowTypedPaths
+  // is on, always overridable via the "Choose folder…" picker.
+  const [cwd, setCwd] = useState('')
+  const [allowTypedPaths, setAllowTypedPaths] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
@@ -175,18 +181,42 @@ export default function Landing({
     }
   }, [selectedAgentId])
 
+  // Working-directory default + typed-paths toggle: also independent of the
+  // agent-selection state above, fetched once on mount.
+  useEffect(() => {
+    let cancelled = false
+    void window.localflow.getDefaultCwd().then((dir) => {
+      if (!cancelled) setCwd(dir)
+    })
+    void window.localflow.getAllowTypedPaths().then((allow) => {
+      if (!cancelled) setAllowTypedPaths(allow)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const chooseFolder = async (): Promise<void> => {
+    const dir = await window.localflow.chooseFolder()
+    if (dir) setCwd(dir)
+  }
+
   const selectedAgent =
     selectedAgentId === 'browser' || selectedAgentId === 'worker'
       ? null
       : (agents?.find((a) => a.id === selectedAgentId) ?? null)
+  // The typed cwd input only exists when allowTypedPaths is on, so its
+  // validity only gates launch in that case — otherwise cwd always comes
+  // from getDefaultCwd/chooseFolder, both of which are already valid.
+  const cwdValid = selectedAgentId === 'browser' || !allowTypedPaths || looksLikeTypedPath(cwd)
   const launchable =
-    selectedAgentId === 'browser'
+    (selectedAgentId === 'browser'
       ? normalizeHttpUrl(urlInput) !== null
       : selectedAgentId === 'worker'
         ? selectedWorkerId !== '' && (workerFlows?.some((f) => f.id === selectedWorkerId) ?? false)
         : selectedAgentId === 'custom'
           ? customCommand.trim().length > 0
-          : !!selectedAgent?.resolvedPath
+          : !!selectedAgent?.resolvedPath) && cwdValid
 
   const create = (): void => {
     if (!launchable) return
@@ -198,7 +228,11 @@ export default function Landing({
       onLaunchWorker(selectedWorkerId)
       return
     }
-    onCreate(selectedAgentId, selectedAgentId === 'custom' ? customCommand.trim() : undefined)
+    onCreate(
+      selectedAgentId,
+      selectedAgentId === 'custom' ? customCommand.trim() : undefined,
+      cwd.trim()
+    )
   }
 
   // `now` powers the stats strip's "waiting Nm" span. Two lint rules rule out
@@ -508,6 +542,35 @@ export default function Landing({
             <p className="m-0 text-[13px] text-gray-500">
               No saved workers yet — build and save a flow in Flows, then launch it here.
             </p>
+          )}
+          {selectedAgentId !== 'browser' && (
+            <div className="cwd-row flex items-center gap-2">
+              {allowTypedPaths ? (
+                <input
+                  className="cwd-input bg-surface focus:border-working min-w-0 flex-1 rounded-md border border-white/[0.14] px-2.5 py-2 font-mono text-xs text-gray-200 outline-none"
+                  placeholder="/path/to/project"
+                  value={cwd}
+                  onChange={(e) => setCwd(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && launchable) create()
+                  }}
+                />
+              ) : (
+                <span
+                  className="cwd-display bg-surface min-w-0 flex-1 overflow-hidden rounded-md border border-white/[0.14] px-2.5 py-2 font-mono text-xs text-ellipsis whitespace-nowrap text-gray-400"
+                  title={cwd}
+                >
+                  {cwd || 'Choosing a default…'}
+                </span>
+              )}
+              <button
+                className={rowBtn}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => void chooseFolder()}
+              >
+                Choose folder…
+              </button>
+            </div>
           )}
           <button
             className="new-session w-full cursor-pointer rounded-md border-0 bg-blue-600 py-2 text-center text-[13px] text-white disabled:cursor-default disabled:opacity-[0.45]"

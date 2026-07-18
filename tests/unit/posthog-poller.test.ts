@@ -108,27 +108,32 @@ describe('event.matched — timestamp+uuid cursor (spec §7.2a)', () => {
     properties: {}
   })
 
-  it('a boundary-tick event fires exactly once (not skipped, not re-fired)', async () => {
+  it('baselines pre-existing events WITHOUT firing; only genuinely-new events fire once', async () => {
+    // e1 exists BEFORE subscribe — like insight/cohort, the first tick baselines
+    // the backlog and must NOT flood a run for pre-existing history (spec §7.2a).
     const api = new MockPostHogApi({ events: [ev('e1', '2026-07-18T10:00:00Z')] })
     const poller = buildPoller(api)
     const fired: SeedEvent[] = []
     poller.subscribe('event.matched', { event: '$error' }, (e) => fired.push(e))
 
-    await poller.tick() // e1 fires
-    expect(fired.map((f) => f.eventId)).toEqual(['e1'])
+    await poller.tick() // e1 pre-exists → baseline, NO fire
+    expect(fired.map((f) => f.eventId)).toEqual([])
 
-    await nextTick(poller) // e1 is at the boundary ts, returned again → deduped
-    expect(fired.map((f) => f.eventId)).toEqual(['e1'])
+    await nextTick(poller) // e1 still at/under the baseline cursor → no fire
+    expect(fired.map((f) => f.eventId)).toEqual([])
 
-    // A second event at the SAME timestamp, higher uuid — must fire, not be skipped.
+    // A NEW event at the SAME timestamp, higher uuid — arrives AFTER baseline, fires once.
     api.data.events = [ev('e1', '2026-07-18T10:00:00Z'), ev('e2', '2026-07-18T10:00:00Z')]
     await nextTick(poller)
-    expect(fired.map((f) => f.eventId)).toEqual(['e1', 'e2'])
+    expect(fired.map((f) => f.eventId)).toEqual(['e2'])
 
-    // A later event fires.
+    // A later event fires exactly once.
     api.data.events = [...api.data.events, ev('e3', '2026-07-18T10:05:00Z')]
     await nextTick(poller)
-    expect(fired.map((f) => f.eventId)).toEqual(['e1', 'e2', 'e3'])
+    expect(fired.map((f) => f.eventId)).toEqual(['e2', 'e3'])
+
+    await nextTick(poller) // e3 now at the boundary, returned again → deduped
+    expect(fired.map((f) => f.eventId)).toEqual(['e2', 'e3'])
   })
 })
 

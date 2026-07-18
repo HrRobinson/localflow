@@ -43,8 +43,12 @@ describe('parsePostHogConfig', () => {
   })
 
   it('honors the environment range EXACTLY at the boundary (1..9 in, 0/10 out)', () => {
-    expect(parsePostHogConfig({ posthog: { ...base.posthog, environment: 1 } })?.environment).toBe(1)
-    expect(parsePostHogConfig({ posthog: { ...base.posthog, environment: 9 } })?.environment).toBe(9)
+    expect(parsePostHogConfig({ posthog: { ...base.posthog, environment: 1 } })?.environment).toBe(
+      1
+    )
+    expect(parsePostHogConfig({ posthog: { ...base.posthog, environment: 9 } })?.environment).toBe(
+      9
+    )
     expect(parsePostHogConfig({ posthog: { ...base.posthog, environment: 0 } })).toBeNull()
     expect(parsePostHogConfig({ posthog: { ...base.posthog, environment: 10 } })).toBeNull()
     // A non-integer environment is garbage → disabled, never coerced.

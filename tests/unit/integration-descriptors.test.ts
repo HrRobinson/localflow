@@ -9,9 +9,17 @@ describe('integration descriptors', () => {
       'email',
       'cloud',
       'shopify',
-      'woocommerce'
+      'woocommerce',
+      'posthog'
     ])
-    expect([...INTEGRATION_IDS]).toEqual(['linear', 'email', 'cloud', 'shopify', 'woocommerce'])
+    expect([...INTEGRATION_IDS]).toEqual([
+      'linear',
+      'email',
+      'cloud',
+      'shopify',
+      'woocommerce',
+      'posthog'
+    ])
   })
 
   it('marks the exact secret fields per §7', () => {
@@ -23,6 +31,9 @@ describe('integration descriptors', () => {
     // WooCommerce: consumer key/secret + webhook secret are keychain-only; the
     // store URL is a non-secret ref (spec §5).
     expect(secretKeys('woocommerce')).toEqual(['consumerKey', 'consumerSecret', 'webhookSecret'])
+    // PostHog: ONLY the personal API key is a secret; the project key + host are
+    // non-secret refs (spec §8).
+    expect(secretKeys('posthog')).toEqual(['personalApiKey'])
   })
 
   it('marks the exact required fields per §7', () => {
@@ -41,6 +52,14 @@ describe('integration descriptors', () => {
       'consumerKey',
       'consumerSecret',
       'webhookSecret',
+      'environment'
+    ])
+    // PostHog: personal key + project key + host + environment; pollSeconds is
+    // optional (defaults in the poller, spec §7.3).
+    expect(requiredKeys('posthog')).toEqual([
+      'personalApiKey',
+      'projectApiKey',
+      'host',
       'environment'
     ])
   })
@@ -94,6 +113,12 @@ describe('integration descriptors', () => {
           'updateShippingAddress',
           'addOrderNote'
         ]
+      },
+      {
+        id: 'posthog',
+        // POLLED triggers — not webhooks (spec §6.1, §7).
+        triggers: ['event.matched', 'cohort.entered', 'insight.threshold'],
+        actions: ['queryEvents', 'getInsight', 'getFeatureFlag', 'getCohort', 'updateFeatureFlag']
       }
     ])
   })

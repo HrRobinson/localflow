@@ -31,7 +31,8 @@ const INTEGRATION_IDS: ReadonlySet<string> = new Set<IntegrationId>([
   'email',
   'cloud',
   'shopify',
-  'woocommerce'
+  'woocommerce',
+  'posthog'
 ])
 
 const isObject = (v: unknown): v is Record<string, unknown> =>

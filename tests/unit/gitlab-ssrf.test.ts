@@ -74,7 +74,46 @@ describe('checkBaseUrl — self-host explicit-allow (§5.1)', () => {
   })
 })
 
+describe('checkBaseUrl — hex-tail IPv4-mapped IPv6 metadata bypass (CRITICAL)', () => {
+  it('★ the WHATWG hex-tail form of the metadata IP is blocked even when allowHost matches it', () => {
+    // `new URL('https://[::ffff:169.254.169.254]/')` normalizes `.hostname` to the
+    // HEX tail `[::ffff:a9fe:a9fe]` — the dotted-decimal string match alone misses
+    // this form entirely, admitting metadata whenever allowHost happens to be the
+    // hex form of the connector's own configured self-host.
+    const r = checkBaseUrl('https://[::ffff:169.254.169.254]/', {
+      label: 'GitLab base URL',
+      allowHost: '::ffff:a9fe:a9fe'
+    })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.reason).toMatch(/metadata/i)
+  })
+
+  it('the plain dotted-decimal metadata address is still blocked', () => {
+    const r = checkBaseUrl('https://169.254.169.254', { label: 'GitLab base URL' })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.reason).toMatch(/metadata/i)
+  })
+
+  it('a legit private self-host still ADMITS when allowHost matches (no regression)', () => {
+    const r = checkBaseUrl('https://192.168.1.10', {
+      label: 'GitLab base URL',
+      allowHost: '192.168.1.10'
+    })
+    expect(r.ok).toBe(true)
+  })
+})
+
 describe('blockedIpRange — dial-time pinned-IP allow (§5.1 DNS-rebind defense)', () => {
+  it('★ the hex-tail mapped metadata IP is blocked at dial-time even when it is in allowIps', () => {
+    const range = blockedIpRange('::ffff:a9fe:a9fe', { allowIps: ['::ffff:a9fe:a9fe'] })
+    expect(range).not.toBeNull()
+  })
+
+  it('a DNS-rebind to a different private IP is still blocked (no regression)', () => {
+    expect(blockedIpRange('192.168.1.55', { allowIps: ['192.168.1.10'] })).toMatch(/private/i)
+  })
+
+
   it('admits the exact pinned IP the connector resolved for the self-host', () => {
     expect(blockedIpRange('192.168.1.10', { allowIps: ['192.168.1.10'] })).toBeNull()
   })

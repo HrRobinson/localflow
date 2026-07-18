@@ -47,18 +47,48 @@ export interface CheckBaseUrlOptions {
 const IPV4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/
 
 /**
+ * Reconstruct the embedded IPv4 dotted-decimal address from an IPv4-mapped IPv6
+ * host, or null if `host` isn't `::ffff:`-prefixed or the tail doesn't parse.
+ * Handles BOTH forms WHATWG `new URL()` can hand back: the literal dotted tail
+ * (`::ffff:169.254.169.254`) and the normalized HEX tail (`::ffff:a9fe:a9fe`,
+ * what `.hostname` actually produces for a bracketed mapped literal). Shared by
+ * `isCloudMetadata` and `blockedIpv6` so both see the same reconstruction —
+ * `host` must already be lowercased and bracket-stripped.
+ */
+function mappedIpv4(host: string): string | null {
+  const mapped = host.match(/^::ffff:(.+)$/)
+  if (!mapped) return null
+  const tail = mapped[1]
+  const dotted = parseIpv4(tail)
+  if (dotted) return tail
+  const groups = tail.split(':')
+  if (
+    groups.length >= 1 &&
+    groups.length <= 2 &&
+    groups.every((g) => /^[0-9a-f]{1,4}$/.test(g))
+  ) {
+    const nums = groups.map((g) => parseInt(g, 16))
+    const hi = groups.length === 2 ? nums[0] : 0
+    const lo = nums[groups.length - 1]
+    const octets = [(hi >> 8) & 0xff, hi & 0xff, (lo >> 8) & 0xff, lo & 0xff]
+    return octets.join('.')
+  }
+  return null
+}
+
+/**
  * The cloud-metadata addresses that stay blocked UNCONDITIONALLY — even under an
  * explicit self-host allow (§5.1): AWS/GCP/Azure IMDS `169.254.169.254`, its
- * IPv4-mapped IPv6 form, and the AWS IPv6 metadata address. A self-hosted GitLab
- * never legitimately lives here, and an SSRF to the metadata endpoint is the
- * canonical credential-theft target, so `allowHost` never reaches it.
+ * IPv4-mapped IPv6 form (dotted OR the WHATWG-normalized hex tail), and the AWS
+ * IPv6 metadata address. A self-hosted GitLab never legitimately lives here, and
+ * an SSRF to the metadata endpoint is the canonical credential-theft target, so
+ * `allowHost` never reaches it.
  */
 function isCloudMetadata(host: string): boolean {
   const h = host.toLowerCase().replace(/^\[|\]$/g, '')
   if (h === '169.254.169.254') return true
   if (h === 'fd00:ec2::254') return true
-  const mapped = h.match(/^::ffff:(.+)$/)
-  if (mapped && mapped[1] === '169.254.169.254') return true
+  if (mappedIpv4(h) === '169.254.169.254') return true
   return false
 }
 
@@ -104,28 +134,10 @@ function blockedIpv6(host: string): string | null {
   // run it through the existing IPv4 range check (so loopback/RFC-1918/link-local/
   // metadata all apply). Anything ::ffff:-prefixed we can't cleanly reconstruct
   // is rejected outright — mapped addresses have no legitimate public-store use.
-  const mapped = h.match(/^::ffff:(.+)$/)
-  if (mapped) {
-    const tail = mapped[1]
-    const v4dotted = parseIpv4(tail)
-    if (v4dotted) return blockedIpv4(v4dotted)
-    const groups = tail.split(':')
-    if (
-      groups.length >= 1 &&
-      groups.length <= 2 &&
-      groups.every((g) => /^[0-9a-f]{1,4}$/.test(g))
-    ) {
-      const nums = groups.map((g) => parseInt(g, 16))
-      const hi = groups.length === 2 ? nums[0] : 0
-      const lo = nums[groups.length - 1]
-      const octets: [number, number, number, number] = [
-        (hi >> 8) & 0xff,
-        hi & 0xff,
-        (lo >> 8) & 0xff,
-        lo & 0xff
-      ]
-      return blockedIpv4(octets)
-    }
+  if (h.startsWith('::ffff:')) {
+    const dotted = mappedIpv4(h)
+    const v4 = dotted ? parseIpv4(dotted) : null
+    if (v4) return blockedIpv4(v4)
     return 'IPv4-mapped IPv6 (::ffff:0:0/96)'
   }
   const head = h.split(':')[0]

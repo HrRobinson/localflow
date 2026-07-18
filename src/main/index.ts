@@ -65,6 +65,11 @@ import { ShopifyConnector } from './shopify/shopify-connector'
 import { ShopifyAdminApi, deferredLiveTransport } from './shopify/shopify-admin'
 import { WcApi } from './woocommerce/wc-api'
 import { WoocommerceConnector } from './woocommerce/woocommerce-connector'
+import { HubspotConnector } from './hubspot/hubspot-connector'
+import {
+  HubSpotApiClient,
+  deferredLiveTransport as deferredHubspotTransport
+} from './hubspot/hubspot-api'
 import { startGuardSeenWatch } from './guard-seen-watch'
 import type { ActivityEntry, GrantInfo, OperatorStatus } from '../shared/operator'
 import type { Capabilities } from '../shared/git'
@@ -275,6 +280,29 @@ app.whenReady().then(async () => {
         },
         storeUrl: 'https://woocommerce.deferred.invalid',
         reveal: deferredWooError
+      })
+    })
+  )
+
+  // HubSpot connector (CRM/sales worker): register the LiveConnector so the flow
+  // engine can dispatch its actions/triggers (§7). The offline foundation ships
+  // the connector + its dispatch table + the v3 verifier/normalize core; the LIVE
+  // REST transport, the CredentialStore reveal binding, and the webhook tunnel
+  // are DEFERRED — until they land, any live action rejects LOUDLY (via
+  // `deferredHubspotTransport`) rather than silently no-opping, and no webhook
+  // receiver is started (cloud ingress deferred; trigger subscriptions register
+  // but stay dormant).
+  integrationRegistry.registerConnector(
+    'hubspot',
+    new HubspotConnector({
+      api: new HubSpotApiClient({
+        transport: deferredHubspotTransport(),
+        reveal: () => {
+          throw new Error(
+            'HubSpot live dispatch is not wired yet — the offline connector core is in place, ' +
+              'but real REST + credential access land in a follow-up.'
+          )
+        }
       })
     })
   )

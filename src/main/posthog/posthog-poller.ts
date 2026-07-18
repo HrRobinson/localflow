@@ -20,7 +20,8 @@ import {
  * the `flow-engine.now()` seam) so tests advance time deterministically with NO
  * real waiting (spec §12) — no wall-clock `setInterval` in the tested core. Each
  * trigger id has its own cursor shape + dedup:
- *  - `event.matched`     — timestamp+uuid cursor; boundary tick fires once (§7.2a)
+ *  - `event.matched`     — timestamp+uuid cursor; first tick BASELINES the backlog
+ *                          without firing, then boundary tick fires once (§7.2a)
  *  - `cohort.entered`    — membership set-diff; once per newly-present person (§7.2b)
  *  - `insight.threshold` — EDGE-CROSS; fires on the crossing, not every tick (§7.2c)
  *
@@ -213,22 +214,33 @@ export class PostHogPoller {
       .filter((e) => e.id.length > 0 && e.timestamp.length > 0)
       .sort((a, b) => cmp(a.timestamp, a.id, b.timestamp, b.id))
 
+    // First observation (cursor undefined — first subscribe / reset): BASELINE
+    // the newest (ts, uuid) WITHOUT firing, exactly like pollInsight/pollCohort.
+    // Firing every pre-existing matching event here would flood a run with up to
+    // 100 historical signals on startup (spec §7.2a). Only genuinely-new events
+    // (arriving after this baseline) fire on later ticks.
+    if (!cursor) {
+      const newest = events[events.length - 1]
+      this.cursors.set(
+        sub.key,
+        newest
+          ? { kind: 'event', ts: newest.timestamp, lastUuid: newest.id }
+          : { kind: 'event', ts: '', lastUuid: '' }
+      )
+      return
+    }
+
     let advanced: PostHogCursor | undefined
     for (const e of events) {
       // Boundary dedup (spec §7.2a): drop anything at/under the cursor's
       // (ts, uuid) — the query is inclusive at `ts`, so already-seen boundary
       // events reappear and must not re-fire.
-      if (cursor && cmp(e.timestamp, e.id, cursor.ts, cursor.lastUuid) <= 0) continue
+      if (cmp(e.timestamp, e.id, cursor.ts, cursor.lastUuid) <= 0) continue
       this.emit(sub, e.id, { event: e })
       advanced = { kind: 'event', ts: e.timestamp, lastUuid: e.id }
     }
     // Advance to the newest handed-off (ts, uuid), AFTER the handoffs.
     if (advanced) this.cursors.set(sub.key, advanced)
-    else if (!cursor) {
-      // First run with no events: still seed an empty cursor so a later
-      // no-op tick doesn't re-scan from the beginning of time.
-      this.cursors.set(sub.key, { kind: 'event', ts: '', lastUuid: '' })
-    }
   }
 
   /** Hand a SeedEvent to the subscription's handler, catching+logging a handler

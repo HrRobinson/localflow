@@ -87,8 +87,9 @@ shared SSRF guard on every call.
   **opens** an MR — and **`mergeMR` is never auto-run** ("I merge myself"; §9).
 - **Authority = the flow's gates.** Every write is an `action` node the author
   gates. No write ever runs un-gated by construction of the graph the author
-  drew. `mergeMR` in particular is **flow-gated by mandate** (§9), not merely by
-  convention.
+  drew. `mergeMR` is gated the **same way as every other write** — a `gate` node
+  the author places before it — because merging is irreversible, not because the
+  connector adds a bespoke param check (§9).
 - **Single project, single localflow environment.** Config-as-code `gitlab` block
   in `config.json` (non-secret refs only: `baseUrl`, `projectPath`, environment,
   webhook path); PAT + webhook secret in the keychain.
@@ -102,9 +103,10 @@ shared SSRF guard on every call.
   `projects: [...]` array is the additive path (§13.1), not built now.
 - **The GraphQL API.** GitLab's REST v4 is GA and covers the whole loop; GraphQL
   is a later optimisation, not a day-one path (§2).
-- **Merge automation of any kind.** `mergeMR` exists as a **gated** action, never
-  as an auto-run; and there is **no** "auto-merge on green" convenience — that is
-  a non-goal by mandate (§9), not a deferral.
+- **Merge automation of any kind.** `mergeMR` is a normal gated action — the author
+  places a `gate` node before it, same as any sensitive write; there is **no**
+  "auto-merge on green" convenience anywhere, and no trigger ever fires it directly
+  (§9).
 - **The richer edge-condition operators** (`gt`/`gte`/`contains`/…). Owned by the
   sibling conditions track (§10); this spec only guarantees its fields are shaped
   to be referenced by them.
@@ -225,8 +227,9 @@ maps to a concrete GitLab primitive and the concrete flow-engine mechanism:
 **The authority is the graph the author drew, not the connector.** The connector
 exposes *capabilities*; the *flow* decides which run, in what order, behind which
 gates. There is no hardcoded CI-fix pipeline — the author assembles the worker with
-the authority they choose. `mergeMR` is the one place the connector adds a
-**hard floor**: it will not run outside a gated path (§9).
+the authority they choose. `mergeMR` is a write like any other: it runs when the
+action node is reached, and — because merging is irreversible — the author is
+expected to place a `gate` node before it, same as any sensitive mutation (§9).
 
 ---
 
@@ -253,7 +256,7 @@ so grants, lfguard, and per-environment isolation all apply (§7).
 | Module | Responsibility |
 |---|---|
 | `src/main/integrations/descriptors/gitlab.ts` | The static `IntegrationDescriptorDef` (`id: 'gitlab'`, config fields, the pinned triggers/actions of §6). Added to `DESCRIPTOR_DEFS` (`descriptors/index.ts`). A snapshot test guards the ids (the contract the templates track consumes). Copies `descriptors/linear.ts`. |
-| `src/main/gitlab/gitlab-connector.ts` | Orchestrator + the live `invokeAction`/`subscribe` impl (implements `LiveConnector`). Dispatches an action id → a `gitlab-api` call; dispatches a trigger id → a shared-receiver subscription. Owns the `pipeline.failed` → pane-drive fix loop (§7). The one place the loop lives. **Never auto-mutates**, and refuses to run `mergeMR` outside a gated path (§9). |
+| `src/main/gitlab/gitlab-connector.ts` | Orchestrator + the live `invokeAction`/`subscribe` impl (implements `LiveConnector`). Dispatches an action id → a `gitlab-api` call; dispatches a trigger id → a shared-receiver subscription. Owns the `pipeline.failed` → pane-drive fix loop (§7). The one place the loop lives. **Never auto-mutates** — every write, `mergeMR` included, runs only when an action node invokes it; authority is the graph's `gate` nodes, not a connector-level check (§9). |
 | `src/main/gitlab/gitlab-api.ts` | Thin **REST v4** client. **All** GitLab request/response shapes live *only* here — the blast radius for any API bump. Sends the PAT header; **routes every request through the shared SSRF guard** (§5.1); `Retry-After`-aware backoff on `429`/`5xx`. Isolated behind a `GitLabApi` interface so tests inject a `MockGitLabApi` (§12). |
 | `src/main/gitlab/gitlab-normalize.ts` | **Pure** mapping: a raw GitLab issue / MR / pipeline JSON → the pinned **context-field shape** (§6.3); and a raw webhook payload (`Issue`/`Merge Request`/`Pipeline` Hook) → a `SeedEvent`. Unit-testable in isolation (mirrors `status-map.ts` purity). Where iid↔id, status-enum, and timestamp normalization happen — **once**, so conditions read a stable shape. |
 | `src/main/gitlab/gitlab-fix.ts` | The `pipeline.failed` → coding-agent-pane fix driver (§7). An in-process operator client over `control-api.ts` (`POST /panes` terminal + `POST /panes/:handle/prompt`), mirroring `linear-connector.ts`'s pane-drive. Kept separate so the read/write API surface has no operator dependency. |
@@ -486,7 +489,7 @@ filter is applied at the receiver so a green/running pipeline never seeds a run.
 | `labelIssue` | Set issue labels | `PUT …/issues/:iid` `{ labels }` | Add/replace labels (triage). | **MATCH** |
 | `createIssue` | Create an issue | `POST …/issues` | e.g. file a bug from a failed pipeline. | **MATCH** |
 | `openMR` | Open a merge request | `POST …/merge_requests` | Opens the fix branch as an MR (the fix-loop payoff, §7). **Never** auto-merges. | `openPr` → `openMR` (rename) |
-| `mergeMR` | Merge a merge request | `PUT …/merge_requests/:iid/merge` | **Irreversible; MANDATE: never auto-run — flow-gated only** ("I merge myself", §9). | `mergePr` → `mergeMR` (rename) |
+| `mergeMR` | Merge a merge request | `PUT …/merge_requests/:iid/merge` | **Irreversible — runs when reached, same as any other write; the author's `gate` node before it is the authority** ("I merge myself", §9). | `mergePr` → `mergeMR` (rename) |
 
 **Failure convention (pinned):** a write that fails **rejects** its promise with the
 real GitLab error text; a resolved promise (any value) is success and its value
@@ -585,7 +588,7 @@ connector's fix-PR loop and reusing the Linear connector's operator pane-drive.
    │        │  POST …/merge_requests → resolves GitLabMrContext → context['mr']
    │        ▼
    │   [gate: "merge?"]                   pauses run needs-you; the HUMAN reviews + merges
-   │        │  approved ──► [action: mergeMR]  (runs ONLY here — never auto; §9)
+   │        │  approved ──► [action: mergeMR]  (runs here because the gate node sits before it; §9)
    │        │  rejected ──► run ends 'rejected' (a human "no" is not a failure)
    │
    └── edge: (else — not main / no failed jobs)
@@ -619,14 +622,15 @@ Node-by-node against the engine:
    GitLab error **rejects** and the run fails with the real message (§11). On success
    the resolved `GitLabMrContext` is in `context['mr']`.
 6. **Gate + merge.** A `gate` node pauses the run `needs-you`; the **human** reviews
-   and approves (or rejects → run ends `rejected` cleanly). **`mergeMR` runs only on
-   the approved branch, never automatically** — the connector additionally refuses a
-   `mergeMR` invocation that is not gated (§9). On success the run completes `done`.
+   and approves (or rejects → run ends `rejected` cleanly). **`mergeMR` runs on the
+   approved branch** because the flow engine only continues past the `gate` node on
+   approval — the connector itself just calls the API when the `mergeMR` action node
+   is reached, same as every other write. On success the run completes `done`.
 
 The same trigger + reads + fields support arbitrarily different graphs (file an
 issue instead of fixing; auto-comment triage; label-and-route; open a draft MR for a
 human to finish). The connector supplies capability + facts; the **author supplies
-authority** — and the connector holds one hard floor at `mergeMR`.
+authority**, entirely through the graph — including for `mergeMR`.
 
 ---
 
@@ -659,23 +663,31 @@ network call.
 
 ## 9. Authority & safety — the `mergeMR` mandate
 
-**Primary control — the flow's gates (already enforced).** Every write
-(`commentIssue`, `labelIssue`, `createIssue`, `openMR`, `mergeMR`) is an `action`
-node. Authority is whatever the author wired: a `gate` node pauses the run
+**Primary control — the flow's gates (the engine's sole gating primitive).** Every
+write (`commentIssue`, `labelIssue`, `createIssue`, `openMR`, `mergeMR`) is an
+`action` node. Authority is whatever the author wired: a `gate` node pauses the run
 `needs-you`; a conditional edge restricts *when* a write is even reached; a human
 "no" ends the run `rejected` (not a failure); a write with no path to it never runs.
-**The connector never auto-mutates outside the graph the author drew.**
+**The connector never auto-mutates outside the graph the author drew** — the flow
+engine's `gate`-node handling (`flow-engine.ts`) is the *only* place gating is
+enforced, for every connector.
 
-**The hard floor — `mergeMR` never auto-runs (mandate, not convention).** Merging is
-irreversible and lands code on a protected branch, so `mergeMR` gets a floor the
-other writes do not: the connector **rejects a `mergeMR` invocation that is not
-downstream of a gate**. Mechanically, the fix loop and any merge template must place
-a `gate` (or a human-approval node) immediately before `mergeMR`; the connector
-verifies the run reached `mergeMR` via a gated path and otherwise rejects with a
-legible "mergeMR must sit behind a gate — localflow will not auto-merge; add an
-approval node before it." This encodes Jonas's stated posture ("I merge myself";
-memory: *Merge handoff preference*) as a deterministic guard, not a hope. There is
-**no** "auto-merge on green" convenience anywhere in MVP (§1 out-of-scope).
+**`mergeMR` is gated the same way as every other mutation — a graph `gate` node, not
+a connector param.** Merging is irreversible and lands code on a protected branch,
+so it is exactly the kind of write the author should place behind a `gate` (or
+human-approval) node — but that authority lives in the graph, not in the connector.
+The connector holds **no in-connector param check** (an earlier draft gated on a
+static `approved`/`gated` param on the action node's own config, which an author
+could hardcode with no gate node anywhere upstream — a bypassable, inconsistent
+auto-merge path). `mergeMR` instead behaves exactly like GitHub's `mergePR`,
+Stripe's `createRefund`, and Woo's `refundOrder`: it calls the API when the action
+node is reached, and rejects only on a real API failure. Jonas's stated posture ("I
+merge myself"; memory: *Merge handoff preference*) is realized by the author wiring
+a `gate` before `mergeMR` in every shipped template — the same convention that
+protects every other sensitive write, not a bespoke connector-level rule. There is
+**no** "auto-merge on green" convenience anywhere in MVP (§1 out-of-scope), and a
+delivered trigger still fires **zero** GitLab writes on its own (the load-bearing
+authority guarantee, unchanged).
 
 **The fix stage inherits lfguard.** The coding-agent pane the fix loop drives writes
 through `POST /panes/:handle/prompt`, which is **already lfguard-gated**
@@ -736,8 +748,7 @@ and surfaces it on the run.
 | **Missing scope (403)** | GitLab's scope error | Rejects verbatim: "GitLab refused '<action>': the token is missing the `api` scope (read-only `read_api` can't write) — regenerate it with `api` and re-enter." |
 | **Issue/MR/pipeline not found (404)** | the iid/id that missed | Rejects: "GitLab has no <thing> '<id>' in `<projectPath>` (it may be from another project or was deleted)." — actionable, not a bare 404. |
 | **Rate-limit (429)** | `Retry-After` / `RateLimit-*` | `gitlab-api` retries honouring `Retry-After`; only after exhausting retries does it reject with "GitLab throttled the request (retry in ~Ns)". Self-host may send no header → capped exponential backoff (like the Woo client). Not swallowed. |
-| **`mergeMR` not gated** (§9) | the mandate | Rejects **before** the call: "mergeMR must sit behind a gate — localflow will not auto-merge; add an approval node before it." |
-| **MR not mergeable** (conflicts / pipeline pending) | GitLab's `merge_status` / message | Rejects with the true reason: "GitLab refused the merge: `cannot_be_merged` (source has conflicts with `main`)." Never a silent no-op. |
+| **MR not mergeable** (conflicts / pipeline pending) | GitLab's `merge_status` / message | Rejects with the true reason: "GitLab refused the merge: `cannot_be_merged` (source has conflicts with `main`)." Never a silent no-op. `mergeMR` has no separate gate-check failure mode — authority is the graph's `gate` node, not the connector (§9). |
 | **Fix-pane spawn refused** | control-API 400/403 (bad group / lfguard block) | Rejects with the control-API reason: "Couldn't start a fix agent in environment <n>: <control-api error>." The fix stage fails loudly, not silently. |
 | **Ingress unreachable** | the unreachable `webhookUrl` | Startup/health check fails loudly: "GitLab webhook URL '<url>' is unreachable — no repo events will arrive." Never a silent dead trigger. |
 | **API version/path removed** | GitLab's error | Rejects: "GitLab API rejected `<path>` — the instance may be older/newer than expected." All shapes are in `gitlab-api.ts`, so the fix is one file. |
@@ -778,8 +789,10 @@ modules, injected backends, fixture events):
   `http://` is refused; embedded credentials refused.
 - **`gitlab-connector` dispatch tests** — with a `MockGitLabApi` + a fake registry:
   assert `invokeAction('gitlab','getIssue',…)` resolves the normalized context; a
-  GitLab error response **rejects** with the verbatim message; **`mergeMR` invoked
-  outside a gated path rejects before the mock is called** (the §9 mandate).
+  GitLab error response **rejects** with the verbatim message; `mergeMR` runs when
+  invoked (no in-connector param gate — same as `openMR`/`commentIssue`), rejecting
+  only on a real API failure; and **a delivered trigger fires zero GitLab writes on
+  its own** (the load-bearing §9 authority guarantee, independent of gating).
 - **Fix-loop tests (offline)** — `gitlab-fix` drives a **fake control-API** (the
   router `handleRequest` is pure over its deps — `control-api.ts:125`): assert it
   `POST /panes` → `POST /panes/:handle/prompt` → polls `GET output` → calls `openMR`;
@@ -828,11 +841,14 @@ exercised only in manual dogfooding against a self-hosted dev instance.
    ask the user to invent them? Leaning: require the IP allowlist on LAN bind,
    auto-generate path+secret, show a one-line "shared-secret, keep the URL private"
    note.
-4. **`mergeMR` — mandate vs. also an lfguard-style backstop.** §9 makes `mergeMR`
-   reject outside a gated path. Is the graph-gate mandate sufficient, or should there
-   *also* be a deterministic backstop (e.g. refuse merges to a configurable
-   protected-branch set even if gated, in the spirit of `guard/` lfguard)? Leaning:
-   mandate for MVP; protected-branch backstop as a phased add.
+4. **`mergeMR` — graph-gate convention vs. also an lfguard-style backstop.** §9
+   leaves `mergeMR` gated exactly like every other write, by the author's `gate`
+   node — there is no connector-level check to fall back on. Is the graph-gate
+   convention (plus every shipped template placing a `gate` before it) sufficient,
+   or should there *also* be a deterministic backstop (e.g. refuse merges to a
+   configurable protected-branch set regardless of the graph, in the spirit of
+   `guard/` lfguard)? Leaning: convention-only for MVP; protected-branch backstop as
+   a phased add.
 5. **Webhook subscription management — manual vs programmatic.** MVP can have the user
    create the Project Hook in GitLab (pointing at the tunnel/LAN URL with the token),
    or the connector can create it via `POST …/hooks` on connect (nicer UX, needs the

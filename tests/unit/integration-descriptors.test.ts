@@ -9,9 +9,17 @@ describe('integration descriptors', () => {
       'email',
       'cloud',
       'shopify',
-      'woocommerce'
+      'woocommerce',
+      'stripe'
     ])
-    expect([...INTEGRATION_IDS]).toEqual(['linear', 'email', 'cloud', 'shopify', 'woocommerce'])
+    expect([...INTEGRATION_IDS]).toEqual([
+      'linear',
+      'email',
+      'cloud',
+      'shopify',
+      'woocommerce',
+      'stripe'
+    ])
   })
 
   it('marks the exact secret fields per §7', () => {
@@ -93,6 +101,19 @@ describe('integration descriptors', () => {
           'cancelOrder',
           'updateShippingAddress',
           'addOrderNote'
+        ]
+      },
+      {
+        id: 'stripe',
+        triggers: ['charge.dispute.created', 'charge.refunded', 'invoice.payment_failed'],
+        actions: [
+          'getCharge',
+          'getCustomer',
+          'getDispute',
+          'getSubscription',
+          'createRefund',
+          'respondToDispute',
+          'cancelSubscription'
         ]
       }
     ])

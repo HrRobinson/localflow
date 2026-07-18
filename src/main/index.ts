@@ -65,6 +65,11 @@ import { ShopifyConnector } from './shopify/shopify-connector'
 import { ShopifyAdminApi, deferredLiveTransport } from './shopify/shopify-admin'
 import { WcApi } from './woocommerce/wc-api'
 import { WoocommerceConnector } from './woocommerce/woocommerce-connector'
+import { StripeConnector } from './stripe/stripe-connector'
+import {
+  StripeApiClient,
+  deferredLiveTransport as deferredStripeTransport
+} from './stripe/stripe-client'
 import { startGuardSeenWatch } from './guard-seen-watch'
 import type { ActivityEntry, GrantInfo, OperatorStatus } from '../shared/operator'
 import type { Capabilities } from '../shared/git'
@@ -276,6 +281,20 @@ app.whenReady().then(async () => {
         storeUrl: 'https://woocommerce.deferred.invalid',
         reveal: deferredWooError
       })
+    })
+  )
+
+  // Stripe connector: the payments/refunds/disputes dispatch behind the registry
+  // seam (§4.3, §4.4). The live HTTPS transport (Authorization: Bearer rk_… from
+  // the keychain) and the webhook tunnel are DEFERRED (foundation slice) —
+  // `deferredStripeTransport` fails loudly if an action reaches the wire, so the
+  // descriptor, normalizer, and mock-tested dispatch are all in place while real
+  // Stripe calls land in a later phase. No money action ever auto-runs: mutations
+  // fire ONLY via a gated action node the author drew (§9).
+  integrationRegistry.registerConnector(
+    'stripe',
+    new StripeConnector({
+      api: new StripeApiClient({ transport: deferredStripeTransport() })
     })
   )
 

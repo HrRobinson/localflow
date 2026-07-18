@@ -36,7 +36,8 @@ const INTEGRATION_IDS: ReadonlySet<string> = new Set<IntegrationId>([
   'gitlab',
   'slack',
   'http',
-  'stripe'
+  'stripe',
+  'github'
 ])
 
 const isObject = (v: unknown): v is Record<string, unknown> =>

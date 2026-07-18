@@ -90,6 +90,12 @@ import {
   StripeApiClient,
   deferredLiveTransport as deferredStripeTransport
 } from './stripe/stripe-client'
+import { GitHubConnector } from './github/github-connector'
+import {
+  GitHubRestApi,
+  deferredLiveTransport as deferredGitHubTransport
+} from './github/github-api'
+import { PatAuth } from './github/github-auth'
 import { startGuardSeenWatch } from './guard-seen-watch'
 import type { ActivityEntry, GrantInfo, OperatorStatus } from '../shared/operator'
 import type { Capabilities } from '../shared/git'
@@ -359,6 +365,34 @@ app.whenReady().then(async () => {
         baseUrl: 'https://gitlab.deferred.invalid',
         projectPath: 'group/project',
         reveal: deferredGitLabError
+      })
+    })
+  )
+
+  // GitHub connector: the flagship dev actuator (spec §4.3). The offline
+  // foundation ships the descriptor + dispatch table + the SSRF/HMAC/normalize/
+  // auth core; the LIVE REST transport and the cloud webhook ingress are DEFERRED
+  // (foundation slice) — `deferredGitHubTransport` fails loudly if an action
+  // reaches the wire. Auth is the PAT path bound to the main-only keychain reveal
+  // (App-installation auth is built in `github-auth.ts` for when the fork flips).
+  // No webhook server is started here (cloud ingress deferred); trigger
+  // subscriptions register but stay dormant. Mutations NEVER auto-run — a write
+  // fires only because a gated action node invoked it (§9).
+  // The keychain-reveal binding is DEFERRED alongside the live transport: until
+  // real REST lands, auth is never resolved, so the reveal is a loud stub (the
+  // main-only keychain reveal exit is bound at live wiring, mirroring Woo).
+  const deferredGitHubReveal = (): never => {
+    throw new Error(
+      'GitHub live auth is not wired yet — the offline connector core is in place, ' +
+        'but keychain reveal + real HTTP land in a follow-up (foundation slice).'
+    )
+  }
+  integrationRegistry.registerConnector(
+    'github',
+    new GitHubConnector({
+      api: new GitHubRestApi({
+        transport: deferredGitHubTransport(),
+        auth: new PatAuth(deferredGitHubReveal)
       })
     })
   )

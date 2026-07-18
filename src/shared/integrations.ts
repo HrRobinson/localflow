@@ -19,6 +19,7 @@ export type IntegrationId =
   | 'slack'
   | 'http'
   | 'stripe'
+  | 'github'
 
 export interface IntegrationConfigField {
   key: string
@@ -103,7 +104,8 @@ export const INTEGRATION_IDS: readonly IntegrationId[] = [
   'gitlab',
   'slack',
   'http',
-  'stripe'
+  'stripe',
+  'github'
 ]
 
 /**

@@ -14,7 +14,8 @@ describe('integration descriptors', () => {
       'gitlab',
       'slack',
       'http',
-      'stripe'
+      'stripe',
+      'github'
     ])
     expect([...INTEGRATION_IDS]).toEqual([
       'linear',
@@ -26,7 +27,8 @@ describe('integration descriptors', () => {
       'gitlab',
       'slack',
       'http',
-      'stripe'
+      'stripe',
+      'github'
     ])
   })
 
@@ -45,6 +47,9 @@ describe('integration descriptors', () => {
     // HTTP owns NO per-id secret — every secret is PER NODE, in the keychain
     // under the composite key `http:<nodeId>:<secretRef>` (§7).
     expect(secretKeys('http')).toEqual([])
+    // GitHub: the PAT, the App private key, and the webhook secret are keychain-
+    // only; auth mode / App id / installation id / base URL / owner are refs (§5).
+    expect(secretKeys('github')).toEqual(['pat', 'appPrivateKey', 'webhookSecret'])
   })
 
   it('marks the exact required fields per §7', () => {
@@ -74,6 +79,10 @@ describe('integration descriptors', () => {
       'environment'
     ])
     expect(requiredKeys('http')).toEqual(['environment'])
+    // GitHub: the auth-mode selector + the always-required webhook secret, owner,
+    // and environment. The mode-specific secrets (pat / App triple) are
+    // conditional on `authMode`, so `required: false` at the field level (§5).
+    expect(requiredKeys('github')).toEqual(['authMode', 'webhookSecret', 'owner', 'environment'])
   })
 
   it('leaves cloud action-only (no triggers) and keeps trigger/action ids stable', () => {
@@ -168,6 +177,23 @@ describe('integration descriptors', () => {
           'createRefund',
           'respondToDispute',
           'cancelSubscription'
+        ]
+      },
+      {
+        id: 'github',
+        triggers: ['issue.opened', 'pr.opened', 'check.failed', 'workflow.failed'],
+        actions: [
+          'getIssue',
+          'getPR',
+          'getCheckRun',
+          'searchIssues',
+          'commentIssue',
+          'labelIssue',
+          'createIssue',
+          'closeIssue',
+          'openPR',
+          'dispatchWorkflow',
+          'mergePR'
         ]
       }
     ])

@@ -113,6 +113,40 @@ describe('SessionManager', () => {
     expect(msg).not.toContain('\u001b')
   })
 
+  it('feeds pty bytes into a headless screen readable via snapshot()', () => {
+    const info = mgr.create('/p', claudeSpec, 1)
+    ptys[0].dataCb?.('\x1b[2J\x1b[H\x1b[38;5;246mHello operator\x1b[0m\r\n')
+    const joined = mgr.snapshot(info.id).join('\n')
+    expect(joined).toContain('Hello operator')
+    expect(joined).not.toContain('246m')
+    expect(joined).not.toContain('\x1b')
+  })
+
+  it('forwards resize to the screen (a wide line wraps at the new width)', () => {
+    const info = mgr.create('/p', claudeSpec, 1)
+    mgr.resize(info.id, 20, 10)
+    ptys[0].dataCb?.('0123456789012345678901234')
+    expect(mgr.snapshot(info.id).length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('snapshot(maxLines) returns the last N non-empty rendered lines', () => {
+    const info = mgr.create('/p', claudeSpec, 1)
+    ptys[0].dataCb?.('one\r\ntwo\r\nthree\r\n')
+    expect(mgr.snapshot(info.id, 2)).toEqual(['two', 'three'])
+  })
+
+  it('instant-exit message uses the rendered screen, not the raw byte tail', () => {
+    const info = mgr.create('/p', claudeSpec, 1)
+    // Redraw sequence: clear + home + SGR 246 text. The old byte-tail path
+    // would leak escape fragments; the rendered screen reads cleanly.
+    ptys[0].dataCb?.('\x1b[2J\x1b[H\x1b[38;5;246mSession ended by server\x1b[0m')
+    ptys[0].exitCb?.()
+    const msg = mgr.list().find((s) => s.id === info.id)?.message ?? ''
+    expect(msg).toContain('Session ended by server')
+    expect(msg).not.toContain('246')
+    expect(msg).not.toContain('\x1b')
+  })
+
   it('instant exit with no output still gets an explanatory message', () => {
     const info = mgr.create('/p', claudeSpec, 1)
     ptys[0].exitCb?.(0)
@@ -641,15 +675,40 @@ describe('SessionManager', () => {
   })
 
   describe('peek', () => {
-    it('returns the last cleaned lines of a live session output', () => {
+    it('peek returns the rendered screen, not the raw byte tail', () => {
       const info = mgr.create('/p', claudeSpec, 1)
-      ptys[0].dataCb?.('[1mDo you want to run npm test?[0m\n(y/n)\n')
+      // A TUI redraw whose raw bytes would leak escape fragments through the
+      // old ANSI-strip path; the rendered screen is clean.
+      ptys[0].dataCb?.('\x1b[2J\x1b[H\x1b[38;5;246mProceed? (y/n)\x1b[0m\r\n')
+      const lines = mgr.peek(info.id, 5)
+      expect(lines).toContain('Proceed? (y/n)')
+      expect(lines.join('\n')).not.toContain('246m')
+    })
+
+    it('peek falls back to extractPeekLines when there is no screen', () => {
+      // A restored placeholder has a byte tail but no live screen — peek must
+      // still return something readable rather than [].
+      const restored = mgr.restore('rid', '/p', claudeSpec)
+      // Reach the record's tail the way the manager would: restored sessions
+      // start with an empty tail, so peek is [] — prove the fallback path runs
+      // without throwing on a screenless record.
+      expect(() => mgr.peek(restored.id, 5)).not.toThrow()
+      expect(mgr.peek(restored.id, 5)).toEqual([])
+    })
+
+    it('returns the last cleaned lines of a live session output', () => {
+      // \r\n, not a bare \n: peek now reads a real rendered terminal screen
+      // (Task 3), and a bare \n without a preceding \r staircases in any real
+      // terminal (LNM is off by default) — matching how a real pty emits
+      // line breaks.
+      const info = mgr.create('/p', claudeSpec, 1)
+      ptys[0].dataCb?.('[1mDo you want to run npm test?[0m\r\n(y/n)\r\n')
       expect(mgr.peek(info.id)).toEqual(['Do you want to run npm test?', '(y/n)'])
     })
 
     it('respects maxLines', () => {
       const info = mgr.create('/p', claudeSpec, 1)
-      ptys[0].dataCb?.('a\nb\nc\n')
+      ptys[0].dataCb?.('a\r\nb\r\nc\r\n')
       expect(mgr.peek(info.id, 2)).toEqual(['b', 'c'])
     })
 

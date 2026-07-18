@@ -280,10 +280,18 @@ body {
     0 0 12px 0 #00ffff33;
 }
 
-/* xterm sizing */
+/* xterm sizing. Put the 4px inset on the .xterm element itself, not the host:
+   FitAddon subtracts the terminal element's own padding when computing rows,
+   so this keeps the visual inset while making the row count fit the true
+   content height (no clipped last row, and the status border reaches the
+   bottom edge). */
 .term-host {
   flex: 1;
   min-height: 0;
+}
+.term-host .xterm {
+  box-sizing: border-box;
+  height: 100%;
   padding: 4px;
 }
 

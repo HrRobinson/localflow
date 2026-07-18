@@ -1,6 +1,6 @@
 export type SessionStatus = 'idle' | 'working' | 'needs-you' | 'running' | 'exited'
 
-export type HookEventName = 'UserPromptSubmit' | 'Notification' | 'Stop'
+export type HookEventName = 'UserPromptSubmit' | 'Notification' | 'Stop' | 'PostToolUse'
 
 export interface HookEvent {
   paneId: string

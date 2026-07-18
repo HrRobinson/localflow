@@ -85,9 +85,14 @@ export function buildCodexHookArgs(
       `notify=["sh","-c",${JSON.stringify(notifyCommand(paneId, port, token))}]`
     ]
   }
+  // PostToolUse rides along for parity with Claude (needs-you clears mid-turn).
+  // UNVERIFIED like the rest of this grammar: if Codex has no 'PostToolUse'
+  // hook name it simply never fires (silent degradation), never on the wrong
+  // condition — same "never wrong-but-confident" contract as the module doc.
   const table: [string, HookEventName][] = [
     ['UserPromptSubmit', 'UserPromptSubmit'],
     ['PermissionRequest', 'Notification'],
+    ['PostToolUse', 'PostToolUse'],
     ['Stop', 'Stop']
   ]
   return [

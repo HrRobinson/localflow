@@ -42,6 +42,16 @@ describe('parsePostHogConfig', () => {
     expect(parsePostHogConfig({ posthog: { ...base.posthog, environment: 12 } })).toBeNull()
   })
 
+  it('honors the environment range EXACTLY at the boundary (1..9 in, 0/10 out)', () => {
+    expect(parsePostHogConfig({ posthog: { ...base.posthog, environment: 1 } })?.environment).toBe(1)
+    expect(parsePostHogConfig({ posthog: { ...base.posthog, environment: 9 } })?.environment).toBe(9)
+    expect(parsePostHogConfig({ posthog: { ...base.posthog, environment: 0 } })).toBeNull()
+    expect(parsePostHogConfig({ posthog: { ...base.posthog, environment: 10 } })).toBeNull()
+    // A non-integer environment is garbage → disabled, never coerced.
+    expect(parsePostHogConfig({ posthog: { ...base.posthog, environment: 1.5 } })).toBeNull()
+    expect(parsePostHogConfig({ posthog: { ...base.posthog, environment: '1' } })).toBeNull()
+  })
+
   it('disables on a non-https / private / loopback host (SSRF at the boundary)', () => {
     expect(
       parsePostHogConfig({ posthog: { ...base.posthog, host: 'http://us.posthog.com' } })

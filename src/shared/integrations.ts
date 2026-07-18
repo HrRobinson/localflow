@@ -8,7 +8,7 @@
 
 // ── Pinned contract (verbatim; #2/#3 consume these names) ────────────────────
 
-export type IntegrationId = 'linear' | 'email' | 'cloud' | 'shopify' | 'woocommerce'
+export type IntegrationId = 'linear' | 'email' | 'cloud' | 'shopify' | 'woocommerce' | 'http'
 
 export interface IntegrationConfigField {
   key: string
@@ -73,7 +73,8 @@ export const INTEGRATION_IDS: readonly IntegrationId[] = [
   'email',
   'cloud',
   'shopify',
-  'woocommerce'
+  'woocommerce',
+  'http'
 ]
 
 /**

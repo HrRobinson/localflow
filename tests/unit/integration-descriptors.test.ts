@@ -9,9 +9,17 @@ describe('integration descriptors', () => {
       'email',
       'cloud',
       'shopify',
-      'woocommerce'
+      'woocommerce',
+      'http'
     ])
-    expect([...INTEGRATION_IDS]).toEqual(['linear', 'email', 'cloud', 'shopify', 'woocommerce'])
+    expect([...INTEGRATION_IDS]).toEqual([
+      'linear',
+      'email',
+      'cloud',
+      'shopify',
+      'woocommerce',
+      'http'
+    ])
   })
 
   it('marks the exact secret fields per §7', () => {
@@ -23,6 +31,9 @@ describe('integration descriptors', () => {
     // WooCommerce: consumer key/secret + webhook secret are keychain-only; the
     // store URL is a non-secret ref (spec §5).
     expect(secretKeys('woocommerce')).toEqual(['consumerKey', 'consumerSecret', 'webhookSecret'])
+    // HTTP owns NO per-id secret — every secret is PER NODE, in the keychain
+    // under the composite key `http:<nodeId>:<secretRef>` (§7).
+    expect(secretKeys('http')).toEqual([])
   })
 
   it('marks the exact required fields per §7', () => {
@@ -43,6 +54,7 @@ describe('integration descriptors', () => {
       'webhookSecret',
       'environment'
     ])
+    expect(requiredKeys('http')).toEqual(['environment'])
   })
 
   it('leaves cloud action-only (no triggers) and keeps trigger/action ids stable', () => {
@@ -94,6 +106,11 @@ describe('integration descriptors', () => {
           'updateShippingAddress',
           'addOrderNote'
         ]
+      },
+      {
+        id: 'http',
+        triggers: ['webhook.received'],
+        actions: ['http.get', 'http.send']
       }
     ])
   })

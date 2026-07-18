@@ -16,6 +16,8 @@
  * NEVER the restricted key (spec §8, §11).
  */
 
+import { minorToMajor } from '../../shared/money'
+
 // ── Raw Stripe object shapes (isolated here — minor units, unix ts) ──────────
 
 export interface RawCharge {
@@ -219,7 +221,7 @@ export class StripeApiClient implements StripeApi {
     const currency = (body.currency ?? '').toUpperCase()
     return {
       refundId: typeof body.id === 'string' ? body.id : '',
-      amount: minorToMajorLocal(Number(body.amount ?? input.amount ?? 0), currency),
+      amount: minorToMajor(Number(body.amount ?? input.amount ?? 0), currency),
       currency
     }
   }
@@ -332,36 +334,6 @@ export class StripeApiClient implements StripeApi {
     }
     return body
   }
-}
-
-/** Local minor→major used only for the refund result's own `amount` (§6.3). Kept
- *  self-contained so the client owns Stripe-shape decoding end-to-end; the shared
- *  `minorToMajor` is applied to READ paths in `stripe-normalize.ts`. */
-function minorToMajorLocal(minor: number, currency: string): number {
-  if (!Number.isFinite(minor)) return 0
-  const zero = new Set([
-    'BIF',
-    'CLP',
-    'DJF',
-    'GNF',
-    'HUF',
-    'ISK',
-    'JPY',
-    'KMF',
-    'KRW',
-    'PYG',
-    'RWF',
-    'UGX',
-    'VND',
-    'VUV',
-    'XAF',
-    'XOF',
-    'XPF'
-  ])
-  const three = new Set(['BHD', 'IQD', 'JOD', 'KWD', 'LYD', 'OMR', 'TND'])
-  const c = currency.toUpperCase()
-  const decimals = zero.has(c) ? 0 : three.has(c) ? 3 : 2
-  return minor / 10 ** decimals
 }
 
 /** Backoff honoring `Retry-After` (seconds); falls back to exponential. */

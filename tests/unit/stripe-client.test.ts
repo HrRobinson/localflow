@@ -115,6 +115,22 @@ describe('StripeApiClient — mutations send an Idempotency-Key + convert the re
     expect(result).toEqual({ refundId: 're_1', amount: 50, currency: 'USD' })
   })
 
+  it('unwraps a JPY refund result at the shared zero-decimal scale (no local exponent table)', async () => {
+    const { transport } = scripted([{ status: 200, body: { id: 're_2', amount: 500, currency: 'jpy' } }])
+    const api = new StripeApiClient({ transport })
+    const result = await api.createRefund({ chargeId: 'ch_1', amount: 500, idempotencyKey: 'lf_jpy' })
+    expect(result).toEqual({ refundId: 're_2', amount: 500, currency: 'JPY' })
+  })
+
+  it('unwraps a BHD refund result at the shared three-decimal scale (no local exponent table)', async () => {
+    const { transport } = scripted([
+      { status: 200, body: { id: 're_3', amount: 4200, currency: 'bhd' } }
+    ])
+    const api = new StripeApiClient({ transport })
+    const result = await api.createRefund({ chargeId: 'ch_1', amount: 4200, idempotencyKey: 'lf_bhd' })
+    expect(result).toEqual({ refundId: 're_3', amount: 4.2, currency: 'BHD' })
+  })
+
   it('respondToDispute({close:true}) POSTs the /close endpoint to actually accept the chargeback', async () => {
     const { transport, requests } = scripted([
       { status: 200, body: { id: 'dp_1', status: 'lost' } }

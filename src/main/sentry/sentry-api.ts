@@ -232,7 +232,7 @@ export class SentryHttpApi implements SentryApi {
     if (input.statusDetails) body.statusDetails = input.statusDetails
     await this.request(
       'PUT',
-      this.mutateIssuePath(input.id, input.statusDetails !== undefined),
+      this.mutateIssuePath(input.id, input.statusDetails !== undefined, 'resolve'),
       body
     )
     return { id: input.id, status: 'resolved' }
@@ -243,14 +243,14 @@ export class SentryHttpApi implements SentryApi {
     if (input.statusDetails) body.statusDetails = input.statusDetails
     await this.request(
       'PUT',
-      this.mutateIssuePath(input.id, input.statusDetails !== undefined),
+      this.mutateIssuePath(input.id, input.statusDetails !== undefined, 'ignore'),
       body
     )
     return { id: input.id, status: 'ignored' }
   }
 
   async assignIssue(input: AssignIssueInput): Promise<MutateIssueResult> {
-    await this.request('PUT', this.mutateIssuePath(input.id, false), {
+    await this.request('PUT', this.mutateIssuePath(input.id, false, 'assign'), {
       assignedTo: input.assignedTo
     })
     return { id: input.id, assignedTo: input.assignedTo }
@@ -262,13 +262,16 @@ export class SentryHttpApi implements SentryApi {
   }
 
   /** Org-level issue endpoint, or the project-scoped collection endpoint when the
-   *  mutation carries `statusDetails` (the §2.2 quirk isolated here). */
-  private mutateIssuePath(id: string, useProjectScope: boolean): string {
+   *  mutation carries `statusDetails` (the §2.2 quirk isolated here). `operation`
+   *  names the actual mutation (resolve / ignore) so a missing-slug error is
+   *  action-accurate rather than always blaming a resolve. */
+  private mutateIssuePath(id: string, useProjectScope: boolean, operation: string): string {
     if (useProjectScope) {
       if (!this.projectSlug) {
         throw new Error(
-          'Sentry resolve-in-commit needs a project slug — set the Project slug in Settings so ' +
-            'the project-scoped endpoint (which honors inCommit/inRelease) can be used.'
+          `Sentry ${operation} with commit/release details needs a project slug — set the ` +
+            'Project slug in Settings so the project-scoped endpoint (which honors ' +
+            'inCommit/inRelease) can be used.'
         )
       }
       return `/api/0/projects/${this.org()}/${enc(this.projectSlug)}/issues/?id=${enc(id)}`

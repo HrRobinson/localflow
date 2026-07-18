@@ -87,7 +87,16 @@ describe('SentryHttpApi — the project-scoped resolve detail (§2.2)', () => {
     const { api: a } = api({ responder: () => ok({}) }) // no projectSlug
     await expect(
       a.resolveIssue({ id: '4509', statusDetails: { inCommit: { commit: 'x' } } })
-    ).rejects.toThrow(/needs a project slug/)
+    ).rejects.toThrow(/Sentry resolve with commit\/release details needs a project slug/)
+  })
+
+  it('the missing-slug error names the ACTUAL op — ignore says ignore, not resolve', async () => {
+    // The project-scoped path is shared by resolve + ignore; the error must be
+    // action-accurate for whichever mutation the author actually invoked.
+    const { api: a } = api({ responder: () => ok({}) }) // no projectSlug
+    await expect(
+      a.ignoreIssue({ id: '4509', statusDetails: { inRelease: 'latest' } })
+    ).rejects.toThrow(/Sentry ignore with commit\/release details needs a project slug/)
   })
 })
 

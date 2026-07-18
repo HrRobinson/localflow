@@ -26,10 +26,13 @@ import {
  *  - `insight.threshold` — EDGE-CROSS; fires on the crossing, not every tick (§7.2c)
  *
  * The cursor is advanced ONLY AFTER the handler is handed the SeedEvent, so a
- * crash mid-poll re-processes rather than drops (at-least-once, deduped
- * downstream by `eventId`). A failed tick ANNOUNCES DEGRADATION LOUDLY and does
- * NOT advance the cursor — the one thing forbidden is a silent dead poll
- * (spec §11 "Poll failed").
+ * crash mid-poll re-processes rather than drops (at-least-once). A persist that
+ * throws AFTER an emit is made effectively exactly-once by a bounded per-
+ * subscription seen-set (`Subscription.seen`) that suppresses the re-query's
+ * re-emit until the cursor durably commits — the connector's claimed idempotency
+ * lives HERE, in the poller, not in an (absent) downstream dedup. A failed tick
+ * ANNOUNCES DEGRADATION LOUDLY and does NOT advance the cursor — the one thing
+ * forbidden is a silent dead poll (spec §11 "Poll failed").
  */
 
 export interface PostHogPollerDeps {
@@ -51,7 +54,21 @@ interface Subscription {
   config: Record<string, unknown>
   handler: TriggerHandler
   nextDueAt: number
+  /**
+   * The bounded set of trigger-event ids handed off since the LAST durable
+   * cursor commit. The cursor advances only after a handoff, so a sidecar write
+   * that throws AFTER an emit leaves the cursor un-advanced and the next tick
+   * re-queries the same event — this set makes the re-emit a no-op so a persist
+   * failure never double-seeds (honest at-least-once → effective exactly-once
+   * across a persist retry). Cleared on every successful commit, so a GENUINE
+   * later re-signal (cohort re-entry, a fresh crossing) still fires.
+   */
+  seen: Set<string>
 }
+
+/** Bound on a subscription's pending-dedup set — cleared on every successful
+ *  commit, so it only ever holds one tick's worth of ids in the normal case. */
+const SEEN_MAX = 1000
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -87,7 +104,14 @@ export class PostHogPoller {
     handler: TriggerHandler
   ): () => void {
     const key = subscriptionKey(triggerId, config)
-    const sub: Subscription = { key, triggerId, config, handler, nextDueAt: this.now() }
+    const sub: Subscription = {
+      key,
+      triggerId,
+      config,
+      handler,
+      nextDueAt: this.now(),
+      seen: new Set<string>()
+    }
     this.subs.set(key, sub)
     return () => {
       this.subs.delete(key)
@@ -165,7 +189,7 @@ export class PostHogPoller {
       })
     }
     // Advance AFTER the handoff (spec §7.2 dedup rule).
-    this.cursors.set(sub.key, { kind: 'insight', lastValue: value })
+    this.commitCursor(sub, { kind: 'insight', lastValue: value })
   }
 
   // ── §7.2b cohort.entered — membership set-diff ──────────────────────────────
@@ -192,7 +216,7 @@ export class PostHogPoller {
         }
       }
     }
-    this.cursors.set(sub.key, { kind: 'cohort', members: current })
+    this.commitCursor(sub, { kind: 'cohort', members: current })
   }
 
   // ── §7.2a event.matched — timestamp+uuid cursor ─────────────────────────────
@@ -236,22 +260,45 @@ export class PostHogPoller {
       // (ts, uuid) — the query is inclusive at `ts`, so already-seen boundary
       // events reappear and must not re-fire.
       if (cmp(e.timestamp, e.id, cursor.ts, cursor.lastUuid) <= 0) continue
+      // `emit` no-ops if this id is already in the seen-set (a prior tick handed
+      // it off but the cursor persist failed) — but the cursor STILL advances
+      // past it so a retry eventually commits and stops re-querying it.
       this.emit(sub, e.id, { event: e })
       advanced = { kind: 'event', ts: e.timestamp, lastUuid: e.id }
     }
     // Advance to the newest handed-off (ts, uuid), AFTER the handoffs.
-    if (advanced) this.cursors.set(sub.key, advanced)
+    if (advanced) this.commitCursor(sub, advanced)
   }
 
   /** Hand a SeedEvent to the subscription's handler, catching+logging a handler
-   *  throw so one bad handler never stops the poll or blocks a cursor advance. */
+   *  throw so one bad handler never stops the poll or blocks a cursor advance.
+   *  Idempotent per trigger-event id: an id already handed off since the last
+   *  durable commit is NOT re-seeded (guards the persist-failure re-query). */
   private emit(sub: Subscription, eventId: string, payload: Record<string, unknown>): void {
+    if (sub.seen.has(eventId)) return
+    // Mark seen BEFORE firing — like the cursor advance, delivery is once-only
+    // even if the handler throws (the throw is caught, not retried).
+    sub.seen.add(eventId)
+    if (sub.seen.size > SEEN_MAX) {
+      const oldest = sub.seen.values().next().value
+      if (oldest !== undefined) sub.seen.delete(oldest)
+    }
     try {
       sub.handler({ eventId, payload })
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err)
       this.log(`posthog poller: handler for '${sub.triggerId}' failed — ${reason}`)
     }
+  }
+
+  /** Persist the advanced cursor, then clear the pending-dedup set: once the
+   *  cursor is durable, everything emitted up to it is committed and a genuine
+   *  later re-signal (cohort re-entry / a fresh crossing) must be free to fire.
+   *  A throw here (sidecar write failure) leaves `seen` intact so the next tick's
+   *  re-query does NOT re-seed — the throw propagates to `pollOne`'s LOUD log. */
+  private commitCursor(sub: Subscription, cursor: PostHogCursor): void {
+    this.cursors.set(sub.key, cursor)
+    sub.seen.clear()
   }
 }
 

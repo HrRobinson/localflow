@@ -137,6 +137,52 @@ describe('event.matched — timestamp+uuid cursor (spec §7.2a)', () => {
   })
 })
 
+describe('at-least-once idempotency — persist failure does not double-seed', () => {
+  /** A cursor store whose next `set` throws once, simulating a sidecar write
+   *  failure AFTER the handler was already handed the SeedEvent. */
+  class FlakyCursorStore extends PostHogCursorStore {
+    failNext = false
+    set(key: string, cursor: Parameters<PostHogCursorStore['set']>[1]): void {
+      if (this.failNext) {
+        this.failNext = false
+        throw new Error('Couldn’t persist the PostHog poll cursor — disk full (ENOSPC).')
+      }
+      super.set(key, cursor)
+    }
+  }
+
+  const ev = (uuid: string, ts: string) => ({
+    uuid,
+    event: '$error',
+    distinct_id: 'p',
+    timestamp: ts,
+    properties: {}
+  })
+
+  it('an emitted event whose cursor persist FAILS is not re-seeded on the next tick', async () => {
+    const cursors = new FlakyCursorStore({ file: join(dir, 'cursors.json') })
+    const api = new MockPostHogApi({ events: [] })
+    const logs: string[] = []
+    const poller = buildPoller(api, cursors, (m) => logs.push(m))
+    const fired: SeedEvent[] = []
+    poller.subscribe('event.matched', { event: '$error' }, (e) => fired.push(e))
+
+    await poller.tick() // baseline (no events yet)
+
+    // A new event arrives; the cursor persist AFTER its emit fails this tick.
+    api.data.events = [ev('e1', '2026-07-18T10:00:00Z')]
+    cursors.failNext = true
+    await nextTick(poller)
+    expect(fired.map((f) => f.eventId)).toEqual(['e1']) // handed off exactly once
+    expect(logs.join('\n')).toMatch(/poll failed|ENOSPC/i) // degradation announced
+
+    // The cursor never durably advanced, so e1 is re-queried next tick — the
+    // in-poller seen-set must stop it re-seeding the same signal.
+    await nextTick(poller)
+    expect(fired.map((f) => f.eventId)).toEqual(['e1'])
+  })
+})
+
 describe('restart-resume (spec §7.4)', () => {
   it('rehydrates from the persisted cursor: no missed and no re-fired signals', async () => {
     const shared = cursorStore()

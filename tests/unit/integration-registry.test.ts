@@ -51,7 +51,8 @@ describe('IntegrationRegistry', () => {
       'posthog',
       'gitlab',
       'slack',
-      'http'
+      'http',
+      'stripe'
     ])
     expect(typeof ds[0].status()).toBe('string')
   })

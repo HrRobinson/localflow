@@ -85,6 +85,11 @@ import { loadIntegrationsConfig } from './integrations/integration-config'
 import { HttpConnector } from './http/http-connector'
 import { HttpClient, FetchHttpTransport } from './http/http-client'
 import { HttpTokenStore } from './http/http-token-store'
+import { StripeConnector } from './stripe/stripe-connector'
+import {
+  StripeApiClient,
+  deferredLiveTransport as deferredStripeTransport
+} from './stripe/stripe-client'
 import { startGuardSeenWatch } from './guard-seen-watch'
 import type { ActivityEntry, GrantInfo, OperatorStatus } from '../shared/operator'
 import type { Capabilities } from '../shared/git'
@@ -402,6 +407,20 @@ app.whenReady().then(async () => {
     new HttpConnector({
       client: new HttpClient({ transport: new FetchHttpTransport() }),
       reveal: (nodeId, secretRef) => httpTokens.revealNodeSecret(nodeId, secretRef)
+    })
+  )
+
+  // Stripe connector: the payments/refunds/disputes dispatch behind the registry
+  // seam (§4.3, §4.4). The live HTTPS transport (Authorization: Bearer rk_… from
+  // the keychain) and the webhook tunnel are DEFERRED (foundation slice) —
+  // `deferredStripeTransport` fails loudly if an action reaches the wire, so the
+  // descriptor, normalizer, and mock-tested dispatch are all in place while real
+  // Stripe calls land in a later phase. No money action ever auto-runs: mutations
+  // fire ONLY via a gated action node the author drew (§9).
+  integrationRegistry.registerConnector(
+    'stripe',
+    new StripeConnector({
+      api: new StripeApiClient({ transport: deferredStripeTransport() })
     })
   )
 

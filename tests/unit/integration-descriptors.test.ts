@@ -13,7 +13,8 @@ describe('integration descriptors', () => {
       'posthog',
       'gitlab',
       'slack',
-      'http'
+      'http',
+      'stripe'
     ])
     expect([...INTEGRATION_IDS]).toEqual([
       'linear',
@@ -24,7 +25,8 @@ describe('integration descriptors', () => {
       'posthog',
       'gitlab',
       'slack',
-      'http'
+      'http',
+      'stripe'
     ])
   })
 
@@ -154,6 +156,19 @@ describe('integration descriptors', () => {
         id: 'http',
         triggers: ['webhook.received'],
         actions: ['http.get', 'http.send']
+      },
+      {
+        id: 'stripe',
+        triggers: ['charge.dispute.created', 'charge.refunded', 'invoice.payment_failed'],
+        actions: [
+          'getCharge',
+          'getCustomer',
+          'getDispute',
+          'getSubscription',
+          'createRefund',
+          'respondToDispute',
+          'cancelSubscription'
+        ]
       }
     ])
   })

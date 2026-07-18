@@ -1,5 +1,6 @@
+import { promises as dnsPromises } from 'node:dns'
 import type { ResolvedRequest } from '../../shared/http'
-import { checkBaseUrl } from '../net/ssrf-guard'
+import { checkBaseUrl, blockedIpRange } from '../net/ssrf-guard'
 
 /**
  * The outbound HTTP transport (spec §4.2, §4.5). ALL request/response shapes
@@ -21,6 +22,10 @@ export interface HttpRequest {
   headers: Record<string, string>
   body?: string
   timeoutMs?: number
+  /** The node's `allowLocal` opt-in (§4.5), carried through so a transport that
+   *  does its own dial-time resolution check (see `FetchHttpTransport`) can
+   *  honor the same author opt-in as the string-level guard. */
+  allowLocal?: boolean
 }
 
 /** A raw HTTP response — status + lowercased headers + the body as a string. */
@@ -102,7 +107,8 @@ export class HttpClient {
         url: req.url,
         headers: req.headers,
         body: req.body,
-        timeoutMs: req.timeoutMs
+        timeoutMs: req.timeoutMs,
+        allowLocal: req.allowLocal
       })
     } catch (err) {
       const code = (err as { code?: string }).code ?? (err as Error).message
@@ -126,15 +132,49 @@ export class HttpClient {
   }
 }
 
+/** A resolved DNS record — the subset of Node's `dns.lookup(host, {all:true})`
+ *  result this guard needs. */
+export interface DnsRecord {
+  address: string
+  family: number
+}
+
+/** The DNS-resolution seam `FetchHttpTransport` dials through — injected so
+ *  tests reproduce a DNS-rebind-style bypass (a public hostname resolving to a
+ *  private/loopback/metadata IP) with zero real network I/O. Default wraps
+ *  Node's real `dns.promises.lookup` with `{all: true}` so every A/AAAA record
+ *  is checked, not just the first. */
+export type DnsLookupFn = (hostname: string, options: { all: true }) => Promise<DnsRecord[]>
+
+const defaultDnsLookup: DnsLookupFn = (hostname, options) => dnsPromises.lookup(hostname, options)
+
 /**
  * The real socket transport — the ONE place a live outbound HTTP call is made
  * (wraps the runtime's global `fetch`; §4.2). Honors `timeoutMs` via an
  * `AbortController`, lowercases response header keys, and reads the body as
  * text (the normalizer decides JSON-vs-string). A network/timeout failure
  * throws so `HttpClient.send` maps it to the pinned legible reject.
+ *
+ * Also the DIAL-TIME SSRF guard: `HttpClient.guardUrl` / `checkBaseUrl` are
+ * string-level — they only pattern-match a literal IP or `localhost` in the
+ * URL text and never resolve DNS. A hostname that LOOKS public but whose
+ * A-record points at a private/loopback/link-local/metadata address (e.g. a
+ * `*.sslip.io` wildcard host resolving to `169.254.169.254`) sails straight
+ * through that check. Before every `fetch`, this transport resolves the URL's
+ * hostname and runs every resolved IP through the shared `blockedIpRange` —
+ * the same range table the string check uses — and rejects on the first hit,
+ * BEFORE a socket opens.
  */
 export class FetchHttpTransport implements HttpTransport {
+  private readonly lookup: DnsLookupFn
+
+  constructor(deps: { lookup?: DnsLookupFn } = {}) {
+    this.lookup = deps.lookup ?? defaultDnsLookup
+  }
+
   async send(req: HttpRequest): Promise<HttpRawResponse> {
+    await this.guardResolvedAddress(req.url, req.allowLocal ?? false)
+
     const controller = new AbortController()
     const timer =
       req.timeoutMs !== undefined ? setTimeout(() => controller.abort(), req.timeoutMs) : undefined
@@ -153,6 +193,48 @@ export class FetchHttpTransport implements HttpTransport {
       return { status: res.status, headers, body: await res.text() }
     } finally {
       if (timer !== undefined) clearTimeout(timer)
+    }
+  }
+
+  /**
+   * Resolve the URL's hostname and reject if ANY resolved IP is
+   * private/loopback/link-local/metadata (via the shared `blockedIpRange`).
+   * `allowLocal` is the author's explicit per-node opt-in (§4.5) and disables
+   * this check entirely, matching the string-level guard's allowance. An
+   * unparseable URL or a DNS failure is left to surface naturally at `fetch()`
+   * — not this guard's job to diagnose.
+   *
+   * Residual: this resolves once and pins the reject to that answer, but does
+   * NOT pin the subsequent `fetch()` to the checked IP — a DNS-rebind that
+   * flips the answer between this resolve and the dial a few lines below is a
+   * known, accepted gap (fetch() has no clean way to dial a specific IP while
+   * keeping the original Host/SNI). At minimum, a blocked resolution is always
+   * rejected here.
+   */
+  private async guardResolvedAddress(url: string, allowLocal: boolean): Promise<void> {
+    if (allowLocal) return
+
+    let hostname: string
+    try {
+      hostname = new URL(url).hostname.replace(/^\[|\]$/g, '')
+    } catch {
+      return
+    }
+
+    let records: DnsRecord[]
+    try {
+      records = await this.lookup(hostname, { all: true })
+    } catch {
+      return
+    }
+
+    for (const { address } of records) {
+      const range = blockedIpRange(address)
+      if (range) {
+        throw new Error(
+          `Refusing to call "${url}" — "${hostname}" resolves to a private/loopback/metadata address (${address}, ${range}).`
+        )
+      }
     }
   }
 }

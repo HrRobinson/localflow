@@ -1,8 +1,10 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import {
   HttpClient,
   MockHttpTransport,
-  type HttpRawResponse
+  FetchHttpTransport,
+  type HttpRawResponse,
+  type DnsLookupFn
 } from '../../src/main/http/http-client'
 import type { ResolvedRequest } from '../../src/shared/http'
 
@@ -89,6 +91,77 @@ describe('HttpClient — allowLocal opt-in permits a local target', () => {
       new HttpClient({ transport: t }).send(req('file:///etc/passwd', { allowLocal: true }))
     ).rejects.toThrow(/http\(s\)/i)
     expect(t.requests).toHaveLength(0)
+  })
+})
+
+/** ★ The string-level `checkBaseUrl` only pattern-matches literal IPs/`localhost`
+ *  in the URL text — it never resolves DNS. `FetchHttpTransport` is the live
+ *  transport this connector ships, so IT must re-check the RESOLVED IP before
+ *  dialing, or a public-looking hostname whose A-record points at a private/
+ *  loopback/metadata address (e.g. a sslip.io wildcard host) sails straight
+ *  through to a real `fetch()`. These tests inject a fake DNS lookup so the
+ *  bypass is reproduced and closed with zero real network I/O. */
+describe('FetchHttpTransport — dial-time DNS-resolution SSRF guard', () => {
+  it('blocks a public-looking hostname whose A-record resolves to link-local metadata, fetch never called', async () => {
+    const lookup: DnsLookupFn = vi.fn(async () => [{ address: '169.254.169.254', family: 4 }])
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    const transport = new FetchHttpTransport({ lookup })
+
+    await expect(
+      transport.send({
+        method: 'GET',
+        url: 'https://169-254-169-254.sslip.io/latest/meta-data/',
+        headers: {}
+      })
+    ).rejects.toThrow(/resolves to a private\/loopback\/metadata address.*169\.254\.169\.254/i)
+    expect(fetchSpy).not.toHaveBeenCalled()
+
+    fetchSpy.mockRestore()
+  })
+
+  it('allows a hostname whose A-record resolves to a public IP', async () => {
+    const lookup: DnsLookupFn = vi.fn(async () => [{ address: '93.184.216.34', family: 4 }])
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{"ok":true}', { status: 200 }))
+    const transport = new FetchHttpTransport({ lookup })
+
+    const res = await transport.send({ method: 'GET', url: 'https://api.example.com/x', headers: {} })
+    expect(res.status).toBe(200)
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+
+    fetchSpy.mockRestore()
+  })
+
+  it('still works for an IP-literal URL (the existing string check already covers it)', async () => {
+    const lookup: DnsLookupFn = vi.fn(async () => [{ address: '93.184.216.34', family: 4 }])
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{"ok":true}', { status: 200 }))
+    const transport = new FetchHttpTransport({ lookup })
+
+    const res = await transport.send({ method: 'GET', url: 'https://93.184.216.34/x', headers: {} })
+    expect(res.status).toBe(200)
+
+    fetchSpy.mockRestore()
+  })
+
+  it('allowLocal opt-in skips the resolution check for a host that resolves to loopback', async () => {
+    const lookup: DnsLookupFn = vi.fn(async () => [{ address: '127.0.0.1', family: 4 }])
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{"ok":true}', { status: 200 }))
+    const transport = new FetchHttpTransport({ lookup })
+
+    const res = await transport.send({
+      method: 'GET',
+      url: 'http://my-local-tunnel.example.com:5678/x',
+      headers: {},
+      allowLocal: true
+    })
+    expect(res.status).toBe(200)
+
+    fetchSpy.mockRestore()
   })
 })
 

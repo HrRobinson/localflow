@@ -126,7 +126,11 @@ describe('FetchHttpTransport — dial-time DNS-resolution SSRF guard', () => {
       .mockResolvedValue(new Response('{"ok":true}', { status: 200 }))
     const transport = new FetchHttpTransport({ lookup })
 
-    const res = await transport.send({ method: 'GET', url: 'https://api.example.com/x', headers: {} })
+    const res = await transport.send({
+      method: 'GET',
+      url: 'https://api.example.com/x',
+      headers: {}
+    })
     expect(res.status).toBe(200)
     expect(fetchSpy).toHaveBeenCalledTimes(1)
 

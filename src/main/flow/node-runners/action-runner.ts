@@ -1,5 +1,6 @@
 import type { FlowNode } from '../../../shared/flows'
 import type { IntegrationRegistry } from '../../../shared/integrations'
+import { NODE_ID_PARAM } from '../../../shared/http'
 import type { RunContext } from '../context'
 import { templateParams } from '../context'
 import type { NodeOutcome } from '../types'
@@ -48,6 +49,11 @@ export async function runAction(
 
   const rawParams = isObject(node.config.params) ? node.config.params : node.config
   const params = templateParams(rawParams, context)
+  // The generic `http` connector keys its per-node secret by node id (§7.3): the
+  // pinned `invokeAction(id, actionId, params)` carries only `params`, so the
+  // node id rides inside `params` under a reserved key. Injected for `http` only
+  // — every fixed-vendor connector's param contract stays byte-identical.
+  if (integrationId === 'http') params[NODE_ID_PARAM] = node.id
   try {
     // FAILURE CONVENTION: an action signals failure by REJECTING the promise
     // (throwing). A resolved promise — ANY value, including `undefined` — is

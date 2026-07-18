@@ -112,4 +112,61 @@ describe('the token never leaks into any connector output or error (§8, §11)',
     expect(captured.length).toBeGreaterThan(0)
     for (const s of captured) expect(s).not.toContain(PAT)
   })
+
+  it('keeps the App installation token AND the signed JWT out of results and errors', async () => {
+    // Mirror of the PAT no-leak test for the App path: the minted installation
+    // token and the short-lived JWT are both credential material — neither may
+    // surface in any result, error message, or stack across a success + a failed
+    // gated write (mergePR).
+    const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 })
+    const pem = privateKey.export({ type: 'pkcs1', format: 'pem' }).toString()
+    const INSTALL_TOKEN = 'ghs_installation_token_secret_value_abcdef'
+    const pull: RawPull = {
+      number: 42,
+      state: 'open',
+      merged: false,
+      head: { ref: 'x', sha: 's' },
+      base: { ref: 'main', repo: { full_name: 'acme/web' } }
+    }
+    let signedJwt = ''
+    const auth = new AppAuth({
+      appId: '123',
+      installationId: '456',
+      revealPrivateKey: () => pem,
+      mint: async ({ appJwt }) => {
+        signedJwt = appJwt
+        return { token: INSTALL_TOKEN, expiresAt: '2099-01-01T00:00:00Z' }
+      }
+    })
+    const captured: string[] = []
+    const api = new GitHubRestApi({
+      auth,
+      transport: {
+        // The header the live transport WOULD send — proves the minted token flows in.
+        send: (req) => {
+          expect(req.headers.Authorization).toBe(`Bearer ${INSTALL_TOKEN}`)
+          if (req.url.endsWith('/pulls/42')) {
+            return Promise.resolve({ status: 200, body: JSON.stringify(pull) })
+          }
+          return Promise.resolve({ status: 403, body: JSON.stringify({ message: 'no access' }) })
+        }
+      }
+    })
+    const c = new GitHubConnector({ api, defaultRepo: { owner: 'acme', repo: 'web' } })
+
+    captured.push(JSON.stringify(await c.invokeAction('getPR', { number: 42 })))
+    await c.invokeAction('mergePR', { number: 42 }).catch((e: Error) => {
+      captured.push(e.message)
+      captured.push(e.stack ?? '')
+    })
+
+    // The mint must actually have run (JWT was signed and handed to the transport).
+    expect(signedJwt.split('.')).toHaveLength(3)
+    expect(captured.length).toBeGreaterThan(0)
+    for (const s of captured) {
+      expect(s).not.toContain(INSTALL_TOKEN)
+      expect(s).not.toContain(signedJwt)
+      expect(s).not.toContain(pem)
+    }
+  })
 })

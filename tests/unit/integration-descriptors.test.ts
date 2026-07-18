@@ -9,9 +9,17 @@ describe('integration descriptors', () => {
       'email',
       'cloud',
       'shopify',
-      'woocommerce'
+      'woocommerce',
+      'hubspot'
     ])
-    expect([...INTEGRATION_IDS]).toEqual(['linear', 'email', 'cloud', 'shopify', 'woocommerce'])
+    expect([...INTEGRATION_IDS]).toEqual([
+      'linear',
+      'email',
+      'cloud',
+      'shopify',
+      'woocommerce',
+      'hubspot'
+    ])
   })
 
   it('marks the exact secret fields per §7', () => {
@@ -93,6 +101,20 @@ describe('integration descriptors', () => {
           'cancelOrder',
           'updateShippingAddress',
           'addOrderNote'
+        ]
+      },
+      {
+        id: 'hubspot',
+        triggers: ['contact.created', 'deal.stageChanged', 'form.submitted'],
+        actions: [
+          'getContact',
+          'getDeal',
+          'getCompany',
+          'searchContacts',
+          'createContact',
+          'updateDeal',
+          'logActivity',
+          'createTask'
         ]
       }
     ])

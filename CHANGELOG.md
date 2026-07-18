@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.0](https://github.com/HrRobinson/localflow/compare/v1.10.0...v1.11.0) (2026-07-17)
+
+
+### Features
+
+* flow-builder foundation ([#105](https://github.com/HrRobinson/localflow/issues/105)) ([0bda005](https://github.com/HrRobinson/localflow/commit/0bda00534eacb301c3830b022eb0f64d289d1671))
+
 ## [1.10.0](https://github.com/HrRobinson/localflow/compare/v1.9.0...v1.10.0) (2026-07-16)
 
 

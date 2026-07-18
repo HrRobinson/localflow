@@ -82,6 +82,9 @@ import { SlackWebApi, deferredLiveTransport as slackDeferredTransport } from './
 import { SlackApprovalPort } from './slack/slack-approval-port'
 import { parseSlackConfig } from './slack/slack-config'
 import { loadIntegrationsConfig } from './integrations/integration-config'
+import { HttpConnector } from './http/http-connector'
+import { HttpClient, FetchHttpTransport } from './http/http-client'
+import { HttpTokenStore } from './http/http-token-store'
 import { startGuardSeenWatch } from './guard-seen-watch'
 import type { ActivityEntry, GrantInfo, OperatorStatus } from '../shared/operator'
 import type { Capabilities } from '../shared/git'
@@ -386,6 +389,21 @@ app.whenReady().then(async () => {
   })
   slackRef.connector = slackConnector
   integrationRegistry.registerConnector('slack', slackConnector)
+
+  // Generic HTTP / webhook connector: the catch-all escape-hatch (spec §4.3).
+  // The OUTGOING half (`http.get`/`http.send`) is GREEN and fully wired — a real
+  // fetch transport behind the SSRF guard, per-node secrets revealed under the
+  // COMPOSITE keychain key `http:<nodeId>:<secretRef>` (§7). The INCOMING
+  // `webhook.received` trigger is Half 2 (ingress + subscribe-seam extension),
+  // registered as a legible deferred no-op until it lands.
+  const httpTokens = new HttpTokenStore(integrationCreds)
+  integrationRegistry.registerConnector(
+    'http',
+    new HttpConnector({
+      client: new HttpClient({ transport: new FetchHttpTransport() }),
+      reveal: (nodeId, secretRef) => httpTokens.revealNodeSecret(nodeId, secretRef)
+    })
+  )
 
   const themesDir = join(userData, 'themes')
   ensureThemesSeeded(themesDir)

@@ -17,6 +17,7 @@ export type IntegrationId =
   | 'posthog'
   | 'gitlab'
   | 'slack'
+  | 'http'
 
 export interface IntegrationConfigField {
   key: string
@@ -99,7 +100,8 @@ export const INTEGRATION_IDS: readonly IntegrationId[] = [
   'woocommerce',
   'posthog',
   'gitlab',
-  'slack'
+  'slack',
+  'http'
 ]
 
 /**

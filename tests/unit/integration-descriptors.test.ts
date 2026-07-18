@@ -12,7 +12,8 @@ describe('integration descriptors', () => {
       'woocommerce',
       'posthog',
       'gitlab',
-      'slack'
+      'slack',
+      'http'
     ])
     expect([...INTEGRATION_IDS]).toEqual([
       'linear',
@@ -22,7 +23,8 @@ describe('integration descriptors', () => {
       'woocommerce',
       'posthog',
       'gitlab',
-      'slack'
+      'slack',
+      'http'
     ])
   })
 
@@ -38,6 +40,9 @@ describe('integration descriptors', () => {
     // PostHog: ONLY the personal API key is a secret; the project key + host are
     // non-secret refs (spec §8).
     expect(secretKeys('posthog')).toEqual(['personalApiKey'])
+    // HTTP owns NO per-id secret — every secret is PER NODE, in the keychain
+    // under the composite key `http:<nodeId>:<secretRef>` (§7).
+    expect(secretKeys('http')).toEqual([])
   })
 
   it('marks the exact required fields per §7', () => {
@@ -66,6 +71,7 @@ describe('integration descriptors', () => {
       'host',
       'environment'
     ])
+    expect(requiredKeys('http')).toEqual(['environment'])
   })
 
   it('leaves cloud action-only (no triggers) and keeps trigger/action ids stable', () => {
@@ -143,6 +149,11 @@ describe('integration descriptors', () => {
         id: 'slack',
         triggers: ['message.received', 'slash.command', 'approval.responded'],
         actions: ['postMessage', 'postApproval', 'replyInThread']
+      },
+      {
+        id: 'http',
+        triggers: ['webhook.received'],
+        actions: ['http.get', 'http.send']
       }
     ])
   })

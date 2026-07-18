@@ -50,7 +50,8 @@ describe('IntegrationRegistry', () => {
       'woocommerce',
       'posthog',
       'gitlab',
-      'slack'
+      'slack',
+      'http'
     ])
     expect(typeof ds[0].status()).toBe('string')
   })

@@ -115,6 +115,43 @@ describe('StripeApiClient — mutations send an Idempotency-Key + convert the re
     expect(result).toEqual({ refundId: 're_1', amount: 50, currency: 'USD' })
   })
 
+  it('respondToDispute({close:true}) POSTs the /close endpoint to actually accept the chargeback', async () => {
+    const { transport, requests } = scripted([
+      { status: 200, body: { id: 'dp_1', status: 'lost' } }
+    ])
+    const api = new StripeApiClient({ transport })
+    const result = await api.respondToDispute({
+      disputeId: 'dp_1',
+      close: true,
+      idempotencyKey: 'lf_close'
+    })
+    expect(requests[0]).toMatchObject({
+      method: 'POST',
+      path: '/v1/disputes/dp_1/close',
+      idempotencyKey: 'lf_close'
+    })
+    expect(result).toEqual({ disputeId: 'dp_1', status: 'lost' })
+  })
+
+  it('respondToDispute(evidence) POSTs the dispute with submit:true to actually submit it', async () => {
+    const { transport, requests } = scripted([
+      { status: 200, body: { id: 'dp_1', status: 'under_review' } }
+    ])
+    const api = new StripeApiClient({ transport })
+    const result = await api.respondToDispute({
+      disputeId: 'dp_1',
+      evidence: { uncategorized_text: 'proof' },
+      idempotencyKey: 'lf_submit'
+    })
+    expect(requests[0]).toMatchObject({
+      method: 'POST',
+      path: '/v1/disputes/dp_1',
+      form: { evidence: { uncategorized_text: 'proof' }, submit: true },
+      idempotencyKey: 'lf_submit'
+    })
+    expect(result).toEqual({ disputeId: 'dp_1', status: 'under_review' })
+  })
+
   it('cancelSubscription DELETEs the subscription path', async () => {
     const { transport, requests } = scripted([
       { status: 200, body: { id: 'sub_1', status: 'canceled' } }

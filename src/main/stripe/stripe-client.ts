@@ -225,19 +225,27 @@ export class StripeApiClient implements StripeApi {
   }
 
   async respondToDispute(input: RespondToDisputeInput): Promise<DisputeResult> {
-    const form: Record<string, unknown> = {}
-    if (input.close) form.submit = false
-    if (input.evidence) form.evidence = input.evidence
-    const body = (await this.request(
-      {
-        method: 'POST',
-        path: `/v1/disputes/${input.disputeId}`,
-        form,
-        idempotencyKey: input.idempotencyKey
-      },
-      'dispute',
-      input.disputeId
-    )) as { id?: string; status?: string }
+    // Two DISTINCT Stripe endpoints, not one form-flag switch: accepting a
+    // chargeback is `POST /v1/disputes/{id}/close`; submitting evidence to
+    // contest is `POST /v1/disputes/{id}` with `submit=true`. The old code
+    // posted the update endpoint with `submit=false` for `close:true`, which
+    // only STAGES a draft and never actually closes the dispute.
+    const req: StripeRequest = input.close
+      ? {
+          method: 'POST',
+          path: `/v1/disputes/${input.disputeId}/close`,
+          idempotencyKey: input.idempotencyKey
+        }
+      : {
+          method: 'POST',
+          path: `/v1/disputes/${input.disputeId}`,
+          form: { ...(input.evidence ? { evidence: input.evidence } : {}), submit: true },
+          idempotencyKey: input.idempotencyKey
+        }
+    const body = (await this.request(req, 'dispute', input.disputeId)) as {
+      id?: string
+      status?: string
+    }
     return {
       disputeId: typeof body.id === 'string' ? body.id : input.disputeId,
       status: body.status ?? ''

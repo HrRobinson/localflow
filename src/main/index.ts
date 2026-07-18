@@ -65,6 +65,8 @@ import { ShopifyConnector } from './shopify/shopify-connector'
 import { ShopifyAdminApi, deferredLiveTransport } from './shopify/shopify-admin'
 import { WcApi } from './woocommerce/wc-api'
 import { WoocommerceConnector } from './woocommerce/woocommerce-connector'
+import { SentryConnector } from './sentry/sentry-connector'
+import { SentryHttpApi, deferredSentryTransport } from './sentry/sentry-api'
 import { startGuardSeenWatch } from './guard-seen-watch'
 import type { ActivityEntry, GrantInfo, OperatorStatus } from '../shared/operator'
 import type { Capabilities } from '../shared/git'
@@ -275,6 +277,30 @@ app.whenReady().then(async () => {
         },
         storeUrl: 'https://woocommerce.deferred.invalid',
         reveal: deferredWooError
+      })
+    })
+  )
+
+  // Sentry connector: the error SENSOR (pairs with GitHub as the actuator, §7).
+  // The live REST transport and the webhook tunnel are DEFERRED (foundation
+  // slice) — `deferredSentryTransport` fails loudly if an action reaches the
+  // wire, so the descriptor, normalizer, and mock-tested dispatch are all in
+  // place while real Sentry calls land in a later phase. No webhook server is
+  // started (cloud ingress deferred); trigger subscriptions register but stay
+  // dormant. The bearer token reveal binds to the CredentialStore at live wiring.
+  const deferredSentryReveal = (): never => {
+    throw new Error(
+      'Sentry live dispatch is not wired yet — the offline connector core is in place, ' +
+        'but real HTTP + credential access land in a follow-up (spec §11).'
+    )
+  }
+  integrationRegistry.registerConnector(
+    'sentry',
+    new SentryConnector({
+      api: new SentryHttpApi({
+        transport: deferredSentryTransport(),
+        orgSlug: 'sentry-deferred',
+        reveal: deferredSentryReveal
       })
     })
   )

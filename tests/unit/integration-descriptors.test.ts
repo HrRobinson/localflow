@@ -9,9 +9,17 @@ describe('integration descriptors', () => {
       'email',
       'cloud',
       'shopify',
-      'woocommerce'
+      'woocommerce',
+      'sentry'
     ])
-    expect([...INTEGRATION_IDS]).toEqual(['linear', 'email', 'cloud', 'shopify', 'woocommerce'])
+    expect([...INTEGRATION_IDS]).toEqual([
+      'linear',
+      'email',
+      'cloud',
+      'shopify',
+      'woocommerce',
+      'sentry'
+    ])
   })
 
   it('marks the exact secret fields per §7', () => {
@@ -23,6 +31,9 @@ describe('integration descriptors', () => {
     // WooCommerce: consumer key/secret + webhook secret are keychain-only; the
     // store URL is a non-secret ref (spec §5).
     expect(secretKeys('woocommerce')).toEqual(['consumerKey', 'consumerSecret', 'webhookSecret'])
+    // Sentry: bearer token + webhook Client Secret are keychain-only; the org/
+    // project slugs and self-host baseUrl are non-secret refs (spec §5, §8).
+    expect(secretKeys('sentry')).toEqual(['authToken', 'webhookSecret'])
   })
 
   it('marks the exact required fields per §7', () => {
@@ -43,6 +54,7 @@ describe('integration descriptors', () => {
       'webhookSecret',
       'environment'
     ])
+    expect(requiredKeys('sentry')).toEqual(['authToken', 'webhookSecret', 'orgSlug', 'environment'])
   })
 
   it('leaves cloud action-only (no triggers) and keeps trigger/action ids stable', () => {
@@ -93,6 +105,19 @@ describe('integration descriptors', () => {
           'cancelOrder',
           'updateShippingAddress',
           'addOrderNote'
+        ]
+      },
+      {
+        id: 'sentry',
+        triggers: ['issue.created', 'issue.regressed', 'alert.triggered'],
+        actions: [
+          'getIssue',
+          'getEvent',
+          'searchIssues',
+          'resolveIssue',
+          'assignIssue',
+          'ignoreIssue',
+          'commentIssue'
         ]
       }
     ])

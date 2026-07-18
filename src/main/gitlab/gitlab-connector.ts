@@ -15,10 +15,12 @@ import { normalizeIssue, normalizeMR, normalizePipeline } from './gitlab-normali
  *
  * Safety posture (spec §9): the connector exposes five gated writes but NEVER
  * fires one on its own — a write runs ONLY because an action node invoked
- * `invokeAction`. Delivering a trigger makes ZERO GitLab writes. `mergeMR` has a
- * HARD FLOOR: it is REJECTED unless the run reached it through a gate (the author
- * must wire a gate/approval node's decision into the merge node's params), so
- * localflow never auto-merges ("I merge myself"). Every failure REJECTS with the
+ * `invokeAction`. Delivering a trigger makes ZERO GitLab writes. Authority for
+ * `mergeMR` (merging is irreversible and lands code on a protected branch) is the
+ * flow GRAPH — a `gate` node the author places before it, enforced by the flow
+ * engine — exactly like every other gated mutation (GitHub `mergePR`, Stripe
+ * `createRefund`, Woo `refundOrder`): the connector has no static param gate and
+ * runs the merge when the action node is reached. Every failure REJECTS with the
  * real `gitlab-api` error (spec §11); the PAT is confined to `gitlab-api`'s
  * `PRIVATE-TOKEN` header and never logged or returned.
  */
@@ -68,8 +70,8 @@ export class GitLabConnector implements LiveConnector {
 
   // ── Action dispatch (spec §6.2 reads, gated writes) ─────────────────────────
 
-  // `async` so a synchronous validation throw (a missing id, the un-gated merge)
-  // surfaces as a REJECTED promise — the pinned failure convention (spec §3, §11).
+  // `async` so a synchronous validation throw (e.g. a missing id) surfaces as a
+  // REJECTED promise — the pinned failure convention (spec §3, §11).
   async invokeAction(actionId: string, params: Record<string, unknown>): Promise<unknown> {
     switch (actionId) {
       // ── Reads (no gate — pure reads write facts for conditions, §6.2) ────────
@@ -128,19 +130,14 @@ export class GitLabConnector implements LiveConnector {
         if (description) patch.description = description
         return this.api.createMR(patch)
       }
-      case 'mergeMR': {
-        // HARD FLOOR (§9): mergeMR NEVER auto-runs. It only runs when the run
-        // reached it through a gate — the author wires the gate/approval node's
-        // decision into this node's params. Absent that proof, REJECT before any
-        // call, with the actionable §11 message.
-        if (!isGated(params)) {
-          throw new Error(
-            'mergeMR must sit behind a gate — localflow will not auto-merge; ' +
-              'add an approval node before it and wire its decision into the merge action.'
-          )
-        }
+      case 'mergeMR':
+        // Authority (§9) is the flow GRAPH — a `gate` node the author places
+        // before this action, enforced by the flow engine — exactly like every
+        // other gated mutation (GitHub mergePR, Stripe createRefund, Woo
+        // refundOrder). The connector holds no static param gate to fake; it
+        // runs the merge when the action node is reached, and rejects only on a
+        // real API failure.
         return this.api.mergeMR(requireIid(params, 'mergeMR'), mergePatch(params))
-      }
 
       default:
         throw new Error(
@@ -182,15 +179,6 @@ export class GitLabConnector implements LiveConnector {
       }
     }
   }
-}
-
-/**
- * The gate proof (§9): a truthy `approved` (or `gated`) param the author wires
- * from an upstream gate/approval node's decision. A trigger payload never carries
- * it, so a merge with no gate in front of it fails this check and is refused.
- */
-function isGated(params: Record<string, unknown>): boolean {
-  return params.approved === true || params.gated === true
 }
 
 /** Build the merge-request PUT body from optional merge params (§6.2). */

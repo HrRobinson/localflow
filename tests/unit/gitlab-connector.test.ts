@@ -112,25 +112,34 @@ describe('GitLabConnector — gated write dispatch', () => {
   })
 })
 
-describe('GitLabConnector — the mergeMR mandate (§9)', () => {
-  it('★ REJECTS mergeMR invoked outside a gated path — BEFORE any API call', async () => {
+describe('GitLabConnector — mergeMR runs when reached (§9, graph-gate authority)', () => {
+  // Authority for mergeMR is the flow GRAPH — a `gate` node the author places
+  // before it, enforced by the flow engine — exactly like every other gated
+  // mutation (GitHub mergePR, Stripe createRefund, Woo refundOrder). The
+  // connector has no static param to fake ("approved: true" hardcoded on the
+  // node with no gate anywhere) and no in-connector gate check to bypass; it
+  // just calls the API when invoked, like the other connectors' mutations.
+  it('★ runs mergeMR when invoked — no param gate, like the other connectors’ mutations', async () => {
     const t = new MockGitLabTransport(() => ok({ iid: 12, state: 'merged' }))
-    await expect(
-      new GitLabConnector({ api: buildApi(t) }).invokeAction('mergeMR', { iid: 12 })
-    ).rejects.toThrow(/must sit behind a gate|will not auto-merge/i)
-    // The mock was never called — no merge attempt reached the wire.
-    expect(t.requests).toHaveLength(0)
-  })
-
-  it('runs mergeMR only when the gate proof is present (approved=true)', async () => {
-    const t = new MockGitLabTransport(() => ok({ iid: 12, state: 'merged' }))
-    await new GitLabConnector({ api: buildApi(t) }).invokeAction('mergeMR', {
-      iid: 12,
-      approved: true
-    })
+    await new GitLabConnector({ api: buildApi(t) }).invokeAction('mergeMR', { iid: 12 })
     expect(t.requests).toHaveLength(1)
     expect(t.requests[0].method).toBe('PUT')
     expect(t.requests[0].url).toMatch(/merge_requests\/12\/merge$/)
+  })
+
+  it('still rejects on a missing iid, before any API call (unrelated to gating)', async () => {
+    const t = new MockGitLabTransport(() => ok({ iid: 12, state: 'merged' }))
+    await expect(
+      new GitLabConnector({ api: buildApi(t) }).invokeAction('mergeMR', {})
+    ).rejects.toThrow(/iid/i)
+    expect(t.requests).toHaveLength(0)
+  })
+
+  it('rejects on a real API failure with the actual error, no gate wording', async () => {
+    const t = new MockGitLabTransport(() => err(405))
+    await expect(
+      new GitLabConnector({ api: buildApi(t) }).invokeAction('mergeMR', { iid: 12 })
+    ).rejects.not.toThrow(/gate/i)
   })
 })
 

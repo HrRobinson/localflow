@@ -21,6 +21,7 @@ export type IntegrationId =
   | 'stripe'
   | 'github'
   | 'sentry'
+  | 'hubspot'
 
 export interface IntegrationConfigField {
   key: string
@@ -107,7 +108,8 @@ export const INTEGRATION_IDS: readonly IntegrationId[] = [
   'http',
   'stripe',
   'github',
-  'sentry'
+  'sentry',
+  'hubspot'
 ]
 
 /**

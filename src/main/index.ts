@@ -98,6 +98,11 @@ import {
 import { PatAuth } from './github/github-auth'
 import { SentryConnector } from './sentry/sentry-connector'
 import { SentryHttpApi, deferredSentryTransport } from './sentry/sentry-api'
+import { HubspotConnector } from './hubspot/hubspot-connector'
+import {
+  HubSpotApiClient,
+  deferredLiveTransport as deferredHubspotTransport
+} from './hubspot/hubspot-api'
 import { startGuardSeenWatch } from './guard-seen-watch'
 import type { ActivityEntry, GrantInfo, OperatorStatus } from '../shared/operator'
 import type { Capabilities } from '../shared/git'
@@ -367,6 +372,29 @@ app.whenReady().then(async () => {
         baseUrl: 'https://gitlab.deferred.invalid',
         projectPath: 'group/project',
         reveal: deferredGitLabError
+      })
+    })
+  )
+
+  // HubSpot connector (CRM/sales worker): register the LiveConnector so the flow
+  // engine can dispatch its actions/triggers (§7). The offline foundation ships
+  // the connector + its dispatch table + the v3 verifier/normalize core; the LIVE
+  // REST transport, the CredentialStore reveal binding, and the webhook tunnel
+  // are DEFERRED — until they land, any live action rejects LOUDLY (via
+  // `deferredHubspotTransport`) rather than silently no-opping, and no webhook
+  // receiver is started (cloud ingress deferred; trigger subscriptions register
+  // but stay dormant).
+  integrationRegistry.registerConnector(
+    'hubspot',
+    new HubspotConnector({
+      api: new HubSpotApiClient({
+        transport: deferredHubspotTransport(),
+        reveal: () => {
+          throw new Error(
+            'HubSpot live dispatch is not wired yet — the offline connector core is in place, ' +
+              'but real REST + credential access land in a follow-up.'
+          )
+        }
       })
     })
   )

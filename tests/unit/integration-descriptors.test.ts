@@ -16,7 +16,8 @@ describe('integration descriptors', () => {
       'http',
       'stripe',
       'github',
-      'sentry'
+      'sentry',
+      'hubspot'
     ])
     expect([...INTEGRATION_IDS]).toEqual([
       'linear',
@@ -30,7 +31,8 @@ describe('integration descriptors', () => {
       'http',
       'stripe',
       'github',
-      'sentry'
+      'sentry',
+      'hubspot'
     ])
   })
 
@@ -213,6 +215,20 @@ describe('integration descriptors', () => {
           'assignIssue',
           'ignoreIssue',
           'commentIssue'
+        ]
+      },
+      {
+        id: 'hubspot',
+        triggers: ['contact.created', 'deal.stageChanged', 'form.submitted'],
+        actions: [
+          'getContact',
+          'getDeal',
+          'getCompany',
+          'searchContacts',
+          'createContact',
+          'updateDeal',
+          'logActivity',
+          'createTask'
         ]
       }
     ])

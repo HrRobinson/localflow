@@ -12,6 +12,7 @@ import { httpDescriptor } from '../../http/http-descriptor'
 import { stripeDescriptor } from '../../stripe/stripe-descriptor'
 import { githubDescriptor } from '../../github/github-descriptor'
 import { sentryDescriptor } from '../../sentry/sentry-descriptor'
+import { hubspotDescriptor } from '../../hubspot/hubspot-descriptor'
 
 /** The static descriptor defs, keyed by id. The registry composes the full
  * `IntegrationDescriptor` (attaching `status()`) from these. */
@@ -27,7 +28,8 @@ export const DESCRIPTOR_DEFS: Record<IntegrationId, IntegrationDescriptorDef> = 
   http: httpDescriptor,
   stripe: stripeDescriptor,
   github: githubDescriptor,
-  sentry: sentryDescriptor
+  sentry: sentryDescriptor,
+  hubspot: hubspotDescriptor
 }
 
 /** In the pinned stable order (§11) sub-projects 2/3 rely on. */

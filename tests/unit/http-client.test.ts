@@ -35,7 +35,7 @@ describe('HttpClient — SSRF guard blocks internal targets BEFORE any socket', 
     ['https://10.0.0.5/x', /private/i],
     ['https://192.168.1.1/x', /private/i],
     ['https://172.16.0.1/x', /private/i],
-    ['https://169.254.169.254/latest/meta-data', /link-local|private/i],
+    ['https://169.254.169.254/latest/meta-data', /cloud-metadata|link-local|private/i],
     ['https://user:pass@evil.test/x', /credentials/i],
     ['http://example.com/x', /https/i],
     ['https://localhost/api', /loopback/i]
@@ -61,7 +61,7 @@ describe('HttpClient — SSRF guard blocks internal targets BEFORE any socket', 
     const t = new MockHttpTransport(() => ok())
     const templated = req('https://169.254.169.254/latest/meta-data/iam/security-credentials/')
     await expect(new HttpClient({ transport: t }).send(templated)).rejects.toThrow(
-      /link-local|private/i
+      /cloud-metadata|link-local|private/i
     )
     expect(t.requests).toHaveLength(0)
   })

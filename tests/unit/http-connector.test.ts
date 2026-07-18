@@ -93,7 +93,7 @@ describe('HttpConnector — outgoing dispatch', () => {
         auth: { scheme: 'none' },
         [NODE_ID_PARAM]: 'x'
       })
-    ).rejects.toThrow(/link-local|private/i)
+    ).rejects.toThrow(/cloud-metadata|link-local|private/i)
     expect(transport.requests).toHaveLength(0)
   })
 })

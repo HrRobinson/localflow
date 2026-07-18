@@ -98,9 +98,10 @@ describe('http connector through the real registry + action-runner seam (§8.1)'
     creds.set('http', 'fetch:apiToken', 'tok')
     const node = getNode()
     node.config.url = 'https://169.254.169.254/latest/meta-data'
+    // Canonical (gitlab) SSRF guard labels the metadata IP as 'cloud-metadata'.
     const out = await runAction({ registry }, node, {})
     expect(out.status).toBe('failed')
-    expect(out.message).toMatch(/link-local|private/i)
+    expect(out.message).toMatch(/cloud-metadata|link-local|private/i)
     expect(transport.requests).toHaveLength(0)
   })
 })

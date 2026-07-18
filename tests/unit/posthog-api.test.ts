@@ -43,7 +43,7 @@ describe('PostHogHttpApi — SSRF guard on the user-supplied host (spec §4.4)',
     ['https://127.0.0.1', /loopback/i],
     ['https://10.0.0.5', /private/i],
     ['https://192.168.1.10', /private/i],
-    ['https://169.254.169.254', /link-local/i], // cloud metadata endpoint
+    ['https://169.254.169.254', /cloud-metadata/i], // cloud metadata endpoint
     ['https://localhost', /loopback/i]
   ]
 

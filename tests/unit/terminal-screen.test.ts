@@ -37,6 +37,16 @@ describe('TerminalScreen', () => {
     expect(screen.snapshot().length).toBeGreaterThanOrEqual(2)
   })
 
+  it('snapshotLogical re-joins a soft-wrapped line into one logical line', () => {
+    const screen = new TerminalScreen(80, 24)
+    screen.resize(20, 10)
+    screen.write('0123456789012345678901234')
+    // Same content the visual snapshot splits across >=2 rows comes back as
+    // a single contiguous logical line — the approve/peek contract.
+    expect(screen.snapshot().length).toBeGreaterThanOrEqual(2)
+    expect(screen.snapshotLogical()).toEqual(['0123456789012345678901234'])
+  })
+
   it('is throw-safe: use after dispose returns [] and never throws', () => {
     const screen = new TerminalScreen(80, 24)
     screen.write('hello')

@@ -1,4 +1,13 @@
-import { Terminal } from '@xterm/headless'
+import { createRequire } from 'node:module'
+
+// `@xterm/headless` ships as CommonJS. electron-vite externalizes it, so the
+// built ESM main would do `import { Terminal } from '@xterm/headless'` — but
+// Node's CJS named-export detection can't see `Terminal` on this bundle and
+// throws `SyntaxError: Named export 'Terminal' not found` at boot, crashing
+// the app before any window opens. Load it via createRequire so the CJS
+// interop resolves to `module.exports.Terminal` at runtime.
+const require = createRequire(import.meta.url)
+const { Terminal } = require('@xterm/headless') as typeof import('@xterm/headless')
 
 /**
  * A DOM-less xterm.js terminal that renders a pane's pty byte stream so the
@@ -10,7 +19,7 @@ import { Terminal } from '@xterm/headless'
  * fixed 1000 rows to bound memory.
  */
 export class TerminalScreen {
-  private term: Terminal
+  private term: InstanceType<typeof Terminal>
   private broken = false
 
   constructor(cols = 80, rows = 24) {
@@ -63,18 +72,40 @@ export class TerminalScreen {
   }
 
   /**
-   * The rendered screen as plain text lines. Trailing blank lines are trimmed.
-   * With `maxLines`, returns the last N non-empty lines (matching the old
-   * extractPeekLines contract). Any failure yields [] so callers fall back.
+   * The rendered screen as plain text lines, one per *visual* row (so a line
+   * the emulator soft-wrapped at the screen width appears as multiple rows).
+   * Trailing blank lines are trimmed. With `maxLines`, returns the last N
+   * non-empty lines. Any failure yields [] so callers fall back.
    */
   snapshot(maxLines?: number): string[] {
+    return this.readLines(false, maxLines)
+  }
+
+  /**
+   * Like `snapshot()`, but soft-wrapped rows are re-joined into their original
+   * *logical* line (using each buffer row's `isWrapped` flag). This restores
+   * the old byte-tail peek contract: a long path/command that the 80-column
+   * screen wrapped stays contiguous, so callers that match on it (the approve
+   * peek, the operator `output` verb) aren't broken by the screen width. The
+   * visual `snapshot()` above is unchanged for the full-pane mirror.
+   */
+  snapshotLogical(maxLines?: number): string[] {
+    return this.readLines(true, maxLines)
+  }
+
+  private readLines(dewrap: boolean, maxLines?: number): string[] {
     if (this.broken) return []
     try {
       const buf = this.term.buffer.active
       const lines: string[] = []
       for (let i = 0; i < buf.length; i++) {
         const line = buf.getLine(i)
-        lines.push(line ? line.translateToString(true) : '')
+        const text = line ? line.translateToString(true) : ''
+        if (dewrap && line?.isWrapped && lines.length > 0) {
+          lines[lines.length - 1] += text
+        } else {
+          lines.push(text)
+        }
       }
       while (lines.length > 0 && lines[lines.length - 1].trim() === '') {
         lines.pop()

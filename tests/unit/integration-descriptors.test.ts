@@ -9,9 +9,17 @@ describe('integration descriptors', () => {
       'email',
       'cloud',
       'shopify',
-      'woocommerce'
+      'woocommerce',
+      'github'
     ])
-    expect([...INTEGRATION_IDS]).toEqual(['linear', 'email', 'cloud', 'shopify', 'woocommerce'])
+    expect([...INTEGRATION_IDS]).toEqual([
+      'linear',
+      'email',
+      'cloud',
+      'shopify',
+      'woocommerce',
+      'github'
+    ])
   })
 
   it('marks the exact secret fields per §7', () => {
@@ -23,6 +31,9 @@ describe('integration descriptors', () => {
     // WooCommerce: consumer key/secret + webhook secret are keychain-only; the
     // store URL is a non-secret ref (spec §5).
     expect(secretKeys('woocommerce')).toEqual(['consumerKey', 'consumerSecret', 'webhookSecret'])
+    // GitHub: the PAT, the App private key, and the webhook secret are keychain-
+    // only; auth mode / App id / installation id / base URL / owner are refs (§5).
+    expect(secretKeys('github')).toEqual(['pat', 'appPrivateKey', 'webhookSecret'])
   })
 
   it('marks the exact required fields per §7', () => {
@@ -43,6 +54,10 @@ describe('integration descriptors', () => {
       'webhookSecret',
       'environment'
     ])
+    // GitHub: the auth-mode selector + the always-required webhook secret, owner,
+    // and environment. The mode-specific secrets (pat / App triple) are
+    // conditional on `authMode`, so `required: false` at the field level (§5).
+    expect(requiredKeys('github')).toEqual(['authMode', 'webhookSecret', 'owner', 'environment'])
   })
 
   it('leaves cloud action-only (no triggers) and keeps trigger/action ids stable', () => {
@@ -93,6 +108,23 @@ describe('integration descriptors', () => {
           'cancelOrder',
           'updateShippingAddress',
           'addOrderNote'
+        ]
+      },
+      {
+        id: 'github',
+        triggers: ['issue.opened', 'pr.opened', 'check.failed', 'workflow.failed'],
+        actions: [
+          'getIssue',
+          'getPR',
+          'getCheckRun',
+          'searchIssues',
+          'commentIssue',
+          'labelIssue',
+          'createIssue',
+          'closeIssue',
+          'openPR',
+          'dispatchWorkflow',
+          'mergePR'
         ]
       }
     ])

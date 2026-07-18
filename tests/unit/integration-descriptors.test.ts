@@ -10,7 +10,8 @@ describe('integration descriptors', () => {
       'cloud',
       'shopify',
       'woocommerce',
-      'posthog'
+      'posthog',
+      'gitlab'
     ])
     expect([...INTEGRATION_IDS]).toEqual([
       'linear',
@@ -18,7 +19,8 @@ describe('integration descriptors', () => {
       'cloud',
       'shopify',
       'woocommerce',
-      'posthog'
+      'posthog',
+      'gitlab'
     ])
   })
 
@@ -119,6 +121,21 @@ describe('integration descriptors', () => {
         // POLLED triggers — not webhooks (spec §6.1, §7).
         triggers: ['event.matched', 'cohort.entered', 'insight.threshold'],
         actions: ['queryEvents', 'getInsight', 'getFeatureFlag', 'getCohort', 'updateFeatureFlag']
+      },
+      {
+        id: 'gitlab',
+        triggers: ['issue.opened', 'mr.opened', 'pipeline.failed'],
+        actions: [
+          'getIssue',
+          'getMR',
+          'getPipeline',
+          'searchIssues',
+          'commentIssue',
+          'labelIssue',
+          'createIssue',
+          'openMR',
+          'mergeMR'
+        ]
       }
     ])
   })

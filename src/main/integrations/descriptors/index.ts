@@ -6,6 +6,7 @@ import { cloudDescriptor } from './cloud'
 import { shopifyDescriptor } from '../../shopify/shopify-descriptor'
 import { woocommerceDescriptor } from './woocommerce'
 import { posthogDescriptor } from './posthog'
+import { gitlabDescriptor } from './gitlab'
 
 /** The static descriptor defs, keyed by id. The registry composes the full
  * `IntegrationDescriptor` (attaching `status()`) from these. */
@@ -15,7 +16,8 @@ export const DESCRIPTOR_DEFS: Record<IntegrationId, IntegrationDescriptorDef> = 
   cloud: cloudDescriptor,
   shopify: shopifyDescriptor,
   woocommerce: woocommerceDescriptor,
-  posthog: posthogDescriptor
+  posthog: posthogDescriptor,
+  gitlab: gitlabDescriptor
 }
 
 /** In the pinned stable order (§11) sub-projects 2/3 rely on. */

@@ -42,7 +42,14 @@ describe('IntegrationRegistry', () => {
 
   it('lists all descriptors in the pinned order with a sync status()', () => {
     const ds = registry.descriptors()
-    expect(ds.map((d) => d.id)).toEqual(['linear', 'email', 'cloud', 'shopify', 'woocommerce'])
+    expect(ds.map((d) => d.id)).toEqual([
+      'linear',
+      'email',
+      'cloud',
+      'shopify',
+      'woocommerce',
+      'gitlab'
+    ])
     expect(typeof ds[0].status()).toBe('string')
   })
 

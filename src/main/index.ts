@@ -65,6 +65,8 @@ import { ShopifyConnector } from './shopify/shopify-connector'
 import { ShopifyAdminApi, deferredLiveTransport } from './shopify/shopify-admin'
 import { WcApi } from './woocommerce/wc-api'
 import { WoocommerceConnector } from './woocommerce/woocommerce-connector'
+import { GitLabRestApi } from './gitlab/gitlab-api'
+import { GitLabConnector } from './gitlab/gitlab-connector'
 import { startGuardSeenWatch } from './guard-seen-watch'
 import type { ActivityEntry, GrantInfo, OperatorStatus } from '../shared/operator'
 import type { Capabilities } from '../shared/git'
@@ -275,6 +277,34 @@ app.whenReady().then(async () => {
         },
         storeUrl: 'https://woocommerce.deferred.invalid',
         reveal: deferredWooError
+      })
+    })
+  )
+
+  // GitLab connector: register the LiveConnector so the flow engine can dispatch
+  // its actions/triggers (spec §4.3). The offline foundation ships the connector
+  // + its dispatch table + the SSRF/normalize/webhook core; the LIVE HTTP
+  // transport, the CredentialStore reveal binding, and the on-LAN webhook bind are
+  // DEFERRED — until they land, any live call rejects with a legible message
+  // rather than silently no-opping. `baseUrl` is a public placeholder so the SSRF
+  // guard passes and the deferred-reveal message is what surfaces. `mergeMR` is
+  // still hard-gated by the connector (§9) regardless of wiring state.
+  const deferredGitLabError = (): never => {
+    throw new Error(
+      'GitLab live dispatch is not wired yet — the offline connector core is in place, ' +
+        'but real HTTP + credential access + the on-LAN webhook bind land in a follow-up.'
+    )
+  }
+  integrationRegistry.registerConnector(
+    'gitlab',
+    new GitLabConnector({
+      api: new GitLabRestApi({
+        transport: {
+          send: () => Promise.reject(new Error('GitLab HTTP transport is deferred.'))
+        },
+        baseUrl: 'https://gitlab.deferred.invalid',
+        projectPath: 'group/project',
+        reveal: deferredGitLabError
       })
     })
   )

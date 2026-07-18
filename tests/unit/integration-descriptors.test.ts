@@ -9,9 +9,17 @@ describe('integration descriptors', () => {
       'email',
       'cloud',
       'shopify',
-      'woocommerce'
+      'woocommerce',
+      'gitlab'
     ])
-    expect([...INTEGRATION_IDS]).toEqual(['linear', 'email', 'cloud', 'shopify', 'woocommerce'])
+    expect([...INTEGRATION_IDS]).toEqual([
+      'linear',
+      'email',
+      'cloud',
+      'shopify',
+      'woocommerce',
+      'gitlab'
+    ])
   })
 
   it('marks the exact secret fields per §7', () => {
@@ -93,6 +101,21 @@ describe('integration descriptors', () => {
           'cancelOrder',
           'updateShippingAddress',
           'addOrderNote'
+        ]
+      },
+      {
+        id: 'gitlab',
+        triggers: ['issue.opened', 'mr.opened', 'pipeline.failed'],
+        actions: [
+          'getIssue',
+          'getMR',
+          'getPipeline',
+          'searchIssues',
+          'commentIssue',
+          'labelIssue',
+          'createIssue',
+          'openMR',
+          'mergeMR'
         ]
       }
     ])

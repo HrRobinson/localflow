@@ -26,7 +26,9 @@ function bareId(gid: string | null | undefined): string {
   return slash === -1 ? gid : gid.slice(slash + 1)
 }
 
-/** Coerce a Shopify money string/number to a Number; garbage → 0. */
+/** Coerce a Shopify money string/number to a Number; garbage → 0. Shopify Admin
+ *  already reports MAJOR units, so the result conforms to `Money.amount`
+ *  semantics (`src/shared/money.ts`) with no minor-unit conversion needed. */
 function moneyToNumber(money: RawMoney | null | undefined): number {
   const n = Number(money?.amount ?? 0)
   return Number.isFinite(n) ? n : 0

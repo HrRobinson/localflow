@@ -10,7 +10,7 @@ describe('parseIntegrationsConfig', () => {
   })
 
   it('drops unknown integration ids', () => {
-    const cfg = parseIntegrationsConfig({ integrations: { salesforce: { enabled: true } } })
+    const cfg = parseIntegrationsConfig({ integrations: { zendesk: { enabled: true } } })
     expect(cfg).toEqual({})
   })
 

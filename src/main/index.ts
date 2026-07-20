@@ -103,6 +103,14 @@ import {
   HubSpotApiClient,
   deferredLiveTransport as deferredHubspotTransport
 } from './hubspot/hubspot-api'
+import { SalesforceConnector } from './salesforce/salesforce-connector'
+import {
+  SalesforceHttpApi,
+  deferredLiveTransport as deferredSalesforceTransport
+} from './salesforce/salesforce-api'
+import { SalesforcePoller } from './salesforce/salesforce-poller'
+import { SalesforceCursorStore } from './salesforce/salesforce-cursor-store'
+import { SalesforceAuth, deferredMinter } from './salesforce/salesforce-auth'
 import { startGuardSeenWatch } from './guard-seen-watch'
 import { HostedIngressClient } from './hosted/hosted-ingress'
 import { WebhookBindingRegistry } from './hosted/webhook-bindings'
@@ -568,6 +576,37 @@ app.whenReady().then(async () => {
     }
   })
   void hostedIngressSource
+
+  // Salesforce connector: the enterprise-CRM / sales-worker anchor (spec
+  // 2026-07-20-salesforce-connector-design). POLL-primary like PostHog — there is
+  // no simple signed-HTTP webhook, so triggers reach OUT via a SOQL LastModifiedDate
+  // reconcile poll. The offline foundation ships the descriptor + dispatch table +
+  // the SSRF/normalize core + the persisted (ts, Id) tuple-cursor poller + the
+  // auth seam. The LIVE HTTP transport and the JWT/client-credentials token minting
+  // are DEFERRED (spec §4.3, §13.1) — until they land, any live call/auth rejects
+  // with a legible message rather than silently no-opping. The poller's cadence
+  // timer is not started here (no live transport to poll yet); its cursor sidecar
+  // path is reserved so a restart-resume works once wired. Every write (incl.
+  // submitForApproval) fires ONLY via a gated action node the author drew (§9).
+  const salesforceAuth = new SalesforceAuth({
+    minter: deferredMinter('client-credentials'),
+    now: () => Date.now()
+  })
+  const salesforceApi = new SalesforceHttpApi({
+    transport: deferredSalesforceTransport(),
+    auth: salesforceAuth,
+    instanceUrl: 'https://salesforce.invalid'
+  })
+  const salesforcePoller = new SalesforcePoller({
+    api: salesforceApi,
+    cursors: new SalesforceCursorStore({ file: join(userData, 'salesforce-cursors.json') }),
+    now: () => Date.now(),
+    log: (message) => console.warn(`salesforce: ${message}`)
+  })
+  integrationRegistry.registerConnector(
+    'salesforce',
+    new SalesforceConnector({ api: salesforceApi, poller: salesforcePoller })
+  )
 
   const themesDir = join(userData, 'themes')
   ensureThemesSeeded(themesDir)

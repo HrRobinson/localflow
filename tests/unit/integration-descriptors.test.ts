@@ -17,7 +17,8 @@ describe('integration descriptors', () => {
       'stripe',
       'github',
       'sentry',
-      'hubspot'
+      'hubspot',
+      'salesforce'
     ])
     expect([...INTEGRATION_IDS]).toEqual([
       'linear',
@@ -32,7 +33,8 @@ describe('integration descriptors', () => {
       'stripe',
       'github',
       'sentry',
-      'hubspot'
+      'hubspot',
+      'salesforce'
     ])
   })
 
@@ -229,6 +231,19 @@ describe('integration descriptors', () => {
           'updateDeal',
           'logActivity',
           'createTask'
+        ]
+      },
+      {
+        id: 'salesforce',
+        // POLLED triggers — not webhooks (spec §6.1, §7).
+        triggers: ['record.created', 'record.updated'],
+        actions: [
+          'query',
+          'getRecord',
+          'createRecord',
+          'createTask',
+          'updateRecord',
+          'submitForApproval'
         ]
       }
     ])

@@ -86,13 +86,29 @@ describe('SegmentConnector — the HARD pre-seed filter (§7, the RAM-ceiling de
     expect(seeds).toHaveLength(0)
   })
 
-  it('REFUSES an un-named track subscription (§7.3 — cannot author the firehose)', () => {
-    const c = new SegmentConnector({ api: new MockSegment(), webhook: fakeWebhook().server })
-    expect(() => c.subscribe('event.tracked', () => {}, { type: 'track' })).toThrow(
-      /must name an event/
-    )
-    // The default type is track, so an empty config is refused too.
-    expect(() => c.subscribe('event.tracked', () => {}, {})).toThrow(/must name an event/)
+  it('skips an un-named track subscription with a loud warning — never throws (§7.3, startup-safety)', () => {
+    const wh = fakeWebhook()
+    const logs: string[] = []
+    const c = new SegmentConnector({
+      api: new MockSegment(),
+      webhook: wh.server,
+      log: (m) => logs.push(m)
+    })
+    const seeds: SeedEvent[] = []
+    let unsub: (() => void) | undefined
+    expect(() => {
+      unsub = c.subscribe('event.tracked', (e) => seeds.push(e as SeedEvent), { type: 'track' })
+    }).not.toThrow()
+    expect(unsub).toBeTypeOf('function')
+    expect(() => unsub?.()).not.toThrow()
+    expect(logs.some((m) => /must name an event/.test(m))).toBe(true)
+
+    // Not subscribed — a subsequent delivery seeds NO run (the firehose stays un-authorable).
+    wh.deliver(downgrade)
+    expect(seeds).toHaveLength(0)
+
+    // The default type is track, so an empty config is skipped too, not thrown.
+    expect(() => c.subscribe('event.tracked', () => {}, {})).not.toThrow()
   })
 })
 

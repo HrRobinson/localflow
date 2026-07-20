@@ -26,8 +26,10 @@ import type { SegmentWebhookDelivery, SegmentWebhookServer } from './segment-web
  * reads the trigger node's `config` and applies the HARD pre-seed filter
  * (`eventMatches`) BEFORE seeding any run, so a non-matching firehose event seeds
  * ZERO runs — the load-bearing RAM-ceiling defense on the 8 GB machine. And a
- * `track` subscription that does NOT name its event is refused at subscribe time
- * (§7.3) — you structurally cannot author the firehose.
+ * `track` subscription that does NOT name its event is skipped at subscribe time
+ * (§7.3) — you structurally cannot author the firehose. Like every sibling
+ * connector, `subscribe` NEVER throws: a bad/unnamed config is a loud warning
+ * and a no-op unsubscribe, not a crash of the shared subscribe loop.
  *
  * Authority is the graph the author drew (§9): the two writes (`track`/`identify`)
  * run ONLY because an `action` node invoked them, behind whatever gate the author
@@ -121,8 +123,12 @@ export class SegmentConnector implements LiveConnector {
   /**
    * Subscribe the ONE `event.tracked` trigger with its per-node hard filter
    * (§7.2). The `config` is REQUIRED to be meaningful: a track filter that does
-   * not name its event is refused HERE (§7.3) so the firehose is structurally
-   * un-authorable. Returns an unsubscribe.
+   * not name its event is skipped HERE (§7.3) so the firehose is structurally
+   * un-authorable. Mirrors every sibling connector's no-op-on-bad-config
+   * contract (e.g. `posthog-connector.ts`, `hubspot-connector.ts`): `subscribe`
+   * itself never throws — a bad config logs a loud warning and returns a no-op
+   * unsubscribe instead of escaping into the shared subscribe loop. Returns an
+   * unsubscribe.
    */
   subscribe(
     triggerId: string,
@@ -134,8 +140,16 @@ export class SegmentConnector implements LiveConnector {
       return () => {}
     }
     const parsed = parseTriggerConfig(config)
-    // The structural firehose guard — throws for an un-named track (§7.3).
-    assertNamedTrack(parsed)
+    // The structural firehose guard (§7.3) stays internal: `assertNamedTrack`
+    // throws for an un-named track, but that throw is caught HERE so it never
+    // escapes `subscribe` — a skip-and-warn no-op, not a crash.
+    try {
+      assertNamedTrack(parsed)
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err)
+      this.log(`segment connector: not subscribing 'event.tracked' — ${detail}`)
+      return () => {}
+    }
     const sub: Subscription = { handler, config: parsed }
     this.subscriptions.add(sub)
     this.wireWebhook()

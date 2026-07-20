@@ -8,6 +8,7 @@ import {
   type WebhookVerifier
 } from '../webhooks/webhook-receiver'
 import { normalizeSubscriptionBatch, type HubSpotWebhookEvent } from './hubspot-normalize'
+import type { HostedWebhookBinding } from '../hosted/webhook-bindings'
 
 /**
  * HubSpot v3 webhook verification wired to the SHARED receiver (§5). Unlike
@@ -121,4 +122,27 @@ export function startHubSpotWebhookReceiver(
     port: opts.port,
     log: opts.log
   })
+}
+
+/**
+ * The hosted-ingress binding for HubSpot (design §4.3) — the SAME v3 verifier and
+ * batched-subscription parse the loopback receiver uses, plus the keychain ref
+ * for the app CLIENT SECRET and, crucially, `publicUrl`: HubSpot v3 signs the
+ * PUBLIC delivered URL, so the binding carries the provisioned ingress URL and
+ * `handleWebhookDelivery` threads it to the composer as `requestUri`. `deliver`
+ * is the connector's per-batch sink (`HubspotConnector.deliver`).
+ */
+export function hubspotWebhookBinding(
+  deliver: (events: HubSpotWebhookEvent[]) => void | Promise<void>,
+  opts: { publicUrl: string; secretRef?: string }
+): HostedWebhookBinding<HubSpotWebhookEvent[]> {
+  return {
+    integration: 'hubspot',
+    verifier: HUBSPOT_VERIFIER,
+    parse: parseHubSpotBatch,
+    deliver,
+    secretRef: opts.secretRef ?? 'webhookClientSecret',
+    publicUrl: opts.publicUrl,
+    maxBodyBytes: HUBSPOT_MAX_BODY_BYTES
+  }
 }

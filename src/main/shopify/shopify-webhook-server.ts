@@ -6,6 +6,7 @@ import {
   type WebhookParser,
   type WebhookVerifier
 } from '../webhooks/webhook-receiver'
+import type { HostedWebhookBinding } from '../hosted/webhook-bindings'
 
 /**
  * Shopify webhook receiver (spec §4.4, §7). Now a THIN wrapper over the shared
@@ -125,4 +126,28 @@ export function startShopifyWebhookServer(
     port: opts.port,
     log: opts.log
   })
+}
+
+/**
+ * The hosted-ingress binding for Shopify (design §4.3) — the SAME verifier,
+ * parse, and dedup the loopback server uses, plus the keychain ref for the
+ * signing secret. `deliver` is the connector's per-delivery sink (the callback it
+ * passes to `webhook.onEvent` today). A fresh dedup seen-set is created per
+ * binding, exactly like `startShopifyWebhookServer`.
+ */
+export function shopifyWebhookBinding(
+  deliver: (delivery: ShopifyWebhookDelivery) => void | Promise<void>,
+  opts: { secretRef?: string; publicUrl?: string } = {}
+): HostedWebhookBinding<ShopifyWebhookDelivery> {
+  const binding: HostedWebhookBinding<ShopifyWebhookDelivery> = {
+    integration: 'shopify',
+    verifier: SHOPIFY_VERIFIER,
+    parse: parseShopifyDelivery,
+    dedup: makeShopifyDedup(),
+    deliver,
+    secretRef: opts.secretRef ?? 'webhookSecret',
+    maxBodyBytes: SHOPIFY_MAX_BODY_BYTES
+  }
+  if (opts.publicUrl) binding.publicUrl = opts.publicUrl
+  return binding
 }

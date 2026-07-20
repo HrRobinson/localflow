@@ -6,6 +6,7 @@ import {
   type WebhookParser,
   type WebhookVerifier
 } from '../webhooks/webhook-receiver'
+import type { HostedWebhookBinding } from '../hosted/webhook-bindings'
 
 /**
  * GitHub webhook receiver (§4.4). GitHub does NOT get a bespoke webhook server —
@@ -128,4 +129,28 @@ export function startGitHubWebhookServer(opts: GitHubWebhookOptions): Promise<Gi
     port: opts.port,
     log: opts.log
   })
+}
+
+/**
+ * The hosted-ingress binding for GitHub (design §4.3) — the SAME verifier, parse,
+ * and dedup the loopback server uses, plus the keychain ref for the signing
+ * secret. `deliver` is the connector's per-delivery sink (the callback it passes
+ * to `webhook.onEvent` today). A fresh dedup seen-set is created per binding,
+ * exactly like `startGitHubWebhookServer`. Mirrors `shopifyWebhookBinding`.
+ */
+export function githubWebhookBinding(
+  deliver: (delivery: GitHubWebhookDelivery) => void | Promise<void>,
+  opts: { secretRef?: string; publicUrl?: string } = {}
+): HostedWebhookBinding<GitHubWebhookDelivery> {
+  const binding: HostedWebhookBinding<GitHubWebhookDelivery> = {
+    integration: 'github',
+    verifier: GITHUB_VERIFIER,
+    parse: parseGitHubDelivery,
+    dedup: makeGitHubDedup(),
+    deliver,
+    secretRef: opts.secretRef ?? 'webhookSecret',
+    maxBodyBytes: GITHUB_MAX_BODY_BYTES
+  }
+  if (opts.publicUrl) binding.publicUrl = opts.publicUrl
+  return binding
 }

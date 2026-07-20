@@ -5,6 +5,7 @@ import {
   type WebhookVerifier
 } from '../webhooks/webhook-receiver'
 import type { LinearSessionAction, LinearSessionEvent } from '../../shared/linear'
+import type { HostedWebhookBinding } from '../hosted/webhook-bindings'
 
 /**
  * Receiver for Linear `AgentSessionEvent` webhooks (spec §4.4, §6.1). Now a THIN
@@ -148,4 +149,26 @@ export function startLinearWebhookServer(opts: LinearWebhookOptions): Promise<Li
     port: opts.port,
     log: opts.log
   })
+}
+
+/**
+ * The hosted-ingress binding for Linear (design §4.3) — the SAME verifier and
+ * parse the loopback server uses, plus the keychain ref for the signing secret.
+ * Linear has no dedup hook (mirrors `startLinearWebhookServer`). `deliver` is the
+ * connector's per-event sink. Mirrors `shopifyWebhookBinding`.
+ */
+export function linearWebhookBinding(
+  deliver: (event: LinearSessionEvent) => void | Promise<void>,
+  opts: { secretRef?: string; publicUrl?: string } = {}
+): HostedWebhookBinding<LinearSessionEvent> {
+  const binding: HostedWebhookBinding<LinearSessionEvent> = {
+    integration: 'linear',
+    verifier: LINEAR_VERIFIER,
+    parse: (rawBody) => parseLinearEvent(rawBody.toString('utf8')),
+    deliver,
+    secretRef: opts.secretRef ?? 'webhookSecret',
+    maxBodyBytes: LINEAR_MAX_BODY_BYTES
+  }
+  if (opts.publicUrl) binding.publicUrl = opts.publicUrl
+  return binding
 }

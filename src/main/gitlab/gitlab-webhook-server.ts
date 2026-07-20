@@ -8,6 +8,7 @@ import {
 } from '../webhooks/webhook-receiver'
 import { webhookToSeed } from './gitlab-normalize'
 import type { GitLabTriggerId, GitLabTriggerPayload } from '../../shared/gitlab'
+import type { HostedWebhookBinding } from '../hosted/webhook-bindings'
 
 /**
  * GitLab webhook receiver (spec §4.4, §5.2) — a THIN wrapper over the SHARED
@@ -127,4 +128,28 @@ export function startGitLabWebhookServer(opts: GitLabWebhookOptions): Promise<Gi
     port: opts.port,
     log: opts.log
   })
+}
+
+/**
+ * The hosted-ingress binding for GitLab (design §4.3) — the SAME `token`-scheme
+ * verifier (`X-Gitlab-Token`), parse, and dedup the loopback server uses, plus
+ * the keychain ref for the shared-secret token. `deliver` is the connector's
+ * per-delivery sink. A fresh dedup seen-set is created per binding, exactly like
+ * `startGitLabWebhookServer`. Mirrors `shopifyWebhookBinding`.
+ */
+export function gitlabWebhookBinding(
+  deliver: (event: GitLabWebhookEvent) => void | Promise<void>,
+  opts: { secretRef?: string; publicUrl?: string } = {}
+): HostedWebhookBinding<GitLabWebhookEvent> {
+  const binding: HostedWebhookBinding<GitLabWebhookEvent> = {
+    integration: 'gitlab',
+    verifier: GITLAB_VERIFIER,
+    parse: parseGitLabEvent,
+    dedup: makeGitLabDedup(),
+    deliver,
+    secretRef: opts.secretRef ?? 'webhookSecret',
+    maxBodyBytes: GITLAB_MAX_BODY_BYTES
+  }
+  if (opts.publicUrl) binding.publicUrl = opts.publicUrl
+  return binding
 }

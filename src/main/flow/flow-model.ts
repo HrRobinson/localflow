@@ -7,6 +7,7 @@ import type {
 } from '../../shared/flows'
 import { VALID_CONDITION_OPS } from '../../shared/flows'
 import type { IntegrationId } from '../../shared/integrations'
+import { isCustomerFacingAction } from '../../shared/customer-facing'
 
 /**
  * PURE validator for the `FlowGraph` model — the Developer-Preview blast radius
@@ -39,7 +40,14 @@ const INTEGRATION_IDS: ReadonlySet<string> = new Set<IntegrationId>([
   'stripe',
   'github',
   'sentry',
-  'hubspot'
+  'hubspot',
+  'airtable',
+  'discord',
+  'intercom',
+  'pagerduty',
+  'salesforce',
+  'segment',
+  'zendesk'
 ])
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
@@ -205,6 +213,43 @@ export function parseFlowGraphResult(raw: unknown): ParseResult {
       ok: false,
       error: `flow '${raw.id}': node '${unreachable.id}' is unreachable from the trigger (orphan or trigger-disconnected cycle)`
     }
+
+  // Never-auto-send gate (§9): a customer-facing send (e.g. intercom
+  // `replyToConversation`, zendesk `replyToTicket`) is unauthorable unless a
+  // human-approval `gate` sits SOMEWHERE upstream of it — not necessarily the
+  // direct parent. We enforce it here in the strict validator the engine runs
+  // before a flow goes live, so it holds regardless of what the renderer drew.
+  // (Reverse-edge BFS from each such node back toward the trigger; a single
+  // `gate` ancestor anywhere on the upstream frontier satisfies it.)
+  const inEdges = new Map<string, string[]>()
+  for (const e of edges) {
+    const list = inEdges.get(e.to)
+    if (list) list.push(e.from)
+    else inEdges.set(e.to, [e.from])
+  }
+  const nodeById = new Map<string, FlowNode>(nodes.map((n) => [n.id, n]))
+  for (const node of nodes) {
+    if (node.type !== 'action' || node.integration === undefined) continue
+    if (!isCustomerFacingAction(node.integration, node.ref)) continue
+    const seen = new Set<string>([node.id])
+    const stack: string[] = [...(inEdges.get(node.id) ?? [])]
+    let gated = false
+    while (stack.length > 0) {
+      const cur = stack.pop() as string
+      if (seen.has(cur)) continue
+      seen.add(cur)
+      if (nodeById.get(cur)?.type === 'gate') {
+        gated = true
+        break
+      }
+      for (const prev of inEdges.get(cur) ?? []) if (!seen.has(prev)) stack.push(prev)
+    }
+    if (!gated)
+      return {
+        ok: false,
+        error: `flow '${raw.id}': node '${node.id}' (${node.integration}.${node.ref}) is a customer-facing send reachable with no human-approval gate upstream`
+      }
+  }
 
   return { ok: true, flow: { id: raw.id, name: raw.name, nodes, edges } }
 }

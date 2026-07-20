@@ -75,13 +75,19 @@ export class HostedIngressClient {
       ? delivery.rawBody
       : Buffer.from(delivery.rawBody)
 
+    // The URL a URL-signed scheme (HubSpot v3) verifies against: prefer the
+    // per-delivery `publicUrl` the relay stamped (so a tenant with several
+    // HubSpot URLs verifies each delivery against the URL it actually arrived
+    // on), falling back to the binding's static `publicUrl`.
+    const publicUrl = delivery.publicUrl ?? binding.publicUrl
+
     const config: WebhookReceiverConfig<unknown> = {
       path: route,
       verifier: binding.verifier,
       parse: binding.parse,
       secret,
       log: this.log,
-      ...(binding.publicUrl !== undefined ? { publicUrl: binding.publicUrl } : {}),
+      ...(publicUrl !== undefined ? { publicUrl } : {}),
       ...(binding.preVerify ? { preVerify: binding.preVerify } : {}),
       ...(binding.dedup ? { dedup: binding.dedup } : {}),
       ...(binding.maxBodyBytes !== undefined ? { maxBodyBytes: binding.maxBodyBytes } : {})
@@ -90,7 +96,7 @@ export class HostedIngressClient {
     const out = handleWebhookDelivery(config, {
       rawBody,
       headers: delivery.headers,
-      ...(binding.publicUrl !== undefined ? { publicUrl: binding.publicUrl } : {})
+      ...(publicUrl !== undefined ? { publicUrl } : {})
     })
 
     // Permanent failures ack-drop so a bad message doesn't wedge the subscription

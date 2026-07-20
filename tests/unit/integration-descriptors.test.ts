@@ -17,7 +17,8 @@ describe('integration descriptors', () => {
       'stripe',
       'github',
       'sentry',
-      'hubspot'
+      'hubspot',
+      'segment'
     ])
     expect([...INTEGRATION_IDS]).toEqual([
       'linear',
@@ -32,7 +33,8 @@ describe('integration descriptors', () => {
       'stripe',
       'github',
       'sentry',
-      'hubspot'
+      'hubspot',
+      'segment'
     ])
   })
 
@@ -230,6 +232,11 @@ describe('integration descriptors', () => {
           'logActivity',
           'createTask'
         ]
+      },
+      {
+        id: 'segment',
+        triggers: ['event.tracked'],
+        actions: ['track', 'identify']
       }
     ])
   })

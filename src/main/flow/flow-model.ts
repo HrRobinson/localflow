@@ -39,7 +39,8 @@ const INTEGRATION_IDS: ReadonlySet<string> = new Set<IntegrationId>([
   'stripe',
   'github',
   'sentry',
-  'hubspot'
+  'hubspot',
+  'segment'
 ])
 
 const isObject = (v: unknown): v is Record<string, unknown> =>

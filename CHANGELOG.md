@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.12.0](https://github.com/HrRobinson/localflow/compare/v1.11.0...v1.12.0) (2026-07-20)
+
+
+### Features
+
+* complete hosted-ingress connector bindings ([#118](https://github.com/HrRobinson/localflow/issues/118)) ([690e1b9](https://github.com/HrRobinson/localflow/commit/690e1b967fdb4467bbd99cb9489bfd002a909181))
+* **guard:** five opt-in destructive packs + default-on switch ([#119](https://github.com/HrRobinson/localflow/issues/119)) ([b3ac7d2](https://github.com/HrRobinson/localflow/commit/b3ac7d2d940f13be826ad3ddc48f7bc74eabd5c9))
+* harden ed25519 replay + hosted webhook paths ([#122](https://github.com/HrRobinson/localflow/issues/122)) ([7e46ebe](https://github.com/HrRobinson/localflow/commit/7e46ebeb0efe702fb8ba94a2e1c3ed1693734aff))
+* hosted webhook-ingress client ([#117](https://github.com/HrRobinson/localflow/issues/117)) ([cc200b8](https://github.com/HrRobinson/localflow/commit/cc200b841ce34a9512192f81562d62b12d4749bd))
+* iso8601, any-of-N, ed25519 verify paths ([#121](https://github.com/HrRobinson/localflow/issues/121)) ([fccb74c](https://github.com/HrRobinson/localflow/commit/fccb74c07513415b8822a9a4156cbeaf95cd9a3b))
+* typed path input + default new-session cwd ([#104](https://github.com/HrRobinson/localflow/issues/104)) ([56a470a](https://github.com/HrRobinson/localflow/commit/56a470afc36f79724c5a1af169c6d3215e9c3ef1))
+* wave-3 connector palette (7 integrations) ([#120](https://github.com/HrRobinson/localflow/issues/120)) ([36b359a](https://github.com/HrRobinson/localflow/commit/36b359a7ba6f92d9c7f69566a581c1c19ea68a57))
+* worker connector wave (8 integrations) ([#110](https://github.com/HrRobinson/localflow/issues/110)) ([4926185](https://github.com/HrRobinson/localflow/commit/4926185d5fc978edd77c14799d06b411458f3ab9))
+
+
+### Bug Fixes
+
+* operator-readable terminal + submit loop ([#98](https://github.com/HrRobinson/localflow/issues/98)) ([d1b23e2](https://github.com/HrRobinson/localflow/commit/d1b23e2d4b0797da074c20d67780f2dbb734d1a1))
+
 ## [1.11.0](https://github.com/HrRobinson/localflow/compare/v1.10.0...v1.11.0) (2026-07-17)
 
 

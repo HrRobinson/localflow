@@ -17,7 +17,8 @@ describe('integration descriptors', () => {
       'stripe',
       'github',
       'sentry',
-      'hubspot'
+      'hubspot',
+      'pagerduty'
     ])
     expect([...INTEGRATION_IDS]).toEqual([
       'linear',
@@ -32,7 +33,8 @@ describe('integration descriptors', () => {
       'stripe',
       'github',
       'sentry',
-      'hubspot'
+      'hubspot',
+      'pagerduty'
     ])
   })
 
@@ -57,6 +59,9 @@ describe('integration descriptors', () => {
     // Sentry: bearer token + webhook Client Secret are keychain-only; the org/
     // project slugs and self-host baseUrl are non-secret refs (spec §5, §8).
     expect(secretKeys('sentry')).toEqual(['authToken', 'webhookSecret'])
+    // PagerDuty: REST api key + webhook v3 secret + Events-API routing key are
+    // keychain-only; fromEmail / region / service ids are non-secret refs (§5).
+    expect(secretKeys('pagerduty')).toEqual(['apiKey', 'webhookSecret', 'routingKey'])
   })
 
   it('marks the exact required fields per §7', () => {
@@ -91,6 +96,13 @@ describe('integration descriptors', () => {
     // conditional on `authMode`, so `required: false` at the field level (§5).
     expect(requiredKeys('github')).toEqual(['authMode', 'webhookSecret', 'owner', 'environment'])
     expect(requiredKeys('sentry')).toEqual(['authToken', 'webhookSecret', 'orgSlug', 'environment'])
+    expect(requiredKeys('pagerduty')).toEqual([
+      'apiKey',
+      'webhookSecret',
+      'fromEmail',
+      'region',
+      'environment'
+    ])
   })
 
   it('leaves cloud action-only (no triggers) and keeps trigger/action ids stable', () => {
@@ -229,6 +241,23 @@ describe('integration descriptors', () => {
           'updateDeal',
           'logActivity',
           'createTask'
+        ]
+      },
+      {
+        id: 'pagerduty',
+        triggers: [
+          'incident.triggered',
+          'incident.acknowledged',
+          'incident.escalated',
+          'incident.resolved'
+        ],
+        actions: [
+          'getIncident',
+          'getService',
+          'acknowledgeIncident',
+          'resolveIncident',
+          'escalateIncident',
+          'addNote'
         ]
       }
     ])

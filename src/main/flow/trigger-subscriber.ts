@@ -58,20 +58,29 @@ export function subscribeTriggers(
     // A trigger node names its integration + trigger id (`ref`). `cloud` is
     // action-only (empty triggers[]) so it never appears here — nothing to do.
     if (!trigger || !trigger.integration || !trigger.ref) continue
-    const unsub = registry.subscribe(
-      trigger.integration,
-      trigger.ref,
-      (event) => {
-        const seed = coerceEvent(event)
-        if (!matchesFilter(trigger.config, seed.payload)) return
-        onStart(flow, seed)
-      },
-      // Forward the trigger NODE's config — a POLL connector (PostHog) needs it
-      // to know WHAT to poll (insightId / cohortId / threshold / event filter);
-      // webhook connectors ignore it.
-      trigger.config
-    )
-    unsubs.push(unsub)
+    // Defense-in-depth (mirrors flow-engine.ts's skip-and-warn at parseFlowGraphResult):
+    // every connector's `subscribe` is contracted to never throw, but if one
+    // ever does, that failure is isolated to THIS flow — it must never crash
+    // the whole subscribe loop and strand every other flow unsubscribed.
+    try {
+      const unsub = registry.subscribe(
+        trigger.integration,
+        trigger.ref,
+        (event) => {
+          const seed = coerceEvent(event)
+          if (!matchesFilter(trigger.config, seed.payload)) return
+          onStart(flow, seed)
+        },
+        // Forward the trigger NODE's config — a POLL connector (PostHog) needs it
+        // to know WHAT to poll (insightId / cohortId / threshold / event filter);
+        // webhook connectors ignore it.
+        trigger.config
+      )
+      unsubs.push(unsub)
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err)
+      console.warn(`trigger-subscriber: not subscribing '${flow.id}' — ${detail}`)
+    }
   }
   return () => {
     for (const u of unsubs) u()

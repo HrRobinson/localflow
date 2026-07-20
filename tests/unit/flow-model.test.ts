@@ -255,3 +255,132 @@ describe('parseFlowGraph — invalid graphs disable loudly, never throw', () => 
     })
   }
 })
+
+describe('parseFlowGraph — customer-facing reply gate (§9)', () => {
+  // A trigger + a single customer-facing action node, optionally with a `gate`
+  // and/or an intermediate node spliced in between so we can test the "gate any
+  // hops upstream" rule.
+  const trigger = {
+    id: 't',
+    type: 'trigger',
+    integration: 'email',
+    ref: 'inbound',
+    config: {},
+    position: { x: 0, y: 0 }
+  }
+
+  it('(a) intercom replyToConversation with NO upstream gate → fails', () => {
+    const res = parseFlowGraphResult({
+      id: 'f',
+      name: 'ungated intercom reply',
+      nodes: [
+        trigger,
+        {
+          id: 'reply',
+          type: 'action',
+          integration: 'intercom',
+          ref: 'replyToConversation',
+          config: {},
+          position: { x: 1, y: 0 }
+        }
+      ],
+      edges: [{ id: 'e1', from: 't', to: 'reply' }]
+    })
+    expect(res.ok).toBe(false)
+    if (!res.ok) {
+      expect(res.error).toMatch(/customer-facing send/)
+      expect(res.error).toMatch(/intercom\.replyToConversation/)
+    }
+  })
+
+  it('(b) intercom replyToConversation WITH a gate directly upstream → ok', () => {
+    const res = parseFlowGraphResult({
+      id: 'f',
+      name: 'gated intercom reply',
+      nodes: [
+        trigger,
+        { id: 'g', type: 'gate', config: {}, position: { x: 1, y: 0 } },
+        {
+          id: 'reply',
+          type: 'action',
+          integration: 'intercom',
+          ref: 'replyToConversation',
+          config: {},
+          position: { x: 2, y: 0 }
+        }
+      ],
+      edges: [
+        { id: 'e1', from: 't', to: 'g' },
+        { id: 'e2', from: 'g', to: 'reply' }
+      ]
+    })
+    expect(res.ok).toBe(true)
+  })
+
+  it('(c) zendesk replyToTicket ungated → fails', () => {
+    const res = parseFlowGraphResult({
+      id: 'f',
+      name: 'ungated zendesk reply',
+      nodes: [
+        trigger,
+        {
+          id: 'reply',
+          type: 'action',
+          integration: 'zendesk',
+          ref: 'replyToTicket',
+          config: {},
+          position: { x: 1, y: 0 }
+        }
+      ],
+      edges: [{ id: 'e1', from: 't', to: 'reply' }]
+    })
+    expect(res.ok).toBe(false)
+    if (!res.ok) expect(res.error).toMatch(/zendesk\.replyToTicket/)
+  })
+
+  it('(d) zendesk addInternalNote ungated → ok (not customer-facing)', () => {
+    const res = parseFlowGraphResult({
+      id: 'f',
+      name: 'ungated zendesk internal note',
+      nodes: [
+        trigger,
+        {
+          id: 'note',
+          type: 'action',
+          integration: 'zendesk',
+          ref: 'addInternalNote',
+          config: {},
+          position: { x: 1, y: 0 }
+        }
+      ],
+      edges: [{ id: 'e1', from: 't', to: 'note' }]
+    })
+    expect(res.ok).toBe(true)
+  })
+
+  it('(e) a gate two hops upstream still satisfies the reply gate', () => {
+    const res = parseFlowGraphResult({
+      id: 'f',
+      name: 'gate two hops upstream',
+      nodes: [
+        trigger,
+        { id: 'g', type: 'gate', config: {}, position: { x: 1, y: 0 } },
+        { id: 'mid', type: 'agent', ref: 'claude', config: {}, position: { x: 2, y: 0 } },
+        {
+          id: 'reply',
+          type: 'action',
+          integration: 'intercom',
+          ref: 'replyToConversation',
+          config: {},
+          position: { x: 3, y: 0 }
+        }
+      ],
+      edges: [
+        { id: 'e1', from: 't', to: 'g' },
+        { id: 'e2', from: 'g', to: 'mid' },
+        { id: 'e3', from: 'mid', to: 'reply' }
+      ]
+    })
+    expect(res.ok).toBe(true)
+  })
+})

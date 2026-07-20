@@ -55,7 +55,14 @@ describe('IntegrationRegistry', () => {
       'stripe',
       'github',
       'sentry',
-      'hubspot'
+      'hubspot',
+      'airtable',
+      'discord',
+      'intercom',
+      'pagerduty',
+      'salesforce',
+      'segment',
+      'zendesk'
     ])
     expect(typeof ds[0].status()).toBe('string')
   })

@@ -10,7 +10,7 @@ describe('parseIntegrationsConfig', () => {
   })
 
   it('drops unknown integration ids', () => {
-    const cfg = parseIntegrationsConfig({ integrations: { salesforce: { enabled: true } } })
+    const cfg = parseIntegrationsConfig({ integrations: { notion: { enabled: true } } })
     expect(cfg).toEqual({})
   })
 

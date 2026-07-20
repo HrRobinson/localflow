@@ -1,5 +1,9 @@
 import type { IntegrationId } from '../../shared/integrations'
-import { handleWebhookDelivery, type WebhookReceiverConfig } from '../webhooks/webhook-receiver'
+import {
+  handleWebhookDelivery,
+  type DeliveryOutcome,
+  type WebhookReceiverConfig
+} from '../webhooks/webhook-receiver'
 import type { Ack, Delivery, IngressSource } from './ingress-source'
 import type { HostedWebhookBinding, WebhookBindingRegistry } from './webhook-bindings'
 
@@ -12,7 +16,8 @@ import type { HostedWebhookBinding, WebhookBindingRegistry } from './webhook-bin
  *
  * Never throws out of the handler — the whole per-delivery path is guarded so one
  * bad delivery can never wedge the drain loop. Ack semantics (§5.2):
- *  - verify-fail (401) / parse-fail (400)  → ack-drop  (redelivery can't help)
+ *  - verify-fail (401) / parse-fail (400) / oversize (413) → ack-drop (redelivery can't help)
+ *  - processing throw (bad header crashed verify/parse)     → ack-drop (permanent)
  *  - preVerify / dedup short-circuit (200) → ack       (acknowledged, nothing to run)
  *  - delivered (200 + event)               → ack       (flow seeded)
  *  - no binding / reveal throws / deliver threw → nack  (transient; redeliver later)
@@ -93,15 +98,29 @@ export class HostedIngressClient {
       ...(binding.maxBodyBytes !== undefined ? { maxBodyBytes: binding.maxBodyBytes } : {})
     }
 
-    const out = handleWebhookDelivery(config, {
-      rawBody,
-      headers: delivery.headers,
-      ...(publicUrl !== undefined ? { publicUrl } : {})
-    })
+    // handleWebhookDelivery runs the connector's preVerify / verifier.parseHeader
+    // on attacker-controlled headers BEFORE the secret compare, so a malformed
+    // header can make it THROW. Guard it here: a throw while processing attacker
+    // input is permanent (redelivery can't help), so classify it as an ack-drop —
+    // never a reject/unhandled rejection that would wedge the drain loop.
+    let out: DeliveryOutcome<unknown>
+    try {
+      out = handleWebhookDelivery(config, {
+        rawBody,
+        headers: delivery.headers,
+        ...(publicUrl !== undefined ? { publicUrl } : {})
+      })
+    } catch (err) {
+      this.log(
+        `hosted ingress ${route}: dropped a delivery that failed to process — ${errText(err)}`
+      )
+      return 'ack'
+    }
 
     // Permanent failures ack-drop so a bad message doesn't wedge the subscription
-    // (§5.2). handleWebhookDelivery already logged the route + reason.
-    if (out.status === 401 || out.status === 400) return 'ack'
+    // (§5.2). handleWebhookDelivery already logged the route + reason. 413 is the
+    // local body-size backstop (oversize → permanent, redelivery can't help).
+    if (out.status === 401 || out.status === 400 || out.status === 413) return 'ack'
 
     // A 200 short-circuit (preVerify / dedup) carries no event — ack, nothing to run.
     if (out.event === undefined) return 'ack'

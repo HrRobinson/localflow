@@ -17,7 +17,8 @@ describe('integration descriptors', () => {
       'stripe',
       'github',
       'sentry',
-      'hubspot'
+      'hubspot',
+      'intercom'
     ])
     expect([...INTEGRATION_IDS]).toEqual([
       'linear',
@@ -32,7 +33,8 @@ describe('integration descriptors', () => {
       'stripe',
       'github',
       'sentry',
-      'hubspot'
+      'hubspot',
+      'intercom'
     ])
   })
 
@@ -229,6 +231,17 @@ describe('integration descriptors', () => {
           'updateDeal',
           'logActivity',
           'createTask'
+        ]
+      },
+      {
+        id: 'intercom',
+        triggers: ['conversation.replied', 'conversation.created'],
+        actions: [
+          'getConversation',
+          'getContact',
+          'replyToConversation',
+          'closeConversation',
+          'tagConversation'
         ]
       }
     ])

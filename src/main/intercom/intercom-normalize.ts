@@ -45,18 +45,31 @@ function isoFromUnix(sec: unknown): string {
 export function htmlToPlaintext(html: unknown): string {
   const raw = str(html)
   if (raw.length === 0) return ''
-  return raw
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/(p|div|li)>/gi, '\n')
-    .replace(/<[^>]*>/g, '')
+  let text = raw.replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|li)>/gi, '\n')
+  // Fixed-point tag strip: a single pass is bypassable because removing an inner
+  // `<...>` can re-form an outer tag (e.g. `<scr<script>ipt>` → `<script>`), so
+  // repeat until no `<...>` remains. Then drop any stray lone `<`/`>` left by
+  // broken markup — the target is plaintext, so residual bracket chars are noise.
+  let prev: string
+  do {
+    prev = text
+    text = text.replace(/<[^>]*>/g, '')
+  } while (text !== prev)
+  text = text.replace(/[<>]/g, '')
+  // Decode entities AFTER tag stripping, with `&amp;` LAST: decoding `&amp;`→`&`
+  // first could turn `&amp;lt;` into `&lt;`→`<` (double-unescape). Decoding it
+  // last means a decoded value can never be re-read as another entity. Literal
+  // `<`/`>` produced here stay as text and are not re-stripped, so no tag can be
+  // reopened.
+  text = text
     .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
-    .replace(/[ \t]+\n/g, '\n')
-    .trim()
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&')
+  return text.replace(/[ \t]+\n/g, '\n').trim()
 }
 
 const STATES: Record<string, IntercomConversationState> = {

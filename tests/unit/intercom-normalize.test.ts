@@ -117,6 +117,36 @@ describe('htmlToPlaintext', () => {
     expect(htmlToPlaintext('a&nbsp;&amp;&nbsp;b')).toBe('a & b')
     expect(htmlToPlaintext(null)).toBe('')
   })
+
+  it('well-formed regression: simple tag strip + single entity decode', () => {
+    expect(htmlToPlaintext('<b>hi</b>')).toBe('hi')
+    expect(htmlToPlaintext('a &amp; b')).toBe('a & b')
+    // &lt;/&gt; decode to literal text ONCE
+    expect(htmlToPlaintext('&lt;tag&gt;')).toBe('<tag>')
+  })
+
+  it('is not bypassable by nested/broken tags (incomplete-multi-char-sanitization)', () => {
+    // A single-pass strip would leave `<script`; the fixed-point strip must not.
+    const out = htmlToPlaintext('<scr<script>ipt>alert(1)</script>')
+    expect(out).not.toContain('<script')
+    expect(out).not.toContain('<')
+    // Nested/broken brackets reduce to plaintext with no `<tag` residue.
+    const nested = htmlToPlaintext('<<b>>x<</b>>')
+    expect(nested).toBe('x')
+    expect(nested).not.toContain('<')
+  })
+
+  it('does not double-unescape entities (&amp;-last decode)', () => {
+    // Under a naive &amp;-first decode this collapses to `<`; it must stay one level.
+    expect(htmlToPlaintext('&amp;lt;')).toBe('&lt;')
+  })
+
+  it('coerces non-string input safely without throwing', () => {
+    expect(htmlToPlaintext(null)).toBe('')
+    expect(htmlToPlaintext(undefined)).toBe('')
+    expect(htmlToPlaintext(42)).toBe('')
+    expect(htmlToPlaintext({ body: 'x' })).toBe('')
+  })
 })
 
 describe('notificationToPayload + triggersForTopic (§6.1)', () => {

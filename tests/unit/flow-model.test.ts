@@ -384,3 +384,123 @@ describe('parseFlowGraph — customer-facing reply gate (§9)', () => {
     expect(res.ok).toBe(true)
   })
 })
+
+describe('parseFlowGraph — reply gate must DOMINATE, not merely exist (§9)', () => {
+  // A gate that is present on ONE path but bypassed by a sibling ungated edge
+  // does NOT protect the send: run-state ORs inbound edges, so the send still
+  // fires from the ungated edge even when the human rejects at the gate. The
+  // validator must require the gate to DOMINATE — every path from the trigger to
+  // the send crosses a gate — not merely appear somewhere upstream.
+  const intercomTrigger = {
+    id: 't',
+    type: 'trigger',
+    integration: 'intercom',
+    ref: 'conversation.created',
+    config: {},
+    position: { x: 0, y: 0 }
+  }
+  const cfReply = (id = 'cf') => ({
+    id,
+    type: 'action',
+    integration: 'intercom',
+    ref: 'replyToConversation',
+    config: {},
+    position: { x: 2, y: 0 }
+  })
+  const gateNode = (id = 'g', x = 1) => ({ id, type: 'gate', config: {}, position: { x, y: 1 } })
+
+  it('(1) sibling-ungated bypass (t→cf, t→g, g→cf) → rejected naming cf', () => {
+    // The confirmed-exploitable PoC: a direct ungated edge AND a gated edge both
+    // land on the same customer-facing send. Existence would pass this; the
+    // engine would send even when the human rejects. Domination must reject it.
+    const res = parseFlowGraphResult({
+      id: 'f',
+      name: 'sibling ungated bypass',
+      nodes: [intercomTrigger, gateNode(), cfReply()],
+      edges: [
+        { id: 'e1', from: 't', to: 'cf' },
+        { id: 'e2', from: 't', to: 'g' },
+        { id: 'e3', from: 'g', to: 'cf' }
+      ]
+    })
+    expect(res.ok).toBe(false)
+    if (!res.ok) {
+      expect(res.error).toMatch(/node 'cf'/)
+      expect(res.error).toMatch(/intercom\.replyToConversation/)
+      expect(res.error).toMatch(/without passing a human-approval gate/)
+    }
+  })
+
+  it('(2) diamond where BOTH paths pass through a gate → ok', () => {
+    const res = parseFlowGraphResult({
+      id: 'f',
+      name: 'both paths gated',
+      nodes: [intercomTrigger, gateNode('g1', 1), gateNode('g2', 1), cfReply()],
+      edges: [
+        { id: 'e1', from: 't', to: 'g1' },
+        { id: 'e2', from: 't', to: 'g2' },
+        { id: 'e3', from: 'g1', to: 'cf' },
+        { id: 'e4', from: 'g2', to: 'cf' }
+      ]
+    })
+    expect(res.ok).toBe(true)
+  })
+
+  it('(3) single chain t→g→cf → ok (unchanged)', () => {
+    const res = parseFlowGraphResult({
+      id: 'f',
+      name: 'single gated chain',
+      nodes: [intercomTrigger, gateNode(), cfReply()],
+      edges: [
+        { id: 'e1', from: 't', to: 'g' },
+        { id: 'e2', from: 'g', to: 'cf' }
+      ]
+    })
+    expect(res.ok).toBe(true)
+  })
+
+  it('(4) t→cf with NO gate anywhere → rejected', () => {
+    const res = parseFlowGraphResult({
+      id: 'f',
+      name: 'no gate at all',
+      nodes: [intercomTrigger, cfReply()],
+      edges: [{ id: 'e1', from: 't', to: 'cf' }]
+    })
+    expect(res.ok).toBe(false)
+    if (!res.ok) expect(res.error).toMatch(/node 'cf'/)
+  })
+
+  it('(5) intercom addInternalNote reachable ungated → ok (not customer-facing)', () => {
+    const res = parseFlowGraphResult({
+      id: 'f',
+      name: 'ungated internal note',
+      nodes: [
+        intercomTrigger,
+        {
+          id: 'note',
+          type: 'action',
+          integration: 'intercom',
+          ref: 'addInternalNote',
+          config: {},
+          position: { x: 1, y: 0 }
+        }
+      ],
+      edges: [{ id: 'e1', from: 't', to: 'note' }]
+    })
+    expect(res.ok).toBe(true)
+  })
+
+  it('(6) a gate strictly DOWNSTREAM of the send (t→cf→g) → rejected', () => {
+    const res = parseFlowGraphResult({
+      id: 'f',
+      name: 'gate below the send',
+      nodes: [intercomTrigger, cfReply(), gateNode('g', 3)],
+      edges: [
+        { id: 'e1', from: 't', to: 'cf' },
+        { id: 'e2', from: 'cf', to: 'g' }
+      ]
+    })
+    expect(res.ok).toBe(false)
+    if (!res.ok) expect(res.error).toMatch(/node 'cf'/)
+  })
+})

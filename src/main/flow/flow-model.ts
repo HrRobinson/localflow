@@ -214,40 +214,41 @@ export function parseFlowGraphResult(raw: unknown): ParseResult {
       error: `flow '${raw.id}': node '${unreachable.id}' is unreachable from the trigger (orphan or trigger-disconnected cycle)`
     }
 
-  // Never-auto-send gate (§9): a customer-facing send (e.g. intercom
-  // `replyToConversation`, zendesk `replyToTicket`) is unauthorable unless a
-  // human-approval `gate` sits SOMEWHERE upstream of it — not necessarily the
-  // direct parent. We enforce it here in the strict validator the engine runs
-  // before a flow goes live, so it holds regardless of what the renderer drew.
-  // (Reverse-edge BFS from each such node back toward the trigger; a single
-  // `gate` ancestor anywhere on the upstream frontier satisfies it.)
-  const inEdges = new Map<string, string[]>()
-  for (const e of edges) {
-    const list = inEdges.get(e.to)
-    if (list) list.push(e.from)
-    else inEdges.set(e.to, [e.from])
-  }
+  // Never-auto-send gate (§9), enforced by DOMINATION, not mere existence: a
+  // customer-facing send (e.g. intercom `replyToConversation`, zendesk
+  // `replyToTicket`) must be UNREACHABLE from the trigger by any path that does
+  // not pass through a human-approval `gate`. A gate that is merely *present* on
+  // one upstream path is NOT enough — a sibling ungated edge (trigger→send AND
+  // trigger→gate→send to the same node) would satisfy an existence check yet
+  // still FIRE the send when the human REJECTS, because run-state ORs inbound
+  // edges (a node runs when ≥1 inbound edge is taken, and the unconditioned
+  // trigger→send edge is always taken). So we compute the set of nodes reachable
+  // from the trigger WITHOUT crossing a gate: a `gate` node BLOCKS traversal
+  // (we never follow its outbound edges), and a gate is never itself
+  // customer-facing, so blocking there is safe. Any customer-facing send that
+  // lands in this gate-free set is unauthorable. (Forward BFS over the same
+  // out-edge adjacency; O(nodes+edges).)
   const nodeById = new Map<string, FlowNode>(nodes.map((n) => [n.id, n]))
+  const gateFree = new Set<string>([triggerId])
+  const gateFreeQueue: string[] = [triggerId]
+  while (gateFreeQueue.length > 0) {
+    const cur = gateFreeQueue.shift() as string
+    // A gate stops gate-free reachability: do not traverse its outbound edges.
+    if (nodeById.get(cur)?.type === 'gate') continue
+    for (const next of outEdges.get(cur) ?? []) {
+      if (!gateFree.has(next)) {
+        gateFree.add(next)
+        gateFreeQueue.push(next)
+      }
+    }
+  }
   for (const node of nodes) {
     if (node.type !== 'action' || node.integration === undefined) continue
     if (!isCustomerFacingAction(node.integration, node.ref)) continue
-    const seen = new Set<string>([node.id])
-    const stack: string[] = [...(inEdges.get(node.id) ?? [])]
-    let gated = false
-    while (stack.length > 0) {
-      const cur = stack.pop() as string
-      if (seen.has(cur)) continue
-      seen.add(cur)
-      if (nodeById.get(cur)?.type === 'gate') {
-        gated = true
-        break
-      }
-      for (const prev of inEdges.get(cur) ?? []) if (!seen.has(prev)) stack.push(prev)
-    }
-    if (!gated)
+    if (gateFree.has(node.id))
       return {
         ok: false,
-        error: `flow '${raw.id}': node '${node.id}' (${node.integration}.${node.ref}) is a customer-facing send reachable with no human-approval gate upstream`
+        error: `flow '${raw.id}': node '${node.id}' (${node.integration}.${node.ref}) is a customer-facing send reachable from the trigger without passing a human-approval gate`
       }
   }
 

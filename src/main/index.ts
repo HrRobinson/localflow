@@ -98,6 +98,8 @@ import {
 import { PatAuth } from './github/github-auth'
 import { SentryConnector } from './sentry/sentry-connector'
 import { SentryHttpApi, deferredSentryTransport } from './sentry/sentry-api'
+import { PagerDutyConnector } from './pagerduty/pagerduty-connector'
+import { PagerDutyHttpApi, deferredPagerDutyTransport } from './pagerduty/pagerduty-api'
 import { HubspotConnector } from './hubspot/hubspot-connector'
 import {
   HubSpotApiClient,
@@ -424,6 +426,33 @@ app.whenReady().then(async () => {
         transport: deferredSentryTransport(),
         orgSlug: 'sentry-deferred',
         reveal: deferredSentryReveal
+      })
+    })
+  )
+
+  // PagerDuty connector: the on-call COORDINATOR (the third of the incident loop,
+  // pairing with Sentry as sensor + GitHub as actuator, §7). The live REST
+  // transport and the webhook tunnel are DEFERRED (foundation slice) —
+  // `deferredPagerDutyTransport` fails loudly if an action reaches the wire, so
+  // the descriptor, normalizer, and mock-tested dispatch are all in place while
+  // real PagerDuty calls land in a later phase. No webhook server is started
+  // (cloud ingress deferred); trigger subscriptions register but stay dormant.
+  // Mutations NEVER auto-run — a write fires only because a gated action node
+  // invoked it (§9), and every write is attributed to the `From:` acting user.
+  // The api-key reveal binds to the CredentialStore at live wiring.
+  const deferredPagerDutyReveal = (): never => {
+    throw new Error(
+      'PagerDuty live dispatch is not wired yet — the offline connector core is in place, ' +
+        'but real HTTP + credential access land in a follow-up (spec §11).'
+    )
+  }
+  integrationRegistry.registerConnector(
+    'pagerduty',
+    new PagerDutyConnector({
+      api: new PagerDutyHttpApi({
+        transport: deferredPagerDutyTransport(),
+        reveal: deferredPagerDutyReveal,
+        fromEmail: 'pagerduty-deferred@localflow.invalid'
       })
     })
   )

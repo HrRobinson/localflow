@@ -1,7 +1,14 @@
 import { createServer } from 'node:http'
 import type { IncomingHttpHeaders } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
+import {
+  createHash,
+  createHmac,
+  createPublicKey,
+  timingSafeEqual,
+  verify as verifyAsymmetric,
+  type KeyObject
+} from 'node:crypto'
 import { applyLoopbackTimeouts } from '../server-timeouts'
 
 /**
@@ -23,12 +30,22 @@ import { applyLoopbackTimeouts } from '../server-timeouts'
  */
 
 /**
- * How a connector's webhooks are authenticated. One of two schemes:
- *  - 'hmac'  — timing-safe HMAC over the raw body (optionally timestamp+body
- *              with a replay window). Covers Shopify, Woo, Linear, Stripe,
- *              GitHub, Intercom.
- *  - 'token' — a plain shared secret compared timing-safely against a header
- *              value (no HMAC, no body). Covers GitLab `X-Gitlab-Token`.
+ * How a connector's webhooks are authenticated. One of three schemes:
+ *  - 'hmac'    — timing-safe HMAC over the raw body (optionally timestamp+body
+ *                with a replay window). Covers Shopify, Woo, Linear, Stripe,
+ *                GitHub, Intercom, PagerDuty, Zendesk.
+ *  - 'token'   — a plain shared secret compared timing-safely against a header
+ *                value (no HMAC, no body). Covers GitLab `X-Gitlab-Token`.
+ *  - 'ed25519' — Ed25519 public-key signature verification over
+ *                `${timestamp}${rawBody}` (Discord HTTP interactions). The
+ *                "secret" is the app's Ed25519 PUBLIC key (hex) — a non-secret
+ *                config value that verifies, it does not sign.
+ *
+ * For 'hmac'/'token' the `secret` may be a SINGLE string or an array of
+ * candidate secrets (any-of-N rotation: verification passes if the computed
+ * HMAC / token matches ANY candidate). For 'hmac' the `parseHeader` may return
+ * an array of candidate `signature`s (a header carrying several signatures,
+ * e.g. PagerDuty's comma-separated `v1=…,v1=…` during rotation).
  */
 export type WebhookVerifier =
   | {
@@ -50,9 +67,11 @@ export type WebhookVerifier =
        *  `X-HubSpot-Request-Timestamp`). Stripe embeds it in `t=` instead. */
       timestampHeader?: string
       /** Unit of the timestamp value. Stripe/Slack send seconds; HubSpot sends
-       *  milliseconds. Default 'seconds'. Only affects the replay-window math —
-       *  the RAW timestamp string is what gets signed. */
-      timestampUnit?: 'seconds' | 'milliseconds'
+       *  milliseconds; Zendesk sends an ISO-8601 datetime string (`'iso8601'`,
+       *  parsed via `Date.parse` → epoch ms). Default 'seconds'. Only affects the
+       *  replay-window math — the RAW timestamp string is what gets signed. An
+       *  unparseable value ALWAYS rejects (never a NaN-compares-as-pass). */
+      timestampUnit?: 'seconds' | 'milliseconds' | 'iso8601'
       /** Replay window in seconds when `signsTimestamp`. Default 300. */
       toleranceSec?: number
       /**
@@ -63,9 +82,13 @@ export type WebhookVerifier =
        *  - GitHub: strip the `sha256=` prefix → `{ signature }`.
        *  - Slack:  strip the `v0=` prefix → `{ signature }` (timestamp comes
        *            from the separate `timestampHeader`).
-       * Pure; returns null when the header is unparseable.
+       *  - PagerDuty (rotation): return EVERY `v1=` value as `signature: string[]`
+       *            — the any-of-N path accepts a match against any candidate.
+       * `signature` may be a single string or an array of candidate signatures;
+       * an empty array (or an all-empty set) rejects. Pure; returns null when the
+       * header is unparseable.
        */
-      parseHeader?: (raw: string) => { signature: string; timestamp?: string } | null
+      parseHeader?: (raw: string) => { signature: string | string[]; timestamp?: string } | null
       /**
        * Compose the signed base string from the full ingredient set. The
        * composition DIFFERS per vendor:
@@ -90,6 +113,22 @@ export type WebhookVerifier =
       scheme: 'token'
       /** Header carrying the shared secret, e.g. 'x-gitlab-token'. */
       header: string
+    }
+  | {
+      /**
+       * Ed25519 public-key signature verification (Discord HTTP interactions).
+       * The signed message is `${timestamp}${rawBody}` (bare concat); the
+       * `secret` passed to the verifier is the app's Ed25519 PUBLIC key as hex
+       * (32 raw bytes → 64 hex chars) — a NON-secret config value. Rotation of
+       * the key is supported by passing an array of public keys (any-of-N).
+       */
+      scheme: 'ed25519'
+      /** Header carrying the signature. */
+      header: string
+      /** Encoding of the signature value. Default 'hex' (Discord). */
+      encoding?: 'hex' | 'base64'
+      /** Header carrying the signing timestamp (Discord `X-Signature-Timestamp`). */
+      timestampHeader: string
     }
 
 /**
@@ -120,8 +159,10 @@ export interface WebhookReceiverConfig<E> {
   verifier: WebhookVerifier
   /** Vendor body → event. */
   parse: WebhookParser<E>
-  /** The keychain-sourced secret (HMAC key or shared token). NEVER logged. */
-  secret: string
+  /** The keychain-sourced secret (HMAC key or shared token), or the Ed25519
+   *  public key (hex) for `scheme:'ed25519'`. May be an ARRAY of candidates for
+   *  any-of-N secret/key rotation. NEVER logged. */
+  secret: string | string[]
   /** Raw-body ceiling. Default 1_048_576 (every current connector's value). */
   maxBodyBytes?: number
   /** Bind host. Default '127.0.0.1' (loopback; cloud ingress via tunnel/relay).
@@ -269,15 +310,41 @@ function headerValue(headers: IncomingHttpHeaders, name: string): string | undef
   return undefined
 }
 
+/** SubjectPublicKeyInfo DER prefix for an Ed25519 public key (12 bytes), so a raw
+ *  32-byte key can be wrapped into an SPKI a `KeyObject` accepts. */
+const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex')
+
+/** Build an Ed25519 public-key `KeyObject` from a hex-encoded 32-byte raw key
+ *  (Discord's app public key). Throws on a bad length/encoding — the caller skips
+ *  that candidate rather than passing verification. */
+function ed25519PublicKeyFromHex(hex: string): KeyObject {
+  const raw = Buffer.from(hex, 'hex')
+  if (raw.length !== 32) throw new Error('ed25519 public key must be 32 bytes')
+  const der = Buffer.concat([ED25519_SPKI_PREFIX, raw])
+  return createPublicKey({ key: der, format: 'der', type: 'spki' })
+}
+
 /**
- * Timing-safe HMAC/token verification (exported for direct unit testing).
+ * Timing-safe HMAC/token/Ed25519 verification (exported for direct unit testing).
  *
  * `scheme: 'hmac'`: reject a non-string / empty provided signature and an empty
- * secret; when `signsTimestamp`, reject a missing/NaN timestamp or one outside
- * `toleranceSec` of `now()`, then HMAC over `${timestamp}.${rawBody}`, else HMAC
- * over `rawBody`; compare with the re-hash `timingSafeEqual` trick.
+ * secret; when `signsTimestamp`, reject a missing/unparseable timestamp or one
+ * outside `toleranceSec` of `now()` (epoch seconds/milliseconds, or an ISO-8601
+ * datetime when `timestampUnit:'iso8601'`), then HMAC over `${timestamp}.${rawBody}`
+ * (or a `baseString` composition), else HMAC over `rawBody`; compare with the
+ * re-hash `timingSafeEqual` trick.
  * `scheme: 'token'`: reject empty secret / missing header, then compare
  * `timingSafeEqual(sha256(secretBuf), sha256(providedBuf))`.
+ * `scheme: 'ed25519'`: reject a missing signature/timestamp header or empty key,
+ * then `crypto.verify(null, ${ts}${body}, publicKey, signature)`.
+ *
+ * ANY-OF-N: `secret` may be an array of candidate secrets/keys and `parseHeader`
+ * may return an array of candidate signatures. Verification passes if ANY
+ * (secret × signature) combination matches. Every combination is evaluated with
+ * the timing-safe compare and the result OR-accumulated left-operand-first, so no
+ * early-return leaks WHICH candidate matched (only the candidate COUNT, which is
+ * unavoidable). An empty secret set, an empty candidate-signature set, or any
+ * empty-string secret rejects outright.
  */
 /** Request context a `baseString` composer may fold into the signed base string
  *  (HubSpot signs method + public URL). Both default to safe values, so the
@@ -292,30 +359,69 @@ export function verifyWebhookSignature(
   rawBody: Buffer,
   headers: IncomingHttpHeaders,
   verifier: WebhookVerifier,
-  secret: string,
+  secret: string | string[],
   now: () => number = Date.now,
   context: VerifyContext = {}
 ): boolean {
-  // An empty signing secret makes the check forgeable by anyone who knows the
+  // Normalize to a candidate list (any-of-N rotation). An empty set, or ANY
+  // empty-string secret/key, makes the check forgeable by anyone who knows the
   // body — refuse it outright rather than "verify" against nothing.
-  if (secret.length === 0) return false
+  const secrets = Array.isArray(secret) ? secret : [secret]
+  if (secrets.length === 0) return false
+  if (secrets.some((s) => s.length === 0)) return false
 
   if (verifier.scheme === 'token') {
     const provided = headerValue(headers, verifier.header)
     if (typeof provided !== 'string' || provided.length === 0) return false
-    return timingSafeMatch(Buffer.from(secret), Buffer.from(provided))
+    const providedBuf = Buffer.from(provided)
+    // Try every candidate secret; OR-accumulate without short-circuiting so
+    // timing never reveals WHICH secret matched (only the count).
+    let matched = false
+    for (const s of secrets) {
+      matched = timingSafeMatch(Buffer.from(s), providedBuf) || matched
+    }
+    return matched
+  }
+
+  if (verifier.scheme === 'ed25519') {
+    // Ed25519: verify `${timestamp}${rawBody}` against the app's PUBLIC key.
+    const rawHeader = headerValue(headers, verifier.header)
+    if (typeof rawHeader !== 'string' || rawHeader.length === 0) return false
+    const tsHeader = headerValue(headers, verifier.timestampHeader)
+    if (typeof tsHeader !== 'string' || tsHeader.length === 0) return false
+    const encoding = verifier.encoding ?? 'hex'
+    const signature = Buffer.from(rawHeader, encoding)
+    if (signature.length === 0) return false
+    const message = Buffer.concat([Buffer.from(tsHeader, 'utf8'), rawBody])
+    // Asymmetric verify over each candidate key; a bad-length key is skipped, not
+    // treated as a pass. OR-accumulate left-operand-first (no short-circuit).
+    let matched = false
+    for (const s of secrets) {
+      let ok: boolean
+      try {
+        ok = verifyAsymmetric(null, message, ed25519PublicKeyFromHex(s), signature)
+      } catch {
+        ok = false
+      }
+      matched = ok || matched
+    }
+    return matched
   }
 
   // scheme === 'hmac'
   const rawHeader = headerValue(headers, verifier.header)
   if (typeof rawHeader !== 'string' || rawHeader.length === 0) return false
 
-  const parseHeader: (raw: string) => { signature: string; timestamp?: string } | null =
+  const parseHeader: (raw: string) => { signature: string | string[]; timestamp?: string } | null =
     verifier.parseHeader ?? ((raw) => ({ signature: raw }))
   const parsed = parseHeader(rawHeader)
-  if (!parsed || typeof parsed.signature !== 'string' || parsed.signature.length === 0) {
-    return false
-  }
+  if (!parsed) return false
+  // Candidate signatures: a single string or an array (rotation). Drop empties;
+  // an all-empty / empty set rejects.
+  const sigCandidates = (
+    Array.isArray(parsed.signature) ? parsed.signature : [parsed.signature]
+  ).filter((s): s is string => typeof s === 'string' && s.length > 0)
+  if (sigCandidates.length === 0) return false
 
   const algo = verifier.algo ?? 'sha256'
   const encoding = verifier.encoding ?? 'hex'
@@ -331,10 +437,19 @@ export function verifyWebhookSignature(
           ? headerValue(headers, verifier.timestampHeader)
           : undefined
     if (typeof resolved !== 'string' || resolved.length === 0) return false
-    const tsNum = Number(resolved)
-    if (!Number.isFinite(tsNum)) return false
-    // Normalize to seconds for the replay window (HubSpot sends milliseconds).
-    const tsSec = verifier.timestampUnit === 'milliseconds' ? tsNum / 1000 : tsNum
+    // Normalize to epoch seconds for the replay window. Epoch units use Number();
+    // 'iso8601' parses an ISO datetime via Date.parse. An unparseable value ALWAYS
+    // rejects here — it never falls through to a NaN comparison that could pass.
+    let tsSec: number
+    if (verifier.timestampUnit === 'iso8601') {
+      const ms = Date.parse(resolved)
+      if (!Number.isFinite(ms)) return false
+      tsSec = ms / 1000
+    } else {
+      const tsNum = Number(resolved)
+      if (!Number.isFinite(tsNum)) return false
+      tsSec = verifier.timestampUnit === 'milliseconds' ? tsNum / 1000 : tsNum
+    }
     const tolerance = verifier.toleranceSec ?? DEFAULT_TOLERANCE_SEC
     const ageSec = Math.abs(now() / 1000 - tsSec)
     if (ageSec > tolerance) return false
@@ -361,9 +476,18 @@ export function verifyWebhookSignature(
     message = rawBody
   }
 
-  const expected = createHmac(algo, secret).update(message).digest()
-  const providedBuf = Buffer.from(parsed.signature, encoding)
-  return timingSafeMatch(expected, providedBuf)
+  // Any-of-N over (candidate secret × candidate signature). Compute each HMAC and
+  // compare timing-safely; OR-accumulate left-operand-first so no early-return
+  // leaks which pair matched (only the total number of comparisons).
+  let matched = false
+  for (const s of secrets) {
+    const expected = createHmac(algo, s).update(message).digest()
+    for (const sig of sigCandidates) {
+      const providedBuf = Buffer.from(sig, encoding)
+      matched = timingSafeMatch(expected, providedBuf) || matched
+    }
+  }
+  return matched
 }
 
 /**

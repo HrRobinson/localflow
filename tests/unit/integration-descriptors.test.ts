@@ -17,7 +17,8 @@ describe('integration descriptors', () => {
       'stripe',
       'github',
       'sentry',
-      'hubspot'
+      'hubspot',
+      'airtable'
     ])
     expect([...INTEGRATION_IDS]).toEqual([
       'linear',
@@ -32,7 +33,8 @@ describe('integration descriptors', () => {
       'stripe',
       'github',
       'sentry',
-      'hubspot'
+      'hubspot',
+      'airtable'
     ])
   })
 
@@ -230,6 +232,12 @@ describe('integration descriptors', () => {
           'logActivity',
           'createTask'
         ]
+      },
+      {
+        id: 'airtable',
+        // POLLED triggers — not webhook-payload (spec §3.1, §4).
+        triggers: ['record.created', 'record.updated'],
+        actions: ['listRecords', 'getRecord', 'createRecord', 'updateRecord']
       }
     ])
   })

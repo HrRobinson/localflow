@@ -55,7 +55,8 @@ describe('IntegrationRegistry', () => {
       'stripe',
       'github',
       'sentry',
-      'hubspot'
+      'hubspot',
+      'airtable'
     ])
     expect(typeof ds[0].status()).toBe('string')
   })

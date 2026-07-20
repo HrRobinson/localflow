@@ -103,6 +103,13 @@ import {
   HubSpotApiClient,
   deferredLiveTransport as deferredHubspotTransport
 } from './hubspot/hubspot-api'
+import { AirtableConnector } from './airtable/airtable-connector'
+import {
+  AirtableHttpApi,
+  deferredLiveTransport as deferredAirtableTransport
+} from './airtable/airtable-api'
+import { AirtablePoller } from './airtable/airtable-poller'
+import { AirtableCursorStore } from './airtable/airtable-cursor-store'
 import { startGuardSeenWatch } from './guard-seen-watch'
 import { HostedIngressClient } from './hosted/hosted-ingress'
 import { WebhookBindingRegistry } from './hosted/webhook-bindings'
@@ -351,6 +358,38 @@ app.whenReady().then(async () => {
   integrationRegistry.registerConnector(
     'posthog',
     new PostHogConnector({ api: posthogApi, poller: posthogPoller })
+  )
+
+  // Airtable connector: a POLL-primary live connector (spec §4) — the first
+  // structured-data (records) connector. The offline foundation ships the
+  // descriptor + dispatch table + the normalize core + the persisted-cursor
+  // reconcile poller over the `/payloads` CDC stream; the LIVE HTTP transport and
+  // the CredentialStore reveal binding are DEFERRED (spec §7.1) — until they land,
+  // any live call rejects with a legible message rather than silently no-opping.
+  // The poller's cadence timer is not started here (no live transport to poll
+  // yet); its cursor sidecar path is reserved so a restart-resume works once wired.
+  const deferredAirtableToken = (): never => {
+    throw new Error(
+      'Airtable live dispatch is not wired yet — the offline connector core (descriptor, ' +
+        'normalizer, poller, cursor store) is in place, but real HTTP + credential access land ' +
+        'in a follow-up (spec §7.1).'
+    )
+  }
+  const airtableApi = new AirtableHttpApi({
+    transport: deferredAirtableTransport(),
+    baseId: 'appDeferred',
+    tableId: 'tblDeferred',
+    reveal: deferredAirtableToken
+  })
+  const airtablePoller = new AirtablePoller({
+    api: airtableApi,
+    cursors: new AirtableCursorStore({ file: join(userData, 'airtable-cursors.json') }),
+    now: () => Date.now(),
+    log: (message) => console.warn(`airtable: ${message}`)
+  })
+  integrationRegistry.registerConnector(
+    'airtable',
+    new AirtableConnector({ api: airtableApi, poller: airtablePoller })
   )
 
   // GitLab connector: register the LiveConnector so the flow engine can dispatch

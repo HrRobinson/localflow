@@ -8,6 +8,7 @@
 // actionable, and name the node/integration.
 import type { FlowGraph, FlowNode, ValidationIssue, ValidationResult } from '../../../shared/flows'
 import type { ResolvedIntegrationDescriptor } from '../../../shared/integrations'
+import { isCustomerFacingIntercomAction } from '../../../shared/intercom'
 
 const INTEGRATION_TYPES = new Set(['trigger', 'action'])
 
@@ -93,6 +94,70 @@ function detectCycles(graph: FlowGraph): { hasCycle: boolean; throughRouterOnly:
 
 function nodeLabel(node: FlowNode): string {
   return node.type
+}
+
+/** True when the node is a customer-facing send (today: Intercom
+ *  `replyToConversation`) — the set §9's never-auto-send guard keys off. */
+function isCustomerFacingNode(node: FlowNode): boolean {
+  return (
+    node.type === 'action' &&
+    node.integration === 'intercom' &&
+    isCustomerFacingIntercomAction(node.ref)
+  )
+}
+
+/**
+ * The never-auto-send guard (§9 layer 3): a customer-facing send node
+ * (`intercom.replyToConversation`) must sit DOWNSTREAM of a `gate`. It is a hard
+ * ERROR — not a warning — so an un-gated customer reply is UNAUTHORABLE, moving the
+ * invariant from "the template happens to gate it" to "it cannot be drawn without a
+ * gate." A node is "un-gated reachable" when the trigger can reach it by a path that
+ * never passes through a gate; passing through a gate CLEARS that status (its
+ * successors are gated). Any customer-facing node still un-gated-reachable errors.
+ */
+function customerFacingGateIssues(graph: FlowGraph): ValidationIssue[] {
+  const customerFacing = graph.nodes.filter(isCustomerFacingNode)
+  if (customerFacing.length === 0) return []
+
+  const typeOf = new Map(graph.nodes.map((n) => [n.id, n.type]))
+  const adjacency = new Map<string, string[]>()
+  for (const e of graph.edges) {
+    const list = adjacency.get(e.from) ?? []
+    list.push(e.to)
+    adjacency.set(e.from, list)
+  }
+
+  // Propagate "reachable without an intervening gate" from every trigger. A gate
+  // node may itself be un-gated-reachable, but it does NOT propagate that status
+  // to its successors — reaching a gate is exactly what clears the invariant.
+  const ungated = new Set<string>()
+  const stack = graph.nodes.filter((n) => n.type === 'trigger').map((n) => n.id)
+  for (const id of stack) ungated.add(id)
+  while (stack.length > 0) {
+    const id = stack.pop()!
+    if (typeOf.get(id) === 'gate') continue
+    for (const next of adjacency.get(id) ?? []) {
+      if (!ungated.has(next)) {
+        ungated.add(next)
+        stack.push(next)
+      }
+    }
+  }
+
+  const issues: ValidationIssue[] = []
+  for (const node of customerFacing) {
+    if (ungated.has(node.id)) {
+      issues.push({
+        severity: 'error',
+        nodeId: node.id,
+        code: 'ungated-customer-facing',
+        message:
+          'This customer reply can be reached without human approval — add a gate node ' +
+          'upstream of it. A message to a customer must never auto-send.'
+      })
+    }
+  }
+  return issues
 }
 
 /** Integration-node config issues: no ref selected, a missing required
@@ -250,6 +315,9 @@ export function validateFlow(
 
   // incomplete edge conditions (warning — never blocks save)
   issues.push(...conditionIssues(graph))
+
+  // never-auto-send: a customer-facing reply must be downstream of a gate (§9)
+  issues.push(...customerFacingGateIssues(graph))
 
   // cycles
   const { hasCycle, throughRouterOnly } = detectCycles(graph)

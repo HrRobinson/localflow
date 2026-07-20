@@ -33,6 +33,7 @@ import { AgentRegistry, whichViaLoginShell } from './agent-registry'
 import { resolveShellPath } from './resolve-shell-path'
 import { resolveGuardBinary } from './guard-binary'
 import { makeOperatorGuard } from './operator-guard'
+import { resolveOptInPackArgs } from '../shared/guard-packs'
 import { ensureThemesSeeded, listThemeNames, resolveTheme } from './theme-store'
 import { loadOrCreateKeybindings, writeKeybindings } from './keybindings-file'
 import { loadEnvironmentNames } from './environment-names'
@@ -608,13 +609,18 @@ app.whenReady().then(async () => {
       ? {
           bin: guardBin,
           auditLog: guardAuditLog,
-          packs: registry.getGuardPacks(),
+          // Resolve to the known opt-in ids only: core.* are applied by the
+          // binary unconditionally (no --pack needed) and unknown/stale config
+          // ids are dropped so they can't become bogus --pack arguments.
+          packs: resolveOptInPackArgs(registry.getGuardPacks()),
           seenDir: guardSeenDir
         }
       : null
   const operatorGuard = makeOperatorGuard({
     resolveBinary: () => guardBin, // resolved once at line 180; null when none bundled
-    getPacks: () => registry.getGuardPacks() // AgentRegistry — same source G2 hooks use
+    // Same default-on resolution as the hook path above (AgentRegistry is the
+    // shared source): forward only the enabled, known opt-in packs.
+    getPacks: () => resolveOptInPackArgs(registry.getGuardPacks())
   })
 
   const manager = new SessionManager({

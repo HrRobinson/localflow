@@ -1,4 +1,4 @@
-import { checkStoreUrl } from './wc-ssrf'
+import { checkBaseUrl } from '../net/ssrf-guard'
 
 /**
  * Thin REST client for the WooCommerce `wc/v3` API (spec §4.2, §6). ALL WC
@@ -132,7 +132,7 @@ export class WcApi {
   private async request(method: WcMethod, path: string, body?: unknown): Promise<unknown> {
     // SSRF guard BEFORE any request is built (spec §5.1). Refuse a private/
     // loopback/non-https store URL with the legible reason.
-    const check = checkStoreUrl(this.storeUrl)
+    const check = checkBaseUrl(this.storeUrl, 'Store URL')
     if (!check.ok) throw new Error(check.reason)
 
     const url = `${trimTrailingSlash(check.url.href)}${API_PREFIX}${path}`

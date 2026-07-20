@@ -22,7 +22,9 @@ function str(v: unknown): string {
   return ''
 }
 
-/** Coerce WC's stringly-typed money to a finite number; garbage/absent → 0. */
+/** Coerce WC's stringly-typed money to a finite number; garbage/absent → 0. WC
+ *  reports MAJOR units, so the result conforms to `Money.amount` semantics
+ *  (`src/shared/money.ts`) — no minor-unit conversion needed. */
 function num(v: unknown): number {
   if (typeof v === 'number' && Number.isFinite(v)) return v
   if (typeof v === 'string') {

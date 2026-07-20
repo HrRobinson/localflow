@@ -14,12 +14,20 @@ import type { IntegrationId } from '../../shared/integrations'
  * string is accepted for convenience (the client buffers it before verify).
  * `ingressUrlId` identifies WHICH provisioned ingress URL received it (a tenant
  * may have several; it disambiguates when one integration has multiple URLs).
+ * `publicUrl` is the PUBLIC URL this delivery arrived on — the relay stamps it as
+ * a per-delivery message attribute so a URL-signed scheme (HubSpot v3) verifies
+ * against the URL that actually received THIS delivery, not a single static one
+ * (a tenant may map several HubSpot URLs to the same integration). Omitted for
+ * body-only schemes; when present it wins over the binding's static `publicUrl`.
  */
 export interface Delivery {
   integration: IntegrationId
   ingressUrlId: string
   rawBody: Buffer | string
   headers: Record<string, string>
+  /** The PUBLIC URL this delivery arrived on (relay message attribute). Verified
+   *  against for URL-signed schemes; overrides the binding's static `publicUrl`. */
+  publicUrl?: string
 }
 
 /**

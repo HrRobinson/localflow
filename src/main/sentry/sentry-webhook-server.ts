@@ -6,6 +6,7 @@ import {
   type WebhookParser,
   type WebhookVerifier
 } from '../webhooks/webhook-receiver'
+import type { HostedWebhookBinding } from '../hosted/webhook-bindings'
 
 /**
  * Sentry webhook receiver (spec §4.4). A THIN wrapper over the shared
@@ -126,4 +127,28 @@ export function startSentryWebhookServer(opts: SentryWebhookOptions): Promise<Se
     port: opts.port,
     log: opts.log
   })
+}
+
+/**
+ * The hosted-ingress binding for Sentry (design §4.3) — the SAME verifier, parse,
+ * and dedup the loopback server uses, plus the keychain ref for the Client
+ * Secret. `deliver` is the connector's per-delivery sink. A fresh dedup seen-set
+ * is created per binding, exactly like `startSentryWebhookServer`. Mirrors
+ * `shopifyWebhookBinding`.
+ */
+export function sentryWebhookBinding(
+  deliver: (delivery: SentryWebhookDelivery) => void | Promise<void>,
+  opts: { secretRef?: string; publicUrl?: string } = {}
+): HostedWebhookBinding<SentryWebhookDelivery> {
+  const binding: HostedWebhookBinding<SentryWebhookDelivery> = {
+    integration: 'sentry',
+    verifier: SENTRY_VERIFIER,
+    parse: parseSentryDelivery,
+    dedup: makeSentryDedup(),
+    deliver,
+    secretRef: opts.secretRef ?? 'webhookSecret',
+    maxBodyBytes: SENTRY_MAX_BODY_BYTES
+  }
+  if (opts.publicUrl) binding.publicUrl = opts.publicUrl
+  return binding
 }

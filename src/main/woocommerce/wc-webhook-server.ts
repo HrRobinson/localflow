@@ -8,6 +8,7 @@ import {
 } from '../webhooks/webhook-receiver'
 import { normalizeOrder } from './wc-normalize'
 import type { WcTriggerPayload } from '../../shared/woocommerce'
+import type { HostedWebhookBinding } from '../hosted/webhook-bindings'
 
 /**
  * WooCommerce webhook receiver (spec §4.4, §6.1). Now a THIN wrapper over the
@@ -126,4 +127,28 @@ export function startWcWebhookServer(opts: WcWebhookOptions): Promise<WcWebhookS
     port: opts.port,
     log: opts.log
   })
+}
+
+/**
+ * The hosted-ingress binding for WooCommerce (design §4.3) — the SAME verifier,
+ * parse, and `preVerify` ping short-circuit the loopback server uses, plus the
+ * keychain ref for the signing secret. `deliver` is the connector's per-event
+ * sink. Mirrors `shopifyWebhookBinding` (a `preVerify` here in place of Shopify's
+ * `dedup`).
+ */
+export function woocommerceWebhookBinding(
+  deliver: (event: WcWebhookEvent) => void | Promise<void>,
+  opts: { secretRef?: string; publicUrl?: string } = {}
+): HostedWebhookBinding<WcWebhookEvent> {
+  const binding: HostedWebhookBinding<WcWebhookEvent> = {
+    integration: 'woocommerce',
+    verifier: WC_VERIFIER,
+    parse: parseWcEvent,
+    preVerify: wcPingShortCircuit,
+    deliver,
+    secretRef: opts.secretRef ?? 'webhookSecret',
+    maxBodyBytes: WC_MAX_BODY_BYTES
+  }
+  if (opts.publicUrl) binding.publicUrl = opts.publicUrl
+  return binding
 }

@@ -3,6 +3,7 @@ import {
   type WebhookParser,
   type WebhookVerifier
 } from '../webhooks/webhook-receiver'
+import type { HostedWebhookBinding } from '../hosted/webhook-bindings'
 
 /**
  * Stripe webhook receiver (spec §4.5, §7). A THIN wrapper over the shared
@@ -112,4 +113,27 @@ export function startStripeWebhookServer(opts: StripeWebhookOptions): Promise<St
     port: opts.port,
     log: opts.log
   })
+}
+
+/**
+ * The hosted-ingress binding for Stripe (design §4.3) — the SAME `signsTimestamp`
+ * verifier and parse the loopback server uses, plus the keychain ref for the
+ * signing secret. No `dedup` hook: Stripe's event id is in the BODY, so dedup
+ * stays connector-side (see file header). `deliver` is the connector's
+ * per-delivery sink. Mirrors `shopifyWebhookBinding`.
+ */
+export function stripeWebhookBinding(
+  deliver: (delivery: StripeWebhookDelivery) => void | Promise<void>,
+  opts: { secretRef?: string; publicUrl?: string } = {}
+): HostedWebhookBinding<StripeWebhookDelivery> {
+  const binding: HostedWebhookBinding<StripeWebhookDelivery> = {
+    integration: 'stripe',
+    verifier: STRIPE_VERIFIER,
+    parse: parseStripeDelivery,
+    deliver,
+    secretRef: opts.secretRef ?? 'webhookSecret',
+    maxBodyBytes: STRIPE_MAX_BODY_BYTES
+  }
+  if (opts.publicUrl) binding.publicUrl = opts.publicUrl
+  return binding
 }

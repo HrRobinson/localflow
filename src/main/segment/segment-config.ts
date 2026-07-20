@@ -1,3 +1,4 @@
+import { checkBaseUrl } from '../net/ssrf-guard'
 import type { IntegrationConfigEntry } from '../../shared/integrations'
 
 /**
@@ -31,6 +32,26 @@ function normalizeBase(url: string): string {
 }
 
 /**
+ * Resolve the data-plane base URL under the SHARED SSRF guard (§4.4). The
+ * `writeKey` is sent to `${dataPlaneUrl}/v1/…` once the live transport lands, so a
+ * user-supplied base is exactly the self-host case the guard exists for: a
+ * private/loopback/link-local/cloud-metadata host, or a plain-`http://` (auth in
+ * the clear) URL, must never reach the write path. A failing or absent value is
+ * coerced to the trusted US default — matching how this file drops other invalid
+ * values — so the write can only ever target Segment.
+ *
+ * NOTE (live-cut): the live transport in `segment-client.ts` MUST re-run
+ * `checkBaseUrl` on the resolved host at request time (post-DNS `blockedIpRange`),
+ * exactly as Salesforce does, to close a DNS-rebind between parse and dial.
+ */
+function safeDataPlaneUrl(raw: unknown): string {
+  if (!isNonEmptyString(raw)) return DEFAULT_DATA_PLANE_URL
+  const trimmed = normalizeBase(raw)
+  if (!checkBaseUrl(trimmed, 'Segment data-plane URL').ok) return DEFAULT_DATA_PLANE_URL
+  return trimmed
+}
+
+/**
  * Build a typed `SegmentConfig` from the hub's parsed config entry, or `null`
  * when the required non-secret ref (`environment`) is absent (the connector then
  * stays dormant — the opt-in posture). The hub has already type-checked each
@@ -45,9 +66,7 @@ export function parseSegmentConfig(
   const cfg: SegmentConfig = {
     environment: values.environment,
     webhookPath: isNonEmptyString(values.webhookPath) ? values.webhookPath : DEFAULT_WEBHOOK_PATH,
-    dataPlaneUrl: normalizeBase(
-      isNonEmptyString(values.dataPlaneUrl) ? values.dataPlaneUrl : DEFAULT_DATA_PLANE_URL
-    )
+    dataPlaneUrl: safeDataPlaneUrl(values.dataPlaneUrl)
   }
   if (isNonEmptyString(values.webhookUrl)) cfg.webhookUrl = values.webhookUrl
   return cfg

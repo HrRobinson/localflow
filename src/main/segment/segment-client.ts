@@ -132,6 +132,12 @@ export class SegmentApiClient implements SegmentApi {
  * with a deferred transport). Wiring it means a `fetch` to `${dataPlaneUrl}/v1/…`
  * with the keychain `Authorization: Basic base64(writeKey:)` header. Until then a
  * registered connector using this transport fails LOUDLY rather than silently.
+ *
+ * SSRF re-check (live-cut, REQUIRED): `segment-config.ts` already guards the
+ * `dataPlaneUrl` with `checkBaseUrl` at parse time, but the live transport MUST
+ * additionally re-run the guard on the resolved IP at dial time — call
+ * `blockedIpRange(resolvedIp)` (see `salesforce-api.ts`) so a DNS-rebind between
+ * config-parse and connect can't redirect the `writeKey` to a private/metadata IP.
  */
 export function deferredLiveTransport(): SegmentTransport {
   return () =>

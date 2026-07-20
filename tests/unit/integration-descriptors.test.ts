@@ -17,7 +17,8 @@ describe('integration descriptors', () => {
       'stripe',
       'github',
       'sentry',
-      'hubspot'
+      'hubspot',
+      'zendesk'
     ])
     expect([...INTEGRATION_IDS]).toEqual([
       'linear',
@@ -32,7 +33,8 @@ describe('integration descriptors', () => {
       'stripe',
       'github',
       'sentry',
-      'hubspot'
+      'hubspot',
+      'zendesk'
     ])
   })
 
@@ -229,6 +231,21 @@ describe('integration descriptors', () => {
           'updateDeal',
           'logActivity',
           'createTask'
+        ]
+      },
+      {
+        id: 'zendesk',
+        triggers: ['ticket.commentAdded', 'ticket.created', 'ticket.updated', 'ticket.escalated'],
+        actions: [
+          'getTicket',
+          'getComments',
+          'searchTickets',
+          'getUser',
+          'replyToTicket',
+          'addInternalNote',
+          'setStatus',
+          'assignTicket',
+          'tagTicket'
         ]
       }
     ])

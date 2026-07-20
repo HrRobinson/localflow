@@ -103,6 +103,11 @@ import {
   HubSpotApiClient,
   deferredLiveTransport as deferredHubspotTransport
 } from './hubspot/hubspot-api'
+import { ZendeskConnector } from './zendesk/zendesk-connector'
+import {
+  ZendeskRestApi,
+  deferredLiveTransport as deferredZendeskTransport
+} from './zendesk/zendesk-api'
 import { startGuardSeenWatch } from './guard-seen-watch'
 import { HostedIngressClient } from './hosted/hosted-ingress'
 import { WebhookBindingRegistry } from './hosted/webhook-bindings'
@@ -514,6 +519,21 @@ app.whenReady().then(async () => {
     'stripe',
     new StripeConnector({
       api: new StripeApiClient({ transport: deferredStripeTransport() })
+    })
+  )
+
+  // Zendesk connector: the support-ticket read + gated-reply dispatch behind the
+  // registry seam (§4.3, §4.4). The live HTTPS transport (Basic {agentEmail}/token
+  // from the keychain, {subdomain}.zendesk.com) and the webhook tunnel are DEFERRED
+  // (foundation slice) — `deferredZendeskTransport` fails loudly if an action
+  // reaches the wire, so the descriptor, normalizer, and mock-tested dispatch are
+  // in place while real Zendesk calls land in a later phase. No mutation ever
+  // auto-runs: a public reply fires ONLY via a gated action node the author drew,
+  // and never auto-sends (§9).
+  integrationRegistry.registerConnector(
+    'zendesk',
+    new ZendeskConnector({
+      api: new ZendeskRestApi({ transport: deferredZendeskTransport() })
     })
   )
 

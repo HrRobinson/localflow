@@ -22,6 +22,7 @@ export type IntegrationId =
   | 'github'
   | 'sentry'
   | 'hubspot'
+  | 'zendesk'
 
 export interface IntegrationConfigField {
   key: string
@@ -109,7 +110,8 @@ export const INTEGRATION_IDS: readonly IntegrationId[] = [
   'stripe',
   'github',
   'sentry',
-  'hubspot'
+  'hubspot',
+  'zendesk'
 ]
 
 /**

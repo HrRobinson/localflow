@@ -341,3 +341,108 @@ describe('flow-validate', () => {
     expect(codes(routerGraph({ field: 'x', equals: 'bug' }))).not.toContain('incomplete-condition')
   })
 })
+
+// ── Zendesk never-auto-send reply gate (§9) ──────────────────────────────────
+const zendeskRegistry: ResolvedIntegrationDescriptor[] = [
+  {
+    id: 'zendesk',
+    label: 'Zendesk',
+    configFields: [],
+    triggers: [{ id: 'ticket.commentAdded', label: 'Customer replied on a ticket' }],
+    actions: [
+      { id: 'replyToTicket', label: 'Public reply to the customer' },
+      { id: 'addInternalNote', label: 'Add an internal note' }
+    ],
+    status: 'connected'
+  }
+]
+
+const trigger = {
+  id: 't',
+  type: 'trigger' as const,
+  integration: 'zendesk' as const,
+  ref: 'ticket.commentAdded',
+  config: {},
+  position: { x: 0, y: 0 }
+}
+const replyNode = {
+  id: 'reply',
+  type: 'action' as const,
+  integration: 'zendesk' as const,
+  ref: 'replyToTicket',
+  config: {},
+  position: { x: 0, y: 0 }
+}
+
+describe('flow-validate — the never-auto-send reply gate (§9)', () => {
+  it('ERRORS when replyToTicket has no preceding gate node', () => {
+    const g: FlowGraph = {
+      id: 'f',
+      name: 'x',
+      nodes: [trigger, replyNode],
+      edges: [{ id: 'e', from: 't', to: 'reply' }]
+    }
+    const res = validateFlow(g, zendeskRegistry)
+    const issue = res.issues.find((i) => i.code === 'reply-gate-required')
+    expect(issue).toBeDefined()
+    expect(issue!.severity).toBe('error')
+    expect(issue!.nodeId).toBe('reply')
+    expect(res.ok).toBe(false)
+  })
+
+  it('PASSES when a gate node sits upstream of replyToTicket', () => {
+    const g: FlowGraph = {
+      id: 'f',
+      name: 'x',
+      nodes: [
+        trigger,
+        { id: 'gate', type: 'gate', config: {}, position: { x: 0, y: 0 } },
+        replyNode
+      ],
+      edges: [
+        { id: 'e1', from: 't', to: 'gate' },
+        { id: 'e2', from: 'gate', to: 'reply' }
+      ]
+    }
+    expect(codes(g).filter((c) => c === 'reply-gate-required')).toHaveLength(0)
+  })
+
+  it('a gate ANYWHERE upstream (not only the immediate parent) satisfies the rule', () => {
+    const g: FlowGraph = {
+      id: 'f',
+      name: 'x',
+      nodes: [
+        trigger,
+        { id: 'gate', type: 'gate', config: {}, position: { x: 0, y: 0 } },
+        { id: 'router', type: 'router', config: {}, position: { x: 0, y: 0 } },
+        replyNode
+      ],
+      edges: [
+        { id: 'e1', from: 't', to: 'gate' },
+        { id: 'e2', from: 'gate', to: 'router' },
+        { id: 'e3', from: 'router', to: 'reply' }
+      ]
+    }
+    expect(codes(g).filter((c) => c === 'reply-gate-required')).toHaveLength(0)
+  })
+
+  it('does NOT require a gate for addInternalNote (internal, not customer-facing)', () => {
+    const g: FlowGraph = {
+      id: 'f',
+      name: 'x',
+      nodes: [
+        trigger,
+        {
+          id: 'note',
+          type: 'action',
+          integration: 'zendesk',
+          ref: 'addInternalNote',
+          config: {},
+          position: { x: 0, y: 0 }
+        }
+      ],
+      edges: [{ id: 'e', from: 't', to: 'note' }]
+    }
+    expect(codes(g)).not.toContain('reply-gate-required')
+  })
+})

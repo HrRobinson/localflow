@@ -8,6 +8,7 @@
 // actionable, and name the node/integration.
 import type { FlowGraph, FlowNode, ValidationIssue, ValidationResult } from '../../../shared/flows'
 import type { ResolvedIntegrationDescriptor } from '../../../shared/integrations'
+import { ZENDESK_PUBLIC_REPLY_ACTION_ID } from '../../../shared/zendesk'
 
 const INTEGRATION_TYPES = new Set(['trigger', 'action'])
 
@@ -93,6 +94,60 @@ function detectCycles(graph: FlowGraph): { hasCycle: boolean; throughRouterOnly:
 
 function nodeLabel(node: FlowNode): string {
   return node.type
+}
+
+/** All node ids that can reach `target` by following edges forward (its
+ *  ancestors) — a reverse-adjacency BFS. */
+function ancestorsOf(graph: FlowGraph, target: string): Set<string> {
+  const incoming = new Map<string, string[]>()
+  for (const e of graph.edges) {
+    const list = incoming.get(e.to) ?? []
+    list.push(e.from)
+    incoming.set(e.to, list)
+  }
+  const seen = new Set<string>()
+  const stack = [...(incoming.get(target) ?? [])]
+  while (stack.length > 0) {
+    const id = stack.pop()!
+    if (seen.has(id)) continue
+    seen.add(id)
+    for (const prev of incoming.get(id) ?? []) stack.push(prev)
+  }
+  return seen
+}
+
+/**
+ * The never-auto-send reply gate (spec §9). `replyToTicket` is the ONLY Zendesk
+ * action that posts a customer-facing (`comment.public: true`) reply, so it is
+ * UNAUTHORABLE without a `gate` node somewhere upstream of it. A public reply with
+ * no preceding gate is a hard error — the gate is the whole point. (`addInternalNote`
+ * and the other mutations are NOT customer-facing and are exempt.)
+ */
+function replyGateIssues(graph: FlowGraph): ValidationIssue[] {
+  const issues: ValidationIssue[] = []
+  const typeOf = new Map(graph.nodes.map((n) => [n.id, n.type]))
+  for (const node of graph.nodes) {
+    if (
+      node.type !== 'action' ||
+      node.integration !== 'zendesk' ||
+      node.ref !== ZENDESK_PUBLIC_REPLY_ACTION_ID
+    ) {
+      continue
+    }
+    const ancestors = ancestorsOf(graph, node.id)
+    const hasGate = [...ancestors].some((id) => typeOf.get(id) === 'gate')
+    if (!hasGate) {
+      issues.push({
+        severity: 'error',
+        nodeId: node.id,
+        code: 'reply-gate-required',
+        message:
+          'A public reply to a customer must be approved at a gate — add a gate node before ' +
+          'this "Public reply to the customer" action (Zendesk replies never auto-send).'
+      })
+    }
+  }
+  return issues
 }
 
 /** Integration-node config issues: no ref selected, a missing required
@@ -250,6 +305,9 @@ export function validateFlow(
 
   // incomplete edge conditions (warning — never blocks save)
   issues.push(...conditionIssues(graph))
+
+  // never-auto-send: a public reply must have a preceding gate (§9)
+  issues.push(...replyGateIssues(graph))
 
   // cycles
   const { hasCycle, throughRouterOnly } = detectCycles(graph)

@@ -93,6 +93,7 @@ export type ValidationCode =
   | 'integration-not-connected'
   | 'cycle'
   | 'incomplete-condition'
+  | 'reply-gate-required'
 export interface ValidationIssue {
   severity: ValidationSeverity
   /** Badge target; absent = graph-level. */

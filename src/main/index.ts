@@ -104,6 +104,48 @@ import {
   HubSpotApiClient,
   deferredLiveTransport as deferredHubspotTransport
 } from './hubspot/hubspot-api'
+import { AirtableConnector } from './airtable/airtable-connector'
+import {
+  AirtableHttpApi,
+  deferredLiveTransport as deferredAirtableTransport
+} from './airtable/airtable-api'
+import { AirtablePoller } from './airtable/airtable-poller'
+import { AirtableCursorStore } from './airtable/airtable-cursor-store'
+import { DiscordConnector } from './discord/discord-connector'
+import {
+  DiscordRestApi,
+  deferredLiveTransport as discordDeferredTransport
+} from './discord/discord-client'
+import { DiscordApprovalPort } from './discord/discord-approval-port'
+import { parseDiscordConfig } from './discord/discord-config'
+import { DiscordTokenStore } from './discord/discord-token-store'
+import { selectApprovalPort } from './discord/approval-surface-select'
+import { IntercomConnector } from './intercom/intercom-connector'
+import {
+  IntercomApiClient,
+  deferredLiveTransport as deferredIntercomTransport
+} from './intercom/intercom-api'
+import { PagerDutyConnector } from './pagerduty/pagerduty-connector'
+import { PagerDutyHttpApi, deferredPagerDutyTransport } from './pagerduty/pagerduty-api'
+import { SalesforceConnector } from './salesforce/salesforce-connector'
+import {
+  SalesforceHttpApi,
+  deferredLiveTransport as deferredSalesforceTransport
+} from './salesforce/salesforce-api'
+import { SalesforcePoller } from './salesforce/salesforce-poller'
+import { SalesforceCursorStore } from './salesforce/salesforce-cursor-store'
+import { SalesforceAuth, deferredMinter } from './salesforce/salesforce-auth'
+import { SegmentConnector } from './segment/segment-connector'
+import {
+  SegmentApiClient,
+  deferredLiveTransport as deferredSegmentTransport
+} from './segment/segment-client'
+import { SegmentTokenStore } from './segment/segment-token-store'
+import { ZendeskConnector } from './zendesk/zendesk-connector'
+import {
+  ZendeskRestApi,
+  deferredLiveTransport as deferredZendeskTransport
+} from './zendesk/zendesk-api'
 import { startGuardSeenWatch } from './guard-seen-watch'
 import { HostedIngressClient } from './hosted/hosted-ingress'
 import { WebhookBindingRegistry } from './hosted/webhook-bindings'
@@ -489,6 +531,179 @@ app.whenReady().then(async () => {
   slackRef.connector = slackConnector
   integrationRegistry.registerConnector('slack', slackConnector)
 
+  // Airtable connector: a POLL-primary live connector (spec §4) — the first
+  // structured-data (records) connector. The offline foundation ships the
+  // descriptor + dispatch table + the normalize core + the persisted-cursor
+  // reconcile poller over the `/payloads` CDC stream; the LIVE HTTP transport and
+  // the CredentialStore reveal binding are DEFERRED (spec §7.1) — until they land,
+  // any live call rejects with a legible message rather than silently no-opping.
+  // The poller's cadence timer is not started here (no live transport to poll
+  // yet); its cursor sidecar path is reserved so a restart-resume works once wired.
+  const deferredAirtableToken = (): never => {
+    throw new Error(
+      'Airtable live dispatch is not wired yet — the offline connector core (descriptor, ' +
+        'normalizer, poller, cursor store) is in place, but real HTTP + credential access land ' +
+        'in a follow-up (spec §7.1).'
+    )
+  }
+  const airtableApi = new AirtableHttpApi({
+    transport: deferredAirtableTransport(),
+    baseId: 'appDeferred',
+    tableId: 'tblDeferred',
+    reveal: deferredAirtableToken
+  })
+  const airtablePoller = new AirtablePoller({
+    api: airtableApi,
+    cursors: new AirtableCursorStore({ file: join(userData, 'airtable-cursors.json') }),
+    now: () => Date.now(),
+    log: (message) => console.warn(`airtable: ${message}`)
+  })
+  integrationRegistry.registerConnector(
+    'airtable',
+    new AirtableConnector({ api: airtableApi, poller: airtablePoller })
+  )
+
+  // Discord connector: the SECOND cross-cutting control connector, whose headline
+  // export is localflow's SECOND real ApprovalPort (§3) — a peer of Slack's,
+  // against the SAME seam, no engine change. Like Slack the live Gateway WS + REST
+  // HTTPS transport are DEFERRED (foundation slice): the descriptor, component
+  // builders, approval port, connector dispatch, and gateway core are all in place
+  // and mock-tested; only the real network exit lands in a follow-up. MVP is
+  // Gateway-only (zero ingress; the HTTP Interactions Ed25519 path is Phase 3).
+  const discordConfig = parseDiscordConfig(
+    loadIntegrationsConfig(join(userData, 'config.json')).discord
+  )
+  const discordChannel = discordConfig?.defaultChannel ?? ''
+  const discordTokens = new DiscordTokenStore(integrationCreds)
+  const discordApi = new DiscordRestApi({ transport: discordDeferredTransport() })
+  const discordConnected =
+    integrationRegistry.get('discord')?.status() === 'connected' && discordChannel.length > 0
+  const discordRef: { connector?: DiscordConnector } = {}
+  const discordApprovalPort = discordConnected
+    ? new DiscordApprovalPort({
+        api: discordApi,
+        channel: discordChannel,
+        onDecision: (decision) => discordRef.connector?.onApprovalDecision(decision)
+      })
+    : undefined
+  const discordConnector = new DiscordConnector({
+    api: discordApi,
+    defaultChannel: discordChannel,
+    approvals: discordApprovalPort
+  })
+  discordRef.connector = discordConnector
+  integrationRegistry.registerConnector('discord', discordConnector)
+  void discordTokens // token reveal used by the live Gateway IDENTIFY (deferred).
+
+  // Intercom connector: the support-desk read → draft → gated-reply dispatch behind
+  // the registry seam (§4.3, §4.4). The live HTTPS transport (Authorization: Bearer
+  // <token> from the keychain, region base URL) and the webhook tunnel are DEFERRED
+  // (foundation slice) — `deferredIntercomTransport` fails loudly if an action
+  // reaches the wire, so the descriptor, normalizer, and mock-tested dispatch are
+  // all in place while real Intercom calls land in a later phase. The customer-facing
+  // reply NEVER auto-sends: `replyToConversation` fires ONLY via a gated action node
+  // the author drew, enforced un-gated-unauthorable at flow-validate (§9). Delivering
+  // a trigger makes ZERO Intercom writes.
+  integrationRegistry.registerConnector(
+    'intercom',
+    new IntercomConnector({
+      api: new IntercomApiClient({ transport: deferredIntercomTransport() })
+    })
+  )
+
+  // PagerDuty connector: the on-call COORDINATOR (the third of the incident loop,
+  // pairing with Sentry as sensor + GitHub as actuator, §7). The live REST
+  // transport and the webhook tunnel are DEFERRED (foundation slice) —
+  // `deferredPagerDutyTransport` fails loudly if an action reaches the wire, so
+  // the descriptor, normalizer, and mock-tested dispatch are all in place while
+  // real PagerDuty calls land in a later phase. No webhook server is started
+  // (cloud ingress deferred); trigger subscriptions register but stay dormant.
+  // Mutations NEVER auto-run — a write fires only because a gated action node
+  // invoked it (§9), and every write is attributed to the `From:` acting user.
+  // The api-key reveal binds to the CredentialStore at live wiring.
+  const deferredPagerDutyReveal = (): never => {
+    throw new Error(
+      'PagerDuty live dispatch is not wired yet — the offline connector core is in place, ' +
+        'but real HTTP + credential access land in a follow-up (spec §11).'
+    )
+  }
+  integrationRegistry.registerConnector(
+    'pagerduty',
+    new PagerDutyConnector({
+      api: new PagerDutyHttpApi({
+        transport: deferredPagerDutyTransport(),
+        reveal: deferredPagerDutyReveal,
+        fromEmail: 'pagerduty-deferred@localflow.invalid'
+      })
+    })
+  )
+
+  // Salesforce connector: the enterprise-CRM / sales-worker anchor (spec
+  // 2026-07-20-salesforce-connector-design). POLL-primary like PostHog — there is
+  // no simple signed-HTTP webhook, so triggers reach OUT via a SOQL LastModifiedDate
+  // reconcile poll. The offline foundation ships the descriptor + dispatch table +
+  // the SSRF/normalize core + the persisted (ts, Id) tuple-cursor poller + the
+  // auth seam. The LIVE HTTP transport and the JWT/client-credentials token minting
+  // are DEFERRED (spec §4.3, §13.1) — until they land, any live call/auth rejects
+  // with a legible message rather than silently no-opping. The poller's cadence
+  // timer is not started here (no live transport to poll yet); its cursor sidecar
+  // path is reserved so a restart-resume works once wired. Every write (incl.
+  // submitForApproval) fires ONLY via a gated action node the author drew (§9).
+  const salesforceAuth = new SalesforceAuth({
+    minter: deferredMinter('client-credentials'),
+    now: () => Date.now()
+  })
+  const salesforceApi = new SalesforceHttpApi({
+    transport: deferredSalesforceTransport(),
+    auth: salesforceAuth,
+    instanceUrl: 'https://salesforce.invalid'
+  })
+  const salesforcePoller = new SalesforcePoller({
+    api: salesforceApi,
+    cursors: new SalesforceCursorStore({ file: join(userData, 'salesforce-cursors.json') }),
+    now: () => Date.now(),
+    log: (message) => console.warn(`salesforce: ${message}`)
+  })
+  integrationRegistry.registerConnector(
+    'salesforce',
+    new SalesforceConnector({ api: salesforceApi, poller: salesforcePoller })
+  )
+
+  // Segment connector: the event SOURCE MULTIPLIER behind the registry seam
+  // (§4.2, §4.3). ONE webhook trigger (`event.tracked`, X-Signature SHA1 HMAC
+  // via the shared receiver) wakes a flow on events from ANY upstream source
+  // Segment collects, HARD-filtered pre-seed so the firehose never OOMs the 8 GB
+  // machine (§7). The live Tracking API transport (Basic-auth write key) and the
+  // webhook tunnel are DEFERRED (foundation slice) — `deferredSegmentTransport`
+  // fails loudly if a write reaches the wire, so the descriptor, normalizer, and
+  // mock-tested dispatch are all in place while real Segment writes land later.
+  // The write key is optional (§5): a trigger-only connector is fully usable
+  // without it; a write with no key rejects legibly (§11). No write ever
+  // auto-runs — emits fire ONLY via a gated action node the author drew (§9).
+  const segmentTokens = new SegmentTokenStore(integrationCreds)
+  integrationRegistry.registerConnector(
+    'segment',
+    new SegmentConnector({
+      api: new SegmentApiClient({ transport: deferredSegmentTransport() }),
+      hasWriteKey: () => segmentTokens.hasWriteKey()
+    })
+  )
+
+  // Zendesk connector: the support-ticket read + gated-reply dispatch behind the
+  // registry seam (§4.3, §4.4). The live HTTPS transport (Basic {agentEmail}/token
+  // from the keychain, {subdomain}.zendesk.com) and the webhook tunnel are DEFERRED
+  // (foundation slice) — `deferredZendeskTransport` fails loudly if an action
+  // reaches the wire, so the descriptor, normalizer, and mock-tested dispatch are
+  // in place while real Zendesk calls land in a later phase. No mutation ever
+  // auto-runs: a public reply fires ONLY via a gated action node the author drew,
+  // and never auto-sends (§9).
+  integrationRegistry.registerConnector(
+    'zendesk',
+    new ZendeskConnector({
+      api: new ZendeskRestApi({ transport: deferredZendeskTransport() })
+    })
+  )
+
   // Generic HTTP / webhook connector: the catch-all escape-hatch (spec §4.3).
   // The OUTGOING half (`http.get`/`http.send`) is GREEN and fully wired — a real
   // fetch transport behind the SSRF guard, per-node secrets revealed under the
@@ -724,14 +939,24 @@ app.whenReady().then(async () => {
   const flowConfigFile = join(userData, 'config.json')
   const flowsConfig = loadFlowsConfig(flowConfigFile)
   const paneDriver = new PaneDriver({ controlDeps, grants })
-  // The ApprovalPort: the Slack connector supplies localflow's FIRST real one
-  // (§3, §7). When Slack is `connected` it REPLACES the stub and services EVERY
-  // gate in every flow — any gated action becomes approvable from a phone. When
-  // Slack is not connected the safe-reject stub stays: a gate cleanly REJECTS
-  // rather than silently auto-proceeding or hanging (a human "no" is not a
+  // The ApprovalPort: Slack and Discord each supply a real one (§3, §7);
+  // `selectApprovalPort` picks the ONE the engine uses (§4.3, §13.2). When a
+  // surface is `connected` it REPLACES the stub and services EVERY gate in every
+  // flow — any gated action becomes approvable from a phone. When neither is
+  // connected the safe-reject stub stays: a gate cleanly REJECTS rather than
+  // silently auto-proceeding or hanging (a human "no" is not a
   // failure). The engine and gate-runner are untouched — both already take an
   // `ApprovalPort`.
-  const flowApprovals: ApprovalPort = slackApprovalPort ?? {
+  const flowApprovals: ApprovalPort = selectApprovalPort({
+    slack: slackApprovalPort,
+    discord: discordApprovalPort,
+    onAmbiguous: (chosen) =>
+      pushActivity(flowsConfig.environment, {
+        at: Date.now(),
+        route: 'flow:gate',
+        detail: `Both Slack and Discord are connected as approval surfaces — using ${chosen} (set config.approvalSurface to pin one).`
+      })
+  }) ?? {
     requestApproval: async (req) => {
       pushActivity(flowsConfig.environment, {
         at: Date.now(),

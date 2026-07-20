@@ -104,6 +104,11 @@ import {
   deferredLiveTransport as deferredHubspotTransport
 } from './hubspot/hubspot-api'
 import { startGuardSeenWatch } from './guard-seen-watch'
+import { HostedIngressClient } from './hosted/hosted-ingress'
+import { WebhookBindingRegistry } from './hosted/webhook-bindings'
+import { HostedTokenStore } from './hosted/hosted-token-store'
+import { GcpPubSubIngressSource } from './hosted/ingress-source'
+import { HttpControlApi } from './hosted/hosted-control-client'
 import type { ActivityEntry, GrantInfo, OperatorStatus } from '../shared/operator'
 import type { Capabilities } from '../shared/git'
 import {
@@ -511,6 +516,58 @@ app.whenReady().then(async () => {
       api: new StripeApiClient({ transport: deferredStripeTransport() })
     })
   )
+
+  // Hosted webhook ingress (design: 2026-07-20-hosted-ingress-client). The OSS
+  // client that PULLS vendor webhooks from the hosted relay instead of binding an
+  // inbound port — so a laptop behind NAT can still be a webhook target. The
+  // offline core (the shared handleWebhookDelivery verify+parse policy, the
+  // IngressSource/ControlApi seams, the binding registry, and the drain client)
+  // is in place and fully mock-tested; the LIVE transports are DEFERRED exactly
+  // like every connector's live wire:
+  //   - GcpPubSubIngressSource (the scoped-token Pub/Sub pull) — throws a legible
+  //     not-wired-yet error until the follow-up (design O-1, R1).
+  //   - HttpControlApi (the relay control API) — a loud stub until the relay's
+  //     API is frozen (design O-3, R2).
+  // The account token lives ONLY in its own keychain store (never config.json,
+  // never rendered). Binding registration per connector (R5) and gating
+  // `client.start(source)` on HostedConfig.enabled (R4) land with the live cut;
+  // until then the client is constructed but stays DORMANT (never drains), so the
+  // deferred sources are never touched at boot.
+  const hostedTokens = new HostedTokenStore({
+    backend: safeStorage,
+    file: join(userData, 'hosted-token.enc')
+  })
+  void hostedTokens
+  const hostedBindings = new WebhookBindingRegistry()
+  const hostedControlApi = new HttpControlApi({
+    baseUrl: 'https://hosted.localflow.invalid',
+    accountToken: () => hostedTokens.revealToken()
+  })
+  void hostedControlApi
+  // The per-delivery webhook-secret reveal binds to the keychain at LIVE wiring
+  // (R4), through the same sanctioned main-only exit the connectors use; until
+  // then it is a deferred throw, exactly like each connector's deferred reveal.
+  // The client never drains in this slice, so it is never invoked.
+  const hostedDeferredReveal = (): never => {
+    throw new Error(
+      'Hosted ingress secret reveal is not wired yet — the offline drain client is in place, ' +
+        'but the per-delivery keychain binding lands with the live cut (design R4).'
+    )
+  }
+  const hostedIngressClient = new HostedIngressClient({
+    registry: hostedBindings,
+    reveal: hostedDeferredReveal,
+    log: (message) => console.warn(`hosted ingress: ${message}`)
+  })
+  void hostedIngressClient
+  // The live Pub/Sub source, constructed behind the seam but never drained here.
+  const hostedIngressSource = new GcpPubSubIngressSource({
+    subscription: 'projects/localflow-hosted/subscriptions/deferred',
+    token: async () => {
+      throw new Error('Hosted ingress drain token minting is not wired yet (design O-1/O-3).')
+    }
+  })
+  void hostedIngressSource
 
   const themesDir = join(userData, 'themes')
   ensureThemesSeeded(themesDir)

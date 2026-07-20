@@ -139,7 +139,7 @@ describe('HostedIngressClient — ack decision table', () => {
 
   it('deliver throws → nack, the loop survives and the next delivery still processes', async () => {
     let calls = 0
-    const binding = shopifyWebhookBinding((_d) => {
+    const binding = shopifyWebhookBinding(() => {
       calls += 1
       if (calls === 1) throw new Error('flow engine down')
     })

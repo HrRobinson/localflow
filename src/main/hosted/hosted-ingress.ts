@@ -25,7 +25,8 @@ export class HostedIngressClient {
 
   constructor(deps: {
     registry: WebhookBindingRegistry
-    /** Main-only keychain reveal (CredentialStore.revealForConnector). */
+    /** Main-only keychain reveal for a connector's webhook signing secret (the
+     *  `CredentialStore` plaintext exit, injected so this file never names it). */
     reveal: (integration: IntegrationId, secretRef: string) => string
     log?: (message: string) => void
   }) {

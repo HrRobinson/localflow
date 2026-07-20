@@ -2,7 +2,10 @@ import { describe, it, expect } from 'vitest'
 import { createHmac } from 'node:crypto'
 import type { IntegrationId } from '../../src/shared/integrations'
 import { HostedIngressClient } from '../../src/main/hosted/hosted-ingress'
-import { WebhookBindingRegistry } from '../../src/main/hosted/webhook-bindings'
+import {
+  WebhookBindingRegistry,
+  type HostedWebhookBinding
+} from '../../src/main/hosted/webhook-bindings'
 import { MockIngressSource, type Delivery } from '../../src/main/hosted/ingress-source'
 import {
   shopifyWebhookBinding,
@@ -161,6 +164,60 @@ describe('HostedIngressClient — ack decision table', () => {
     const acks = await run([first, second], (r) => r.register(binding))
     expect(acks).toEqual(['nack', 'ack'])
     expect(calls).toBe(2) // second was still processed after the first threw
+  })
+
+  it('a binding whose parseHeader throws on attacker input → ack-drop, loop survives', async () => {
+    // A verifier that throws while inspecting attacker-controlled headers (before
+    // the secret compare). Without the guard this rejects out of handle() and
+    // wedges the drain loop; with it, the throw is a permanent drop → ack.
+    const throwingBinding: HostedWebhookBinding = {
+      integration: 'github',
+      verifier: {
+        scheme: 'hmac',
+        header: 'x-sig',
+        parseHeader: () => {
+          throw new Error('boom parsing attacker header')
+        }
+      },
+      parse: () => null,
+      deliver: () => {},
+      secretRef: 'webhookSecret'
+    }
+    const poison: Delivery = {
+      integration: 'github' as IntegrationId,
+      ingressUrlId: 'url_poison',
+      rawBody: '{"evil":true}',
+      headers: { 'x-sig': 'anything' }
+    }
+    const delivered: ShopifyWebhookDelivery[] = []
+    const acks = await run([poison, shopifyDelivery()], (r) => {
+      r.register(throwingBinding)
+      r.register(shopifyWebhookBinding((d) => void delivered.push(d)))
+    })
+    // Poison ack-dropped, then the good delivery still processed (loop not wedged).
+    expect(acks).toEqual(['ack', 'ack'])
+    expect(delivered).toHaveLength(1)
+  })
+
+  it('a binding whose preVerify throws → ack-drop, does not reject', async () => {
+    const throwingBinding: HostedWebhookBinding = {
+      integration: 'github',
+      verifier: { scheme: 'hmac', header: 'x-sig' },
+      parse: () => null,
+      deliver: () => {},
+      secretRef: 'webhookSecret',
+      preVerify: () => {
+        throw new Error('boom in preVerify')
+      }
+    }
+    const poison: Delivery = {
+      integration: 'github' as IntegrationId,
+      ingressUrlId: 'url_poison2',
+      rawBody: '{}',
+      headers: { 'x-sig': 'anything' }
+    }
+    const acks = await run([poison], (r) => r.register(throwingBinding))
+    expect(acks).toEqual(['ack'])
   })
 
   it('HubSpot delivery verifies via the binding publicUrl and delivers a SeedEvent', async () => {

@@ -123,6 +123,54 @@ describe('handleWebhookDelivery — the extracted policy core', () => {
     expect(joined).not.toContain('body-marker-xyz')
   })
 
+  it('rejects an oversized body BEFORE verify/parse when maxBodyBytes is set', () => {
+    const logs: string[] = []
+    // A body larger than the cap, with a VALID signature — proves the size gate
+    // fires ahead of verify (the signature would otherwise pass) and ahead of parse.
+    const body = 'x'.repeat(64)
+    let parseCalls = 0
+    const out = handleWebhookDelivery(
+      baseConfig({
+        maxBodyBytes: 16,
+        parse: (raw) => {
+          parseCalls += 1
+          return { ok: true, body: raw.toString('utf8') }
+        },
+        log: (m) => logs.push(m)
+      }),
+      { rawBody: Buffer.from(body), headers: hdr(body) }
+    )
+    expect(out.status).toBe(413)
+    expect(out.reason).toBe('oversize')
+    expect(out.event).toBeUndefined()
+    expect(parseCalls).toBe(0) // never parsed
+    // The log mirrors the HTTP path's size-cap message and leaks neither secret nor body.
+    const joined = logs.join('\n')
+    expect(joined).toMatch(/body exceeds 16 bytes/)
+    expect(joined).not.toContain(SECRET)
+  })
+
+  it('allows an under-cap body to proceed to verify/parse', () => {
+    const body = '{"a":1}'
+    const out = handleWebhookDelivery(baseConfig({ maxBodyBytes: 1024 }), {
+      rawBody: Buffer.from(body),
+      headers: hdr(body)
+    })
+    expect(out.status).toBe(200)
+    expect(out.reason).toBe('delivered')
+    expect(out.event).toEqual({ ok: true, body })
+  })
+
+  it('applies no cap when maxBodyBytes is unset (unchanged)', () => {
+    const body = 'y'.repeat(4096)
+    const out = handleWebhookDelivery(baseConfig(), {
+      rawBody: Buffer.from(body),
+      headers: hdr(body)
+    })
+    expect(out.status).toBe(200)
+    expect(out.reason).toBe('delivered')
+  })
+
   it('threads publicUrl through to a URL-signed scheme (HubSpot v3)', () => {
     const PUBLIC_URL = 'https://relay.example.com/hubspot/webhook'
     const now = (): number => NOW_MS

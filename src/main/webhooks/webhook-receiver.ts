@@ -202,11 +202,17 @@ export interface WebhookReceiverConfig<E> {
  * 200 short-circuit — Woo ping / Shopify dedup-drop — carries none).
  */
 export interface DeliveryOutcome<E> {
-  status: 200 | 400 | 401
+  status: 200 | 400 | 401 | 413
   /** The parsed event to deliver, or undefined for a short-circuit 200. */
   event?: E
   /** A stable machine reason for logging/metrics — never the secret or body. */
-  reason: 'delivered' | 'pre-verify-short-circuit' | 'verify-failed' | 'duplicate' | 'unparseable'
+  reason:
+    | 'delivered'
+    | 'pre-verify-short-circuit'
+    | 'verify-failed'
+    | 'duplicate'
+    | 'unparseable'
+    | 'oversize'
 }
 
 /**
@@ -243,6 +249,16 @@ export function handleWebhookDelivery<E>(
   const path = config.path
   const rawBody = input.rawBody
   const headers = input.headers
+
+  // Local body-size backstop for the untrusted (hosted/relay) path, which — unlike
+  // the HTTP server's streaming 413 cap — hands an already-collected body straight
+  // in. When `maxBodyBytes` is set, reject an oversized body BEFORE verify/parse
+  // (the same 413 the streaming cap writes); unset ⇒ no cap. The HTTP path already
+  // capped during streaming, so its body is always under this ceiling — unchanged.
+  if (config.maxBodyBytes !== undefined && rawBody.length > config.maxBodyBytes) {
+    log(`webhook ${path}: rejected — body exceeds ${config.maxBodyBytes} bytes`)
+    return { status: 413, reason: 'oversize' }
+  }
 
   // Pre-verify short-circuit (Woo ping): answer BEFORE any verification.
   if (config.preVerify) {

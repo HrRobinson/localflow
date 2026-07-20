@@ -17,7 +17,8 @@ describe('integration descriptors', () => {
       'stripe',
       'github',
       'sentry',
-      'hubspot'
+      'hubspot',
+      'discord'
     ])
     expect([...INTEGRATION_IDS]).toEqual([
       'linear',
@@ -32,7 +33,8 @@ describe('integration descriptors', () => {
       'stripe',
       'github',
       'sentry',
-      'hubspot'
+      'hubspot',
+      'discord'
     ])
   })
 
@@ -230,6 +232,11 @@ describe('integration descriptors', () => {
           'logActivity',
           'createTask'
         ]
+      },
+      {
+        id: 'discord',
+        triggers: ['message.received', 'interaction', 'approval.responded'],
+        actions: ['postMessage', 'postApproval', 'replyInThread']
       }
     ])
   })

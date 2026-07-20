@@ -55,7 +55,8 @@ describe('IntegrationRegistry', () => {
       'stripe',
       'github',
       'sentry',
-      'hubspot'
+      'hubspot',
+      'discord'
     ])
     expect(typeof ds[0].status()).toBe('string')
   })

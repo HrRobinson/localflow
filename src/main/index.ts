@@ -90,6 +90,11 @@ import {
   StripeApiClient,
   deferredLiveTransport as deferredStripeTransport
 } from './stripe/stripe-client'
+import { IntercomConnector } from './intercom/intercom-connector'
+import {
+  IntercomApiClient,
+  deferredLiveTransport as deferredIntercomTransport
+} from './intercom/intercom-api'
 import { GitHubConnector } from './github/github-connector'
 import {
   GitHubRestApi,
@@ -514,6 +519,22 @@ app.whenReady().then(async () => {
     'stripe',
     new StripeConnector({
       api: new StripeApiClient({ transport: deferredStripeTransport() })
+    })
+  )
+
+  // Intercom connector: the support-desk read → draft → gated-reply dispatch behind
+  // the registry seam (§4.3, §4.4). The live HTTPS transport (Authorization: Bearer
+  // <token> from the keychain, region base URL) and the webhook tunnel are DEFERRED
+  // (foundation slice) — `deferredIntercomTransport` fails loudly if an action
+  // reaches the wire, so the descriptor, normalizer, and mock-tested dispatch are
+  // all in place while real Intercom calls land in a later phase. The customer-facing
+  // reply NEVER auto-sends: `replyToConversation` fires ONLY via a gated action node
+  // the author drew, enforced un-gated-unauthorable at flow-validate (§9). Delivering
+  // a trigger makes ZERO Intercom writes.
+  integrationRegistry.registerConnector(
+    'intercom',
+    new IntercomConnector({
+      api: new IntercomApiClient({ transport: deferredIntercomTransport() })
     })
   )
 

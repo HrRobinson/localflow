@@ -247,3 +247,73 @@ describe('verifyWebhookSignature — Ed25519 scheme (Discord-shaped)', () => {
     expect(verifyWebhookSignature(Buffer.from(body), full, verifier, '')).toBe(false)
   })
 })
+
+// ── Ed25519 replay/freshness window (toleranceSec) ────────────────────────────
+
+describe('verifyWebhookSignature — Ed25519 replay window (toleranceSec)', () => {
+  const TS_HEADER = 'x-signature-timestamp'
+  const SIG_HEADER = 'x-signature-ed25519'
+  const { publicKey, privateKey } = generateKeyPairSync('ed25519')
+  const derPub = publicKey.export({ type: 'spki', format: 'der' })
+  const pubHex = derPub.subarray(derPub.length - 32).toString('hex')
+  const body = '{"type":1}'
+  const signed = (message: string): string =>
+    edSign(null, Buffer.from(message, 'utf8'), privateKey).toString('hex')
+
+  // With toleranceSec set, the timestamp header (Discord: epoch seconds) is bound
+  // to the replay window — a captured signature no longer replays forever.
+  const withWindow: WebhookVerifier = {
+    scheme: 'ed25519',
+    header: SIG_HEADER,
+    encoding: 'hex',
+    timestampHeader: TS_HEADER,
+    toleranceSec: 300
+  }
+  // No toleranceSec → preserve the original no-window behavior.
+  const noWindow: WebhookVerifier = {
+    scheme: 'ed25519',
+    header: SIG_HEADER,
+    encoding: 'hex',
+    timestampHeader: TS_HEADER
+  }
+  const headersFor = (tsStr: string): IncomingHttpHeaders => ({
+    [SIG_HEADER]: signed(`${tsStr}${body}`),
+    [TS_HEADER]: tsStr
+  })
+
+  it('accepts a fresh in-window timestamp', () => {
+    const ts = String(NOW_SEC)
+    expect(verifyWebhookSignature(Buffer.from(body), headersFor(ts), withWindow, pubHex, now)).toBe(
+      true
+    )
+  })
+
+  it('rejects a stale timestamp outside the tolerance window (replay defense)', () => {
+    const ts = String(NOW_SEC - 400) // 400s stale > 300s window
+    expect(verifyWebhookSignature(Buffer.from(body), headersFor(ts), withWindow, pubHex, now)).toBe(
+      false
+    )
+  })
+
+  it('rejects a future timestamp outside the tolerance window (clock-skew abuse)', () => {
+    const ts = String(NOW_SEC + 400)
+    expect(verifyWebhookSignature(Buffer.from(body), headersFor(ts), withWindow, pubHex, now)).toBe(
+      false
+    )
+  })
+
+  it('rejects an unparseable timestamp when toleranceSec is set (never NaN-passes)', () => {
+    // Signature is valid over the malformed string; the freshness parse must reject.
+    const bad = 'not-a-number'
+    expect(
+      verifyWebhookSignature(Buffer.from(body), headersFor(bad), withWindow, pubHex, now)
+    ).toBe(false)
+  })
+
+  it('preserves no-window behavior when toleranceSec is unset (stale still passes)', () => {
+    const ts = String(NOW_SEC - 400) // ancient, but no window configured
+    expect(verifyWebhookSignature(Buffer.from(body), headersFor(ts), noWindow, pubHex, now)).toBe(
+      true
+    )
+  })
+})

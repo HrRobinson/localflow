@@ -129,6 +129,13 @@ export type WebhookVerifier =
       encoding?: 'hex' | 'base64'
       /** Header carrying the signing timestamp (Discord `X-Signature-Timestamp`). */
       timestampHeader: string
+      /** Optional replay window in seconds. When SET, the timestamp header (epoch
+       *  seconds — Discord) must be within `toleranceSec` of `now()`, else the
+       *  delivery is rejected (a captured signature no longer replays forever); an
+       *  unparseable timestamp always rejects. When UNSET, no freshness window is
+       *  applied (the original behavior — the timestamp is still bound INTO the
+       *  signed message, but not checked for age). */
+      toleranceSec?: number
     }
 
 /**
@@ -335,8 +342,10 @@ function ed25519PublicKeyFromHex(hex: string): KeyObject {
  * re-hash `timingSafeEqual` trick.
  * `scheme: 'token'`: reject empty secret / missing header, then compare
  * `timingSafeEqual(sha256(secretBuf), sha256(providedBuf))`.
- * `scheme: 'ed25519'`: reject a missing signature/timestamp header or empty key,
- * then `crypto.verify(null, ${ts}${body}, publicKey, signature)`.
+ * `scheme: 'ed25519'`: reject a missing signature/timestamp header or empty key;
+ * when `toleranceSec` is set, also reject a timestamp (epoch seconds) that is
+ * unparseable or outside the freshness window (`now()`); then
+ * `crypto.verify(null, ${ts}${body}, publicKey, signature)`.
  *
  * ANY-OF-N: `secret` may be an array of candidate secrets/keys and `parseHeader`
  * may return an array of candidate signatures. Verification passes if ANY
@@ -389,6 +398,15 @@ export function verifyWebhookSignature(
     if (typeof rawHeader !== 'string' || rawHeader.length === 0) return false
     const tsHeader = headerValue(headers, verifier.timestampHeader)
     if (typeof tsHeader !== 'string' || tsHeader.length === 0) return false
+    // Freshness window (replay defense) when `toleranceSec` is set — mirrors the
+    // hmac path's default (seconds) unit handling: reject an unparseable timestamp
+    // (never a NaN-compares-as-pass) and one outside the window. Unset ⇒ no window.
+    if (verifier.toleranceSec !== undefined) {
+      const tsNum = Number(tsHeader)
+      if (!Number.isFinite(tsNum)) return false
+      const ageSec = Math.abs(now() / 1000 - tsNum)
+      if (ageSec > verifier.toleranceSec) return false
+    }
     const encoding = verifier.encoding ?? 'hex'
     const signature = Buffer.from(rawHeader, encoding)
     if (signature.length === 0) return false

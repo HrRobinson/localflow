@@ -81,6 +81,15 @@ import { SlackConnector } from './slack/slack-connector'
 import { SlackWebApi, deferredLiveTransport as slackDeferredTransport } from './slack/slack-client'
 import { SlackApprovalPort } from './slack/slack-approval-port'
 import { parseSlackConfig } from './slack/slack-config'
+import { DiscordConnector } from './discord/discord-connector'
+import {
+  DiscordRestApi,
+  deferredLiveTransport as discordDeferredTransport
+} from './discord/discord-client'
+import { DiscordApprovalPort } from './discord/discord-approval-port'
+import { parseDiscordConfig } from './discord/discord-config'
+import { DiscordTokenStore } from './discord/discord-token-store'
+import { selectApprovalPort } from './discord/approval-surface-select'
 import { loadIntegrationsConfig } from './integrations/integration-config'
 import { HttpConnector } from './http/http-connector'
 import { HttpClient, FetchHttpTransport } from './http/http-client'
@@ -488,6 +497,38 @@ app.whenReady().then(async () => {
   slackRef.connector = slackConnector
   integrationRegistry.registerConnector('slack', slackConnector)
 
+  // Discord connector: the SECOND cross-cutting control connector, whose headline
+  // export is localflow's SECOND real ApprovalPort (§3) — a peer of Slack's,
+  // against the SAME seam, no engine change. Like Slack the live Gateway WS + REST
+  // HTTPS transport are DEFERRED (foundation slice): the descriptor, component
+  // builders, approval port, connector dispatch, and gateway core are all in place
+  // and mock-tested; only the real network exit lands in a follow-up. MVP is
+  // Gateway-only (zero ingress; the HTTP Interactions Ed25519 path is Phase 3).
+  const discordConfig = parseDiscordConfig(
+    loadIntegrationsConfig(join(userData, 'config.json')).discord
+  )
+  const discordChannel = discordConfig?.defaultChannel ?? ''
+  const discordTokens = new DiscordTokenStore(integrationCreds)
+  const discordApi = new DiscordRestApi({ transport: discordDeferredTransport() })
+  const discordConnected =
+    integrationRegistry.get('discord')?.status() === 'connected' && discordChannel.length > 0
+  const discordRef: { connector?: DiscordConnector } = {}
+  const discordApprovalPort = discordConnected
+    ? new DiscordApprovalPort({
+        api: discordApi,
+        channel: discordChannel,
+        onDecision: (decision) => discordRef.connector?.onApprovalDecision(decision)
+      })
+    : undefined
+  const discordConnector = new DiscordConnector({
+    api: discordApi,
+    defaultChannel: discordChannel,
+    approvals: discordApprovalPort
+  })
+  discordRef.connector = discordConnector
+  integrationRegistry.registerConnector('discord', discordConnector)
+  void discordTokens // token reveal used by the live Gateway IDENTIFY (deferred).
+
   // Generic HTTP / webhook connector: the catch-all escape-hatch (spec §4.3).
   // The OUTGOING half (`http.get`/`http.send`) is GREEN and fully wired — a real
   // fetch transport behind the SSRF guard, per-node secrets revealed under the
@@ -718,14 +759,24 @@ app.whenReady().then(async () => {
   const flowConfigFile = join(userData, 'config.json')
   const flowsConfig = loadFlowsConfig(flowConfigFile)
   const paneDriver = new PaneDriver({ controlDeps, grants })
-  // The ApprovalPort: the Slack connector supplies localflow's FIRST real one
-  // (§3, §7). When Slack is `connected` it REPLACES the stub and services EVERY
-  // gate in every flow — any gated action becomes approvable from a phone. When
-  // Slack is not connected the safe-reject stub stays: a gate cleanly REJECTS
-  // rather than silently auto-proceeding or hanging (a human "no" is not a
+  // The ApprovalPort: Slack and Discord each supply a real one (§3, §7);
+  // `selectApprovalPort` picks the ONE the engine uses (§4.3, §13.2). When a
+  // surface is `connected` it REPLACES the stub and services EVERY gate in every
+  // flow — any gated action becomes approvable from a phone. When neither is
+  // connected the safe-reject stub stays: a gate cleanly REJECTS rather than
+  // silently auto-proceeding or hanging (a human "no" is not a
   // failure). The engine and gate-runner are untouched — both already take an
   // `ApprovalPort`.
-  const flowApprovals: ApprovalPort = slackApprovalPort ?? {
+  const flowApprovals: ApprovalPort = selectApprovalPort({
+    slack: slackApprovalPort,
+    discord: discordApprovalPort,
+    onAmbiguous: (chosen) =>
+      pushActivity(flowsConfig.environment, {
+        at: Date.now(),
+        route: 'flow:gate',
+        detail: `Both Slack and Discord are connected as approval surfaces — using ${chosen} (set config.approvalSurface to pin one).`
+      })
+  }) ?? {
     requestApproval: async (req) => {
       pushActivity(flowsConfig.environment, {
         at: Date.now(),

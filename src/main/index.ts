@@ -90,6 +90,12 @@ import {
   StripeApiClient,
   deferredLiveTransport as deferredStripeTransport
 } from './stripe/stripe-client'
+import { SegmentConnector } from './segment/segment-connector'
+import {
+  SegmentApiClient,
+  deferredLiveTransport as deferredSegmentTransport
+} from './segment/segment-client'
+import { SegmentTokenStore } from './segment/segment-token-store'
 import { GitHubConnector } from './github/github-connector'
 import {
   GitHubRestApi,
@@ -514,6 +520,26 @@ app.whenReady().then(async () => {
     'stripe',
     new StripeConnector({
       api: new StripeApiClient({ transport: deferredStripeTransport() })
+    })
+  )
+
+  // Segment connector: the event SOURCE MULTIPLIER behind the registry seam
+  // (§4.2, §4.3). ONE webhook trigger (`event.tracked`, X-Signature SHA1 HMAC
+  // via the shared receiver) wakes a flow on events from ANY upstream source
+  // Segment collects, HARD-filtered pre-seed so the firehose never OOMs the 8 GB
+  // machine (§7). The live Tracking API transport (Basic-auth write key) and the
+  // webhook tunnel are DEFERRED (foundation slice) — `deferredSegmentTransport`
+  // fails loudly if a write reaches the wire, so the descriptor, normalizer, and
+  // mock-tested dispatch are all in place while real Segment writes land later.
+  // The write key is optional (§5): a trigger-only connector is fully usable
+  // without it; a write with no key rejects legibly (§11). No write ever
+  // auto-runs — emits fire ONLY via a gated action node the author drew (§9).
+  const segmentTokens = new SegmentTokenStore(integrationCreds)
+  integrationRegistry.registerConnector(
+    'segment',
+    new SegmentConnector({
+      api: new SegmentApiClient({ transport: deferredSegmentTransport() }),
+      hasWriteKey: () => segmentTokens.hasWriteKey()
     })
   )
 

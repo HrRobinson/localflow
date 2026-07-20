@@ -138,8 +138,110 @@ export interface WebhookReceiverConfig<E> {
   preVerify?: ShortCircuit
   /** Optional post-verify dedup (Shopify webhook-id). */
   dedup?: ShortCircuit
+  /** Clock for the verifier's replay window. Default `Date.now`. Injectable so a
+   *  test can pin freshness; the HTTP path leaves it default (byte-for-byte the
+   *  `Date.now` the receiver used inline before). */
+  now?: () => number
   /** Route + reason logger. NEVER receives the secret or the body. */
   log?: (message: string) => void
+}
+
+/**
+ * The outcome of running the verify→dedup→parse policy on one delivery. `status`
+ * is the SAME numeric code the HTTP server would have written, so the HTTP path
+ * maps it straight to `res.writeHead(status)` and the hosted path maps it to
+ * ack/nack. `event` is present ONLY on a 200 that produced an event to deliver (a
+ * 200 short-circuit — Woo ping / Shopify dedup-drop — carries none).
+ */
+export interface DeliveryOutcome<E> {
+  status: 200 | 400 | 401
+  /** The parsed event to deliver, or undefined for a short-circuit 200. */
+  event?: E
+  /** A stable machine reason for logging/metrics — never the secret or body. */
+  reason: 'delivered' | 'pre-verify-short-circuit' | 'verify-failed' | 'duplicate' | 'unparseable'
+}
+
+/**
+ * Inputs the policy needs, transport-agnostic. `rawBody` is ALREADY collected
+ * (the caller owns size limiting: the HTTP server via its 413 cap, the hosted
+ * source via the relay's body ceiling). `publicUrl` is the PUBLIC delivered URL a
+ * `baseString` composer signs (HubSpot); it defaults to `config.publicUrl`.
+ */
+export interface DeliveryInput {
+  rawBody: Buffer
+  headers: IncomingHttpHeaders
+  method?: string
+  /** The PUBLIC URL the vendor delivered to (HubSpot v3 signs it). */
+  publicUrl?: string
+}
+
+/**
+ * Run the transport-agnostic verify→dedup→parse policy for one delivery. This is
+ * the security-critical core, lifted VERBATIM from `startWebhookReceiver`'s
+ * `req.on('end')` handler (steps 3–6): preVerify → verify-over-raw-body → dedup →
+ * parse. It does NOT deliver — the caller decides how to deliver on a
+ * `status: 200` with an `event` (the HTTP path `setImmediate`s it after writing
+ * 200; the hosted path awaits its handler before acking).
+ *
+ * Every invariant is preserved because the SAME lines move here unchanged:
+ * empty-secret rejection, timing-safe compare, verify-before-parse, the
+ * preVerify/dedup ordering, and the log callback never seeing the secret/body.
+ */
+export function handleWebhookDelivery<E>(
+  config: WebhookReceiverConfig<E>,
+  input: DeliveryInput
+): DeliveryOutcome<E> {
+  const log = config.log ?? ((m: string) => console.warn(m))
+  const path = config.path
+  const rawBody = input.rawBody
+  const headers = input.headers
+
+  // Pre-verify short-circuit (Woo ping): answer BEFORE any verification.
+  if (config.preVerify) {
+    const code = config.preVerify(headers)
+    if (code !== null) {
+      log(`webhook ${path}: pre-verify short-circuit (${code}) — no run seeded`)
+      return { status: code as DeliveryOutcome<E>['status'], reason: 'pre-verify-short-circuit' }
+    }
+  }
+
+  // Verify over the RAW body, BEFORE parsing — never trust an unauthenticated
+  // body's shape. `requestUri` is the PUBLIC delivered URL (HubSpot signs it),
+  // falling back to `config.publicUrl`.
+  if (
+    !verifyWebhookSignature(
+      rawBody,
+      headers,
+      config.verifier,
+      config.secret,
+      config.now ?? Date.now,
+      {
+        method: input.method ?? 'POST',
+        requestUri: input.publicUrl ?? config.publicUrl ?? ''
+      }
+    )
+  ) {
+    log(`webhook ${path}: rejected — signature verification failed`)
+    return { status: 401, reason: 'verify-failed' }
+  }
+
+  // Post-verify dedup (Shopify webhook-id): 200 + drop a duplicate. The hook
+  // records the id when it returns null (continue).
+  if (config.dedup) {
+    const code = config.dedup(headers)
+    if (code !== null) {
+      log(`webhook ${path}: duplicate delivery — dropped`)
+      return { status: code as DeliveryOutcome<E>['status'], reason: 'duplicate' }
+    }
+  }
+
+  const event = config.parse(rawBody, headers)
+  if (event === null) {
+    log(`webhook ${path}: rejected — unsupported or malformed payload`)
+    return { status: 400, reason: 'unparseable' }
+  }
+
+  return { status: 200, event, reason: 'delivered' }
 }
 
 export interface WebhookReceiver<E> {
@@ -314,56 +416,27 @@ export function startWebhookReceiver<E>(
       responded = true
       const rawBody = Buffer.concat(chunks)
 
-      // Pre-verify short-circuit (Woo ping): answer BEFORE any verification.
-      if (config.preVerify) {
-        const code = config.preVerify(req.headers)
-        if (code !== null) {
-          res.writeHead(code)
-          res.end()
-          log(`webhook ${path}: pre-verify short-circuit (${code}) — no run seeded`)
-          return
-        }
-      }
+      // Run the transport-agnostic verify→dedup→parse policy. `requestUri` is the
+      // PUBLIC delivered URL (HubSpot signs it), falling back to the loopback path
+      // — computed here and passed as `publicUrl` so the resolution is byte-for-
+      // byte what the receiver used inline before.
+      const out = handleWebhookDelivery(config, {
+        rawBody,
+        headers: req.headers,
+        method: req.method ?? 'POST',
+        publicUrl: config.publicUrl ?? req.url ?? ''
+      })
 
-      // Verify over the RAW body, BEFORE parsing — never trust an
-      // unauthenticated body's shape. `requestUri` is the PUBLIC delivered URL
-      // (HubSpot signs it), falling back to the loopback path.
-      if (
-        !verifyWebhookSignature(rawBody, req.headers, config.verifier, config.secret, Date.now, {
-          method: req.method ?? 'POST',
-          requestUri: config.publicUrl ?? req.url ?? ''
-        })
-      ) {
-        res.writeHead(401)
-        res.end()
-        log(`webhook ${path}: rejected — signature verification failed`)
-        return
-      }
-
-      // Post-verify dedup (Shopify webhook-id): 200 + drop a duplicate. The hook
-      // records the id when it returns null (continue).
-      if (config.dedup) {
-        const code = config.dedup(req.headers)
-        if (code !== null) {
-          res.writeHead(code)
-          res.end()
-          log(`webhook ${path}: duplicate delivery — dropped`)
-          return
-        }
-      }
-
-      const event = config.parse(rawBody, req.headers)
-      if (event === null) {
-        res.writeHead(400)
-        res.end()
-        log(`webhook ${path}: rejected — unsupported or malformed payload`)
-        return
-      }
-
-      // 200 fast: commit the response before the connector does any heavy work
-      // so the vendor's ack/response deadlines are met.
-      res.writeHead(200)
+      // Map the policy's status to the HTTP status the receiver wrote inline
+      // before. 200-fast: commit the response BEFORE the connector does any heavy
+      // work so the vendor's ack/response deadlines are met.
+      res.writeHead(out.status)
       res.end()
+
+      // Deliver ONLY a 200 that produced an event (a short-circuit 200 carries
+      // none), on a later tick, inside the same try/catch as before.
+      if (out.status !== 200 || out.event === undefined) return
+      const event = out.event
       const deliver = handler
       if (!deliver) return
       setImmediate(() => {

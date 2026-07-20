@@ -116,4 +116,54 @@ describe('subscribeTriggers', () => {
     stop()
     expect(unsub).toHaveBeenCalledTimes(2)
   })
+
+  it('isolates a throwing connector to its own flow — other flows still subscribe (defense-in-depth)', () => {
+    const subscribed: { integration: string; triggerId: string; handler: (e: unknown) => void }[] =
+      []
+    const unsubs: number[] = []
+    const registry: IntegrationRegistry = {
+      descriptors: () => [],
+      get: () => undefined,
+      invokeAction: async () => ({}),
+      subscribe: (id, triggerId, handler) => {
+        // A fake connector that throws — isolates loop-hardening from any real
+        // connector's own bad-config behavior (e.g. Segment's own fix).
+        if (triggerId === 'boom') throw new Error('boom connector: bad config')
+        const index = subscribed.length
+        subscribed.push({ integration: id, triggerId, handler })
+        return () => unsubs.push(index)
+      }
+    }
+    const good1 = flow({ id: 'good1' })
+    const throwing = flow({
+      id: 'throwing',
+      nodes: [
+        {
+          id: 't',
+          type: 'trigger',
+          integration: 'stripe',
+          ref: 'boom',
+          config: {},
+          position: { x: 0, y: 0 }
+        },
+        { id: 'a', type: 'agent', ref: 'claude', config: {}, position: { x: 1, y: 0 } }
+      ]
+    })
+    const good2 = flow({ id: 'good2' })
+    const started: string[] = []
+
+    let stop: () => void = () => {}
+    expect(() => {
+      stop = subscribeTriggers(registry, [good1, throwing, good2], (f) => started.push(f.id))
+    }).not.toThrow()
+
+    // Both good flows subscribed despite the middle flow's connector throwing.
+    expect(subscribed).toHaveLength(2)
+    for (const s of subscribed) s.handler({ payload: {} })
+    expect(started).toEqual(['good1', 'good2'])
+
+    // The accumulated unsubs for the flows that DID subscribe are still returned.
+    stop()
+    expect(unsubs).toHaveLength(2)
+  })
 })

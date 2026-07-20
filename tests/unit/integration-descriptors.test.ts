@@ -17,7 +17,14 @@ describe('integration descriptors', () => {
       'stripe',
       'github',
       'sentry',
-      'hubspot'
+      'hubspot',
+      'airtable',
+      'discord',
+      'intercom',
+      'pagerduty',
+      'salesforce',
+      'segment',
+      'zendesk'
     ])
     expect([...INTEGRATION_IDS]).toEqual([
       'linear',
@@ -32,7 +39,14 @@ describe('integration descriptors', () => {
       'stripe',
       'github',
       'sentry',
-      'hubspot'
+      'hubspot',
+      'airtable',
+      'discord',
+      'intercom',
+      'pagerduty',
+      'salesforce',
+      'segment',
+      'zendesk'
     ])
   })
 
@@ -229,6 +243,76 @@ describe('integration descriptors', () => {
           'updateDeal',
           'logActivity',
           'createTask'
+        ]
+      },
+      {
+        id: 'airtable',
+        triggers: ['record.created', 'record.updated'],
+        actions: ['listRecords', 'getRecord', 'createRecord', 'updateRecord']
+      },
+      {
+        id: 'discord',
+        triggers: ['message.received', 'interaction', 'approval.responded'],
+        actions: ['postMessage', 'postApproval', 'replyInThread']
+      },
+      {
+        id: 'intercom',
+        triggers: ['conversation.replied', 'conversation.created'],
+        actions: [
+          'getConversation',
+          'getContact',
+          'replyToConversation',
+          'closeConversation',
+          'tagConversation'
+        ]
+      },
+      {
+        id: 'pagerduty',
+        triggers: [
+          'incident.triggered',
+          'incident.acknowledged',
+          'incident.escalated',
+          'incident.resolved'
+        ],
+        actions: [
+          'getIncident',
+          'getService',
+          'acknowledgeIncident',
+          'resolveIncident',
+          'escalateIncident',
+          'addNote'
+        ]
+      },
+      {
+        id: 'salesforce',
+        triggers: ['record.created', 'record.updated'],
+        actions: [
+          'query',
+          'getRecord',
+          'createRecord',
+          'createTask',
+          'updateRecord',
+          'submitForApproval'
+        ]
+      },
+      {
+        id: 'segment',
+        triggers: ['event.tracked'],
+        actions: ['track', 'identify']
+      },
+      {
+        id: 'zendesk',
+        triggers: ['ticket.commentAdded', 'ticket.created', 'ticket.updated', 'ticket.escalated'],
+        actions: [
+          'getTicket',
+          'getComments',
+          'searchTickets',
+          'getUser',
+          'replyToTicket',
+          'addInternalNote',
+          'setStatus',
+          'assignTicket',
+          'tagTicket'
         ]
       }
     ])

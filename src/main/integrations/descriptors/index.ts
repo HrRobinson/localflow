@@ -13,6 +13,13 @@ import { stripeDescriptor } from '../../stripe/stripe-descriptor'
 import { githubDescriptor } from '../../github/github-descriptor'
 import { sentryDescriptor } from '../../sentry/sentry-descriptor'
 import { hubspotDescriptor } from '../../hubspot/hubspot-descriptor'
+import { airtableDescriptor } from '../../airtable/airtable-descriptor'
+import { discordDescriptor } from '../../discord/discord-descriptor'
+import { intercomDescriptor } from '../../intercom/intercom-descriptor'
+import { pagerdutyDescriptor } from '../../pagerduty/pagerduty-descriptor'
+import { salesforceDescriptor } from '../../salesforce/salesforce-descriptor'
+import { segmentDescriptor } from '../../segment/segment-descriptor'
+import { zendeskDescriptor } from '../../zendesk/zendesk-descriptor'
 
 /** The static descriptor defs, keyed by id. The registry composes the full
  * `IntegrationDescriptor` (attaching `status()`) from these. */
@@ -29,7 +36,14 @@ export const DESCRIPTOR_DEFS: Record<IntegrationId, IntegrationDescriptorDef> = 
   stripe: stripeDescriptor,
   github: githubDescriptor,
   sentry: sentryDescriptor,
-  hubspot: hubspotDescriptor
+  hubspot: hubspotDescriptor,
+  airtable: airtableDescriptor,
+  discord: discordDescriptor,
+  intercom: intercomDescriptor,
+  pagerduty: pagerdutyDescriptor,
+  salesforce: salesforceDescriptor,
+  segment: segmentDescriptor,
+  zendesk: zendeskDescriptor
 }
 
 /** In the pinned stable order (§11) sub-projects 2/3 rely on. */

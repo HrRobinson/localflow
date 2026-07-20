@@ -5,6 +5,14 @@ import { emailDescriptor } from './email'
 import { cloudDescriptor } from './cloud'
 import { shopifyDescriptor } from '../../shopify/shopify-descriptor'
 import { woocommerceDescriptor } from './woocommerce'
+import { posthogDescriptor } from './posthog'
+import { gitlabDescriptor } from './gitlab'
+import { slackDescriptor } from '../../slack/slack-descriptor'
+import { httpDescriptor } from '../../http/http-descriptor'
+import { stripeDescriptor } from '../../stripe/stripe-descriptor'
+import { githubDescriptor } from '../../github/github-descriptor'
+import { sentryDescriptor } from '../../sentry/sentry-descriptor'
+import { hubspotDescriptor } from '../../hubspot/hubspot-descriptor'
 
 /** The static descriptor defs, keyed by id. The registry composes the full
  * `IntegrationDescriptor` (attaching `status()`) from these. */
@@ -13,7 +21,15 @@ export const DESCRIPTOR_DEFS: Record<IntegrationId, IntegrationDescriptorDef> = 
   email: emailDescriptor,
   cloud: cloudDescriptor,
   shopify: shopifyDescriptor,
-  woocommerce: woocommerceDescriptor
+  woocommerce: woocommerceDescriptor,
+  posthog: posthogDescriptor,
+  gitlab: gitlabDescriptor,
+  slack: slackDescriptor,
+  http: httpDescriptor,
+  stripe: stripeDescriptor,
+  github: githubDescriptor,
+  sentry: sentryDescriptor,
+  hubspot: hubspotDescriptor
 }
 
 /** In the pinned stable order (§11) sub-projects 2/3 rely on. */

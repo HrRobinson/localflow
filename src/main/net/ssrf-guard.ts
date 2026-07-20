@@ -24,7 +24,77 @@
 
 export type UrlCheck = { ok: true; url: URL } | { ok: false; reason: string }
 
+/**
+ * Options for `checkBaseUrl`. The bare-string form (`checkBaseUrl(raw, 'GitLab
+ * URL')`) is preserved for the WooCommerce callers; the object form adds the
+ * self-host explicit-allow (§5.1).
+ */
+export interface CheckBaseUrlOptions {
+  /** Names the field in the error text (default 'Store URL'). */
+  label?: string
+  /**
+   * The self-host explicit-allow (§5.1). When the URL's host EQUALS this host
+   * (case-insensitively — the user's own configured `baseUrl` host, name or IP
+   * literal), a private/loopback/link-local address is ADMITTED instead of
+   * blocked. This is the connector's primary path: a self-managed GitLab on the
+   * LAN is exactly a private-range host the user explicitly entered. Every OTHER
+   * private target stays blocked, and cloud metadata (`169.254.169.254`) is
+   * refused even when it matches `allowHost`.
+   */
+  allowHost?: string
+}
+
 const IPV4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/
+
+/**
+ * Reconstruct the embedded IPv4 dotted-decimal address from an IPv4-mapped IPv6
+ * host, or null if `host` isn't `::ffff:`-prefixed or the tail doesn't parse.
+ * Handles BOTH forms WHATWG `new URL()` can hand back: the literal dotted tail
+ * (`::ffff:169.254.169.254`) and the normalized HEX tail (`::ffff:a9fe:a9fe`,
+ * what `.hostname` actually produces for a bracketed mapped literal). Shared by
+ * `isCloudMetadata` and `blockedIpv6` so both see the same reconstruction —
+ * `host` must already be lowercased and bracket-stripped.
+ */
+function mappedIpv4(host: string): string | null {
+  const mapped = host.match(/^::ffff:(.+)$/)
+  if (!mapped) return null
+  const tail = mapped[1]
+  const dotted = parseIpv4(tail)
+  if (dotted) return tail
+  const groups = tail.split(':')
+  if (groups.length >= 1 && groups.length <= 2 && groups.every((g) => /^[0-9a-f]{1,4}$/.test(g))) {
+    const nums = groups.map((g) => parseInt(g, 16))
+    const hi = groups.length === 2 ? nums[0] : 0
+    const lo = nums[groups.length - 1]
+    const octets = [(hi >> 8) & 0xff, hi & 0xff, (lo >> 8) & 0xff, lo & 0xff]
+    return octets.join('.')
+  }
+  return null
+}
+
+/**
+ * The cloud-metadata addresses that stay blocked UNCONDITIONALLY — even under an
+ * explicit self-host allow (§5.1): AWS/GCP/Azure IMDS `169.254.169.254`, its
+ * IPv4-mapped IPv6 form (dotted OR the WHATWG-normalized hex tail), and the AWS
+ * IPv6 metadata address. A self-hosted GitLab never legitimately lives here, and
+ * an SSRF to the metadata endpoint is the canonical credential-theft target, so
+ * `allowHost` never reaches it.
+ */
+function isCloudMetadata(host: string): boolean {
+  const h = host.toLowerCase().replace(/^\[|\]$/g, '')
+  if (h === '169.254.169.254') return true
+  if (h === 'fd00:ec2::254') return true
+  if (mappedIpv4(h) === '169.254.169.254') return true
+  return false
+}
+
+/** Case-insensitive host match for the explicit-allow (§5.1). Bracket-stripped
+ *  so an IPv6 literal `baseUrl` and its `allowHost` compare equal. */
+function hostMatchesAllow(host: string, allowHost: string | undefined): boolean {
+  if (allowHost === undefined || allowHost.length === 0) return false
+  const norm = (h: string): string => h.toLowerCase().replace(/^\[|\]$/g, '')
+  return norm(host) === norm(allowHost)
+}
 
 /** Parse `a.b.c.d` into four octets, or null if it isn't a valid IPv4 literal. */
 function parseIpv4(host: string): [number, number, number, number] | null {
@@ -60,28 +130,10 @@ function blockedIpv6(host: string): string | null {
   // run it through the existing IPv4 range check (so loopback/RFC-1918/link-local/
   // metadata all apply). Anything ::ffff:-prefixed we can't cleanly reconstruct
   // is rejected outright — mapped addresses have no legitimate public-store use.
-  const mapped = h.match(/^::ffff:(.+)$/)
-  if (mapped) {
-    const tail = mapped[1]
-    const v4dotted = parseIpv4(tail)
-    if (v4dotted) return blockedIpv4(v4dotted)
-    const groups = tail.split(':')
-    if (
-      groups.length >= 1 &&
-      groups.length <= 2 &&
-      groups.every((g) => /^[0-9a-f]{1,4}$/.test(g))
-    ) {
-      const nums = groups.map((g) => parseInt(g, 16))
-      const hi = groups.length === 2 ? nums[0] : 0
-      const lo = nums[groups.length - 1]
-      const octets: [number, number, number, number] = [
-        (hi >> 8) & 0xff,
-        hi & 0xff,
-        (lo >> 8) & 0xff,
-        lo & 0xff
-      ]
-      return blockedIpv4(octets)
-    }
+  if (h.startsWith('::ffff:')) {
+    const dotted = mappedIpv4(h)
+    const v4 = dotted ? parseIpv4(dotted) : null
+    if (v4) return blockedIpv4(v4)
     return 'IPv4-mapped IPv6 (::ffff:0:0/96)'
   }
   const head = h.split(':')[0]
@@ -101,9 +153,22 @@ function blockedIpv6(host: string): string | null {
 /**
  * The range label if a resolved IP (v4 or v6 literal, no brackets) is
  * private/loopback/link-local, else null. This is the hook the transport calls
- * with the IP it dialed.
+ * with the IP it ACTUALLY dialed, so a DNS-rebinding flip between validate and
+ * connect can't redirect a request to a private IP.
+ *
+ * `allow.allowIps` is the self-host pinned-IP allow (§5.1): the IP the connector
+ * resolved for the user's configured `baseUrl` at validate time. A later dial to
+ * that exact pinned IP is admitted even on a private range; a dial to a DIFFERENT
+ * private IP (the rebind attack) is still blocked. Cloud metadata is refused even
+ * if it somehow appears in `allowIps`.
  */
-export function blockedIpRange(ip: string): string | null {
+export function blockedIpRange(ip: string, allow: { allowIps?: string[] } = {}): string | null {
+  // The pinned-IP allow admits an exact match — but NEVER cloud metadata, which
+  // stays blocked even if it somehow appears in `allowIps` (§5.1). A metadata IP
+  // that is not allowed still falls through to `blockedIpv4` and is labeled
+  // link-local (it lives in 169.254.0.0/16), so the default behavior is unchanged.
+  const allowed = allow.allowIps?.some((a) => hostMatchesAllow(ip, a)) ?? false
+  if (allowed && !isCloudMetadata(ip)) return null
   const v4 = parseIpv4(ip)
   if (v4) return blockedIpv4(v4)
   if (ip.includes(':')) return blockedIpv6(ip)
@@ -117,10 +182,17 @@ export function blockedIpRange(ip: string): string | null {
  * hostname passes here and is re-checked against its RESOLVED IP by
  * `blockedIpRange` at dial time.
  *
- * `label` names the field for the error text (default 'Store URL' for backward
- * compatibility with the WooCommerce reasons).
+ * The second argument is either a `label` string (default 'Store URL', for
+ * backward compatibility with the WooCommerce reasons) OR a `CheckBaseUrlOptions`
+ * object carrying the self-host `allowHost` (§5.1).
  */
-export function checkBaseUrl(raw: string, label = 'Store URL'): UrlCheck {
+export function checkBaseUrl(
+  raw: string,
+  labelOrOptions: string | CheckBaseUrlOptions = {}
+): UrlCheck {
+  const options: CheckBaseUrlOptions =
+    typeof labelOrOptions === 'string' ? { label: labelOrOptions } : labelOrOptions
+  const label = options.label ?? 'Store URL'
   let url: URL
   try {
     url = new URL(raw)
@@ -141,6 +213,18 @@ export function checkBaseUrl(raw: string, label = 'Store URL'): UrlCheck {
   }
   // `URL` keeps IPv6 hosts bracketed; strip for the range check.
   const host = url.hostname.replace(/^\[|\]$/g, '')
+  // Cloud metadata is refused UNCONDITIONALLY — even if the user "allowed" it (§5.1).
+  if (isCloudMetadata(host)) {
+    return {
+      ok: false,
+      reason: `${label} "${host}" is a cloud-metadata address — always refused, even for a self-hosted instance.`
+    }
+  }
+  // The self-host explicit-allow: the user's own configured host is admitted even
+  // on a private range (a self-managed GitLab on the LAN is the primary case, §5.1).
+  if (hostMatchesAllow(host, options.allowHost)) {
+    return { ok: true, url }
+  }
   if (host === 'localhost' || host.endsWith('.localhost')) {
     return {
       ok: false,
@@ -151,7 +235,7 @@ export function checkBaseUrl(raw: string, label = 'Store URL'): UrlCheck {
   if (range) {
     return {
       ok: false,
-      reason: `${label} "${host}" is a private/loopback address (${range}) — refusing to call it.`
+      reason: `${label} "${host}" is a private/loopback address (${range}) — if this is your self-hosted instance, add it to the allowed hosts in Settings; cloud-metadata addresses are always refused.`
     }
   }
   return { ok: true, url }

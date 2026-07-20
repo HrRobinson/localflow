@@ -68,6 +68,41 @@ import { ShopifyConnector } from './shopify/shopify-connector'
 import { ShopifyAdminApi, deferredLiveTransport } from './shopify/shopify-admin'
 import { WcApi } from './woocommerce/wc-api'
 import { WoocommerceConnector } from './woocommerce/woocommerce-connector'
+import {
+  PostHogHttpApi,
+  deferredLiveTransport as deferredPostHogTransport
+} from './posthog/posthog-api'
+import { PostHogConnector } from './posthog/posthog-connector'
+import { PostHogPoller } from './posthog/posthog-poller'
+import { PostHogCursorStore } from './posthog/posthog-cursor-store'
+import { GitLabRestApi } from './gitlab/gitlab-api'
+import { GitLabConnector } from './gitlab/gitlab-connector'
+import { SlackConnector } from './slack/slack-connector'
+import { SlackWebApi, deferredLiveTransport as slackDeferredTransport } from './slack/slack-client'
+import { SlackApprovalPort } from './slack/slack-approval-port'
+import { parseSlackConfig } from './slack/slack-config'
+import { loadIntegrationsConfig } from './integrations/integration-config'
+import { HttpConnector } from './http/http-connector'
+import { HttpClient, FetchHttpTransport } from './http/http-client'
+import { HttpTokenStore } from './http/http-token-store'
+import { StripeConnector } from './stripe/stripe-connector'
+import {
+  StripeApiClient,
+  deferredLiveTransport as deferredStripeTransport
+} from './stripe/stripe-client'
+import { GitHubConnector } from './github/github-connector'
+import {
+  GitHubRestApi,
+  deferredLiveTransport as deferredGitHubTransport
+} from './github/github-api'
+import { PatAuth } from './github/github-auth'
+import { SentryConnector } from './sentry/sentry-connector'
+import { SentryHttpApi, deferredSentryTransport } from './sentry/sentry-api'
+import { HubspotConnector } from './hubspot/hubspot-connector'
+import {
+  HubSpotApiClient,
+  deferredLiveTransport as deferredHubspotTransport
+} from './hubspot/hubspot-api'
 import { startGuardSeenWatch } from './guard-seen-watch'
 import type { ActivityEntry, GrantInfo, OperatorStatus } from '../shared/operator'
 import type { Capabilities } from '../shared/git'
@@ -282,6 +317,201 @@ app.whenReady().then(async () => {
     })
   )
 
+  // PostHog connector: the FIRST POLL-primary live connector (spec §7). The
+  // offline foundation ships the descriptor + dispatch table + the SSRF/normalize
+  // core + the persisted-cursor reconcile poller; the LIVE HTTP transport and the
+  // CredentialStore reveal binding are DEFERRED (spec §4.3) — until they land, any
+  // live call rejects with a legible message rather than silently no-opping. The
+  // poller's cadence timer is not started here (no live transport to poll yet);
+  // its cursor sidecar path is reserved so a restart-resume works once wired.
+  const deferredPostHogKey = (): never => {
+    throw new Error(
+      'PostHog live dispatch is not wired yet — the offline connector core (descriptor, ' +
+        'normalizer, poller, cursor store) is in place, but real HTTP + credential access land ' +
+        'in a follow-up (spec §4.3).'
+    )
+  }
+  const posthogApi = new PostHogHttpApi({
+    transport: deferredPostHogTransport(),
+    host: 'https://us.posthog.com',
+    projectApiKey: 'phc_deferred',
+    reveal: deferredPostHogKey
+  })
+  const posthogPoller = new PostHogPoller({
+    api: posthogApi,
+    cursors: new PostHogCursorStore({ file: join(userData, 'posthog-cursors.json') }),
+    now: () => Date.now(),
+    log: (message) => console.warn(`posthog: ${message}`)
+  })
+  integrationRegistry.registerConnector(
+    'posthog',
+    new PostHogConnector({ api: posthogApi, poller: posthogPoller })
+  )
+
+  // GitLab connector: register the LiveConnector so the flow engine can dispatch
+  // its actions/triggers (spec §4.3). The offline foundation ships the connector
+  // + its dispatch table + the SSRF/normalize/webhook core; the LIVE HTTP
+  // transport, the CredentialStore reveal binding, and the on-LAN webhook bind are
+  // DEFERRED — until they land, any live call rejects with a legible message
+  // rather than silently no-opping. `baseUrl` is a public placeholder so the SSRF
+  // guard passes and the deferred-reveal message is what surfaces. `mergeMR` is
+  // still hard-gated by the connector (§9) regardless of wiring state.
+  const deferredGitLabError = (): never => {
+    throw new Error(
+      'GitLab live dispatch is not wired yet — the offline connector core is in place, ' +
+        'but real HTTP + credential access + the on-LAN webhook bind land in a follow-up.'
+    )
+  }
+  integrationRegistry.registerConnector(
+    'gitlab',
+    new GitLabConnector({
+      api: new GitLabRestApi({
+        transport: {
+          send: () => Promise.reject(new Error('GitLab HTTP transport is deferred.'))
+        },
+        baseUrl: 'https://gitlab.deferred.invalid',
+        projectPath: 'group/project',
+        reveal: deferredGitLabError
+      })
+    })
+  )
+
+  // HubSpot connector (CRM/sales worker): register the LiveConnector so the flow
+  // engine can dispatch its actions/triggers (§7). The offline foundation ships
+  // the connector + its dispatch table + the v3 verifier/normalize core; the LIVE
+  // REST transport, the CredentialStore reveal binding, and the webhook tunnel
+  // are DEFERRED — until they land, any live action rejects LOUDLY (via
+  // `deferredHubspotTransport`) rather than silently no-opping, and no webhook
+  // receiver is started (cloud ingress deferred; trigger subscriptions register
+  // but stay dormant).
+  integrationRegistry.registerConnector(
+    'hubspot',
+    new HubspotConnector({
+      api: new HubSpotApiClient({
+        transport: deferredHubspotTransport(),
+        reveal: () => {
+          throw new Error(
+            'HubSpot live dispatch is not wired yet — the offline connector core is in place, ' +
+              'but real REST + credential access land in a follow-up.'
+          )
+        }
+      })
+    })
+  )
+
+  // Sentry connector: the error SENSOR (pairs with GitHub as the actuator, §7).
+  // The live REST transport and the webhook tunnel are DEFERRED (foundation
+  // slice) — `deferredSentryTransport` fails loudly if an action reaches the
+  // wire, so the descriptor, normalizer, and mock-tested dispatch are all in
+  // place while real Sentry calls land in a later phase. No webhook server is
+  // started (cloud ingress deferred); trigger subscriptions register but stay
+  // dormant. The bearer token reveal binds to the CredentialStore at live wiring.
+  const deferredSentryReveal = (): never => {
+    throw new Error(
+      'Sentry live dispatch is not wired yet — the offline connector core is in place, ' +
+        'but real HTTP + credential access land in a follow-up (spec §11).'
+    )
+  }
+  integrationRegistry.registerConnector(
+    'sentry',
+    new SentryConnector({
+      api: new SentryHttpApi({
+        transport: deferredSentryTransport(),
+        orgSlug: 'sentry-deferred',
+        reveal: deferredSentryReveal
+      })
+    })
+  )
+
+  // GitHub connector: the flagship dev actuator (spec §4.3). The offline
+  // foundation ships the descriptor + dispatch table + the SSRF/HMAC/normalize/
+  // auth core; the LIVE REST transport and the cloud webhook ingress are DEFERRED
+  // (foundation slice) — `deferredGitHubTransport` fails loudly if an action
+  // reaches the wire. Auth is the PAT path bound to the main-only keychain reveal
+  // (App-installation auth is built in `github-auth.ts` for when the fork flips).
+  // No webhook server is started here (cloud ingress deferred); trigger
+  // subscriptions register but stay dormant. Mutations NEVER auto-run — a write
+  // fires only because a gated action node invoked it (§9).
+  // The keychain-reveal binding is DEFERRED alongside the live transport: until
+  // real REST lands, auth is never resolved, so the reveal is a loud stub (the
+  // main-only keychain reveal exit is bound at live wiring, mirroring Woo).
+  const deferredGitHubReveal = (): never => {
+    throw new Error(
+      'GitHub live auth is not wired yet — the offline connector core is in place, ' +
+        'but keychain reveal + real HTTP land in a follow-up (foundation slice).'
+    )
+  }
+  integrationRegistry.registerConnector(
+    'github',
+    new GitHubConnector({
+      api: new GitHubRestApi({
+        transport: deferredGitHubTransport(),
+        auth: new PatAuth(deferredGitHubReveal)
+      })
+    })
+  )
+
+  // Slack connector: the CROSS-CUTTING control connector whose headline export is
+  // localflow's FIRST real ApprovalPort (§3) — wired over the stub below. The
+  // live Socket-Mode WS + Web API HTTPS transport are DEFERRED (foundation
+  // slice), exactly like Shopify's live transport: the descriptor, block-kit
+  // builders, approval port, connector dispatch, and Events-path verifier are all
+  // in place and mock-tested; only the real network exit lands in a follow-up.
+  const slackConfig = parseSlackConfig(loadIntegrationsConfig(join(userData, 'config.json')).slack)
+  const slackChannel = slackConfig?.defaultChannel ?? ''
+  const slackApi = new SlackWebApi({ transport: slackDeferredTransport() })
+  const slackConnected =
+    integrationRegistry.get('slack')?.status() === 'connected' && slackChannel.length > 0
+  // The ApprovalPort is CONNECTOR-AGNOSTIC (§3, §7): built once, it services every
+  // gate in every flow. It only replaces the safe-reject stub when Slack is
+  // actually connected — otherwise a gate keeps stopping cleanly (never hanging).
+  // A holder breaks the port↔connector cycle: the port emits `approval.responded`
+  // through the connector, which is assigned just below (resolved at call time).
+  const slackRef: { connector?: SlackConnector } = {}
+  const slackApprovalPort = slackConnected
+    ? new SlackApprovalPort({
+        api: slackApi,
+        channel: slackChannel,
+        onDecision: (decision) => slackRef.connector?.onApprovalDecision(decision)
+      })
+    : undefined
+  const slackConnector = new SlackConnector({
+    api: slackApi,
+    defaultChannel: slackChannel,
+    approvals: slackApprovalPort
+  })
+  slackRef.connector = slackConnector
+  integrationRegistry.registerConnector('slack', slackConnector)
+
+  // Generic HTTP / webhook connector: the catch-all escape-hatch (spec §4.3).
+  // The OUTGOING half (`http.get`/`http.send`) is GREEN and fully wired — a real
+  // fetch transport behind the SSRF guard, per-node secrets revealed under the
+  // COMPOSITE keychain key `http:<nodeId>:<secretRef>` (§7). The INCOMING
+  // `webhook.received` trigger is Half 2 (ingress + subscribe-seam extension),
+  // registered as a legible deferred no-op until it lands.
+  const httpTokens = new HttpTokenStore(integrationCreds)
+  integrationRegistry.registerConnector(
+    'http',
+    new HttpConnector({
+      client: new HttpClient({ transport: new FetchHttpTransport() }),
+      reveal: (nodeId, secretRef) => httpTokens.revealNodeSecret(nodeId, secretRef)
+    })
+  )
+
+  // Stripe connector: the payments/refunds/disputes dispatch behind the registry
+  // seam (§4.3, §4.4). The live HTTPS transport (Authorization: Bearer rk_… from
+  // the keychain) and the webhook tunnel are DEFERRED (foundation slice) —
+  // `deferredStripeTransport` fails loudly if an action reaches the wire, so the
+  // descriptor, normalizer, and mock-tested dispatch are all in place while real
+  // Stripe calls land in a later phase. No money action ever auto-runs: mutations
+  // fire ONLY via a gated action node the author drew (§9).
+  integrationRegistry.registerConnector(
+    'stripe',
+    new StripeConnector({
+      api: new StripeApiClient({ transport: deferredStripeTransport() })
+    })
+  )
+
   const themesDir = join(userData, 'themes')
   ensureThemesSeeded(themesDir)
 
@@ -431,17 +661,19 @@ app.whenReady().then(async () => {
   const flowConfigFile = join(userData, 'config.json')
   const flowsConfig = loadFlowsConfig(flowConfigFile)
   const paneDriver = new PaneDriver({ controlDeps, grants })
-  // Gate approvals bind to the needs-you + ApproveButton primitive in a
-  // follow-up (design §10.5). Until that UI seam exists a gate cleanly REJECTS
-  // rather than silently auto-proceeding (a human "no" is not a failure), so a
-  // flow with a gate stops safely instead of hanging. NOTE: this is the one
-  // deliberately stubbed seam — see the integration report.
-  const flowApprovals: ApprovalPort = {
+  // The ApprovalPort: the Slack connector supplies localflow's FIRST real one
+  // (§3, §7). When Slack is `connected` it REPLACES the stub and services EVERY
+  // gate in every flow — any gated action becomes approvable from a phone. When
+  // Slack is not connected the safe-reject stub stays: a gate cleanly REJECTS
+  // rather than silently auto-proceeding or hanging (a human "no" is not a
+  // failure). The engine and gate-runner are untouched — both already take an
+  // `ApprovalPort`.
+  const flowApprovals: ApprovalPort = slackApprovalPort ?? {
     requestApproval: async (req) => {
       pushActivity(flowsConfig.environment, {
         at: Date.now(),
         route: 'flow:gate',
-        detail: `Gate '${req.nodeId}' needs approval — interactive gates aren't wired yet, rejecting safely.`
+        detail: `Gate '${req.nodeId}' needs approval — no approval surface is connected, rejecting safely.`
       })
       return false
     }

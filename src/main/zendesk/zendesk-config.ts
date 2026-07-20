@@ -23,16 +23,37 @@ export interface ZendeskConfig {
 const isNonEmptyString = (v: unknown): v is string => typeof v === 'string' && v.length > 0
 
 /**
+ * A valid Zendesk subdomain is a SINGLE DNS label: 1–63 chars, lowercase
+ * alphanumerics with optional internal hyphens. The subdomain is interpolated
+ * into `https://{subdomain}.zendesk.com/…`, so anything else (a dotted host, a
+ * path, a `#` fragment, whitespace, embedded credentials) is host confusion —
+ * `attacker.example.com#` would make `new URL(...).host` the attacker and leak
+ * the Basic-auth API token. Such a value is REJECTED, never interpolated.
+ */
+const DNS_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/
+
+/** True when `s` is a single DNS label safe to interpolate as a host component. */
+export function isValidSubdomain(s: string): boolean {
+  return DNS_LABEL.test(s)
+}
+
+/**
  * Normalize a subdomain: accept a bare `your-co`, a full `your-co.zendesk.com`, or
  * a pasted `https://your-co.zendesk.com/agent/…` and reduce it to `your-co`. Every
  * API call and the webhook origin key off this, so a pasted URL must not leak in.
+ *
+ * The result is NOT trusted as-is — `parseZendeskConfig` runs it through
+ * `isValidSubdomain`. We deliberately do not split on `/` unconditionally: a bare
+ * `foo/bar` (no `.zendesk.com`) stays `foo/bar` so the DNS-label check rejects it
+ * rather than silently keeping `foo`.
  */
 export function normalizeSubdomain(raw: string): string {
-  let s = raw.trim()
-  s = s.replace(/^https?:\/\//i, '')
-  s = s.split('/')[0] // drop any path
-  s = s.replace(/\.zendesk\.com$/i, '')
-  return s.toLowerCase()
+  let s = raw.trim().toLowerCase()
+  s = s.replace(/^https?:\/\//, '') // strip a pasted scheme
+  // Strip the `.zendesk.com` host suffix AND everything after it (path / query /
+  // fragment). `\b` prevents `foo.zendesk.company` from collapsing to `foo`.
+  s = s.replace(/\.zendesk\.com\b.*$/, '')
+  return s
 }
 
 /**
@@ -49,7 +70,10 @@ export function parseZendeskConfig(
   if (typeof values.environment !== 'number') return null
   if (!isNonEmptyString(values.subdomain) || !isNonEmptyString(values.agentEmail)) return null
   const subdomain = normalizeSubdomain(values.subdomain)
-  if (subdomain.length === 0) return null
+  // Host-confusion guard (SSRF, §4.2): the subdomain is interpolated into
+  // `https://{subdomain}.zendesk.com/…`, so a non-DNS-label result disables the
+  // connector (null) rather than sending the Basic-auth token to an attacker host.
+  if (!isValidSubdomain(subdomain)) return null
   const cfg: ZendeskConfig = {
     subdomain,
     agentEmail: values.agentEmail,

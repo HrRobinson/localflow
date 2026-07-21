@@ -31,6 +31,7 @@ import { PaneDriver } from './flow/pane-driver'
 import type { ApprovalPort } from './flow/types'
 import { AgentRegistry, whichViaLoginShell } from './agent-registry'
 import { resolveShellPath } from './resolve-shell-path'
+import { readRenamedEnv } from './legacy-names'
 import { resolveGuardBinary } from './guard-binary'
 import { makeOperatorGuard } from './operator-guard'
 import { resolveOptInPackArgs } from '../shared/guard-packs'
@@ -336,8 +337,8 @@ app.whenReady().then(async () => {
   const registry = new AgentRegistry(
     join(userData, 'config.json'),
     undefined,
-    process.env['LOCALFLOW_CLAUDE_BIN'],
-    process.env['LOCALFLOW_OPENCLAW_BIN']
+    readRenamedEnv(process.env, 'SAIIFE_CLAUDE_BIN'),
+    readRenamedEnv(process.env, 'SAIIFE_OPENCLAW_BIN')
   )
 
   // Integrations Hub: the CredentialStore (secrets → safeStorage-encrypted
@@ -1454,9 +1455,9 @@ app.whenReady().then(async () => {
     // the configured command is unusable — report the editor unavailable.
     const editorBin = splitCommandLine(editorCommand)?.[0] || null
     const [lazygitPath, editorPath] = await Promise.all([
-      resolveTool('lazygit', process.env['LOCALFLOW_LAZYGIT_BIN']),
+      resolveTool('lazygit', readRenamedEnv(process.env, 'SAIIFE_LAZYGIT_BIN')),
       editorBin
-        ? resolveTool(editorBin, process.env['LOCALFLOW_EDITOR_BIN'])
+        ? resolveTool(editorBin, readRenamedEnv(process.env, 'SAIIFE_EDITOR_BIN'))
         : Promise.resolve<string | null>(null)
     ])
     capsCache = {
@@ -1469,7 +1470,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('git:openLazygit', async (_e, id: string) => {
     const s = manager.get(id)
     if (!s || s.kind !== 'terminal' || !s.cwd) return null
-    const lazygitPath = await resolveTool('lazygit', process.env['LOCALFLOW_LAZYGIT_BIN'])
+    const lazygitPath = await resolveTool('lazygit', readRenamedEnv(process.env, 'SAIIFE_LAZYGIT_BIN'))
     if (!lazygitPath) return null
     // Reuse the custom-agent plumbing verbatim: a durable custom session running
     // lazygit (by resolved absolute path — a GUI app's env lacks the login PATH)
@@ -1482,7 +1483,7 @@ app.whenReady().then(async () => {
     if (!s || s.kind !== 'terminal' || !s.cwd) return false
     const launch = editorLaunch(loadEditorCommand(join(userData, 'config.json')), s.cwd)
     if (!launch) return false
-    const resolved = await resolveTool(launch.bin, process.env['LOCALFLOW_EDITOR_BIN'])
+    const resolved = await resolveTool(launch.bin, readRenamedEnv(process.env, 'SAIIFE_EDITOR_BIN'))
     if (!resolved) return false
     try {
       // External, detached, fire-and-forget process — never a pane. stdio

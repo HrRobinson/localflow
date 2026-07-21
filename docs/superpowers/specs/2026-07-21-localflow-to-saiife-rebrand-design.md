@@ -120,16 +120,21 @@ If continuity is impossible, that is acceptable — but it must be a deliberate,
 - **Renaming the GitHub repo.** Separate decision with external consequences (clone URLs, stars, inbound links). GitHub redirects, but coordinate it deliberately.
 - Any functional change. This is a rename and a migration. Nothing else.
 
-## ⚠️ The real risk: 23 open branches
+## The `build/*` branches are not a blocker — verified
 
-There are **23 open `origin/build/*` branches**, nearly all touching `src/main/`. A 218-file rename conflicts with every one of them.
+An earlier draft of this spec warned that 22 open `origin/build/*` branches would conflict with a 218-file rename. **That was checked and is wrong.** Measured on 2026-07-21:
 
-Mitigation, in order of preference:
+- `git diff --name-status main origin/build/<b>` reports **zero** files present on any branch and absent from main
+- Main is 53,000+ lines ahead of each branch tip
+- Branch tips date from 2026-07-16 to 2026-07-18; main is 2026-07-20
 
-1. **Land the rename after those branches merge.** Cleanest. This spec is ready whenever they are.
-2. If that is not acceptable, keep the rename to **one mechanical commit** — pure find-and-replace plus the file moves, with the migration logic in a separate follow-up commit. A single mechanical commit is cheap to rebase over; a sprawl of them is not.
+They are stale leftovers from **squash-merged** PRs. Squashing creates a new commit and breaks ancestry, so `git branch --merged` still lists them as unmerged even though their content shipped. Nothing will ever be rebased off them.
 
-**Do not run this agent truly concurrently with connector work.** Sequence it last among the three, and rebase rather than merge.
+**Conclusion: the rename can proceed immediately.** It carries no cross-branch conflict cost.
+
+Housekeeping, not part of this spec: those 22 branch pointers can be deleted once the user confirms. Verify emptiness per-branch before deleting any of them.
+
+Still keep the rename to **one mechanical commit** — find-and-replace plus file moves — with the userData migration as a separate commit. Not for conflict reasons, but because a reviewer can diff a mechanical commit at a glance and cannot meaningfully review 218 files of mixed mechanical and behavioural change.
 
 ## Verification
 

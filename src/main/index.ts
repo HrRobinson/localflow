@@ -59,8 +59,15 @@ import { WebviewBrowserControl } from './browser-control'
 import { CaptureStore } from './capture-store'
 import { WatchpointRegistry } from './watchpoints'
 import { ConsoleEventBus } from './console-bus'
-import { toStatusEvent, toOperatorEvent, toCaptureEvent, toGuardEvent } from '../shared/console'
+import {
+  toStatusEvent,
+  toOperatorEvent,
+  toCaptureEvent,
+  toGuardEvent,
+  toMigrationEvent
+} from '../shared/console'
 import type { ConsolePrefs } from '../shared/console'
+import { describeMigration, migrateLegacyUserData } from './userdata-migration'
 import { startGuardAuditTail } from './guard-audit-tail'
 import { CredentialStore } from './integrations/credential-store'
 import { IntegrationRegistry } from './integrations/integration-registry'
@@ -161,8 +168,14 @@ import {
   type KeyAction
 } from '../shared/keybindings'
 
-if (process.env['LOCALFLOW_USER_DATA']) {
-  app.setPath('userData', process.env['LOCALFLOW_USER_DATA'])
+/**
+ * True when the userData path was pointed somewhere else by the test/e2e
+ * override. The one-off legacy carry-over MUST NOT run in that case: it would
+ * copy a real installation's data into a scratch fixture directory.
+ */
+const userDataOverridden = Boolean(process.env['LOCALFLOW_USER_DATA'])
+if (userDataOverridden) {
+  app.setPath('userData', process.env['LOCALFLOW_USER_DATA'] as string)
 }
 
 /**
@@ -301,6 +314,22 @@ app.whenReady().then(async () => {
   }
 
   const userData = app.getPath('userData')
+
+  // The product rename moves Electron's userData directory (it is derived from
+  // productName), so carry the previous release's whole tree across BEFORE any
+  // store below reads or creates a file in the new one. Never throws; a failure
+  // logs and startup continues with a fresh config.
+  const migrationSummary = describeMigration(
+    migrateLegacyUserData({
+      newDir: userData,
+      platform: process.platform,
+      env: process.env,
+      home: homedir(),
+      overridden: userDataOverridden
+    })
+  )
+  console.log(`userData: ${migrationSummary}`)
+
   const sessionsFile = join(userData, 'sessions.json')
   let keybindings = loadOrCreateKeybindings(join(userData, 'keybindings.json'))
 
@@ -872,6 +901,9 @@ app.whenReady().then(async () => {
   // the feed is deliberately not persisted across restarts (spec "Out of scope").
   const activity = new Map<number, ActivityEntry[]>()
   const consoleBus = new ConsoleEventBus()
+  // The carry-over ran long before the bus existed (it must precede every store
+  // read); replay its one-line outcome now so it is visible in the drawer.
+  consoleBus.emit(toMigrationEvent(migrationSummary))
 
   // One append path for the per-environment action log: cap, store, push live.
   const pushActivity = (env: number, entry: ActivityEntry): void => {

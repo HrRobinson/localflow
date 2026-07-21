@@ -1470,7 +1470,10 @@ app.whenReady().then(async () => {
   ipcMain.handle('git:openLazygit', async (_e, id: string) => {
     const s = manager.get(id)
     if (!s || s.kind !== 'terminal' || !s.cwd) return null
-    const lazygitPath = await resolveTool('lazygit', readRenamedEnv(process.env, 'SAIIFE_LAZYGIT_BIN'))
+    const lazygitPath = await resolveTool(
+      'lazygit',
+      readRenamedEnv(process.env, 'SAIIFE_LAZYGIT_BIN')
+    )
     if (!lazygitPath) return null
     // Reuse the custom-agent plumbing verbatim: a durable custom session running
     // lazygit (by resolved absolute path — a GUI app's env lacks the login PATH)

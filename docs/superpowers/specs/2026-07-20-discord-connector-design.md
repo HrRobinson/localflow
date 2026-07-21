@@ -5,7 +5,7 @@
 remote approval + notification + control surface**, aimed at the
 indie / community / OSS tier where Discord — not Slack — is the room everyone is
 already in. The Slack-analog: the same connector slot, filled by the second
-chat platform, supplying localflow's **second** real `ApprovalPort`.
+chat platform, supplying saiife's **second** real `ApprovalPort`.
 **Feature:** A **Discord connector** that plugs into the merged flow-builder
 (integration registry + hybrid flow engine + drag-drop canvas) as an
 `IntegrationDescriptor`, **and** — like Slack — supplies an `ApprovalPort`. A
@@ -14,7 +14,7 @@ worker hits a gate → the connector posts a message with Approve / Deny **butto
 `ApprovalPort.requestApproval(req): Promise<boolean>` `true`/`false` → the gated
 action runs or the run cleanly stops. It also **notifies** (`postMessage`), lets
 a run **converse** (`replyInThread`), and exposes a **control surface**
-(`/localflow run|status|stop`) to seed and query flow runs from a Discord server.
+(`/saiife run|status|stop`) to seed and query flow runs from a Discord server.
 
 This connector satisfies the **pinned** `IntegrationDescriptor` /
 `IntegrationRegistry` / `LiveConnector` contract in `src/shared/integrations.ts`
@@ -40,9 +40,9 @@ approvable from Discord exactly as Slack made it approvable from Slack.
 
 ## 1. Goal + MVP scope
 
-**Goal (one sentence):** Let a localflow user approve or deny any worker's gate
+**Goal (one sentence):** Let a saiife user approve or deny any worker's gate
 from Discord on their phone, receive run notifications and converse with a run in
-a thread, and drive runs with `/localflow run|status|stop` — with the **bot
+a thread, and drive runs with `/saiife run|status|stop` — with the **bot
 token** in the OS keychain, **never** rendered, every send/mutation flowing
 through the flow engine's gates, and **zero public ingress** (the Gateway, the
 Socket-Mode analog).
@@ -55,7 +55,7 @@ Socket-Mode analog).
   registered via `registry.registerConnector('discord', …)` (the seam Slack and
   Shopify already use — `integration-registry.ts:54`).
 - **The `ApprovalPort` adapter (`discord-approval-port.ts`)** — the headline.
-  localflow's **second** real `ApprovalPort`, a byte-for-byte peer of
+  saiife's **second** real `ApprovalPort`, a byte-for-byte peer of
   `SlackApprovalPort` against the same `flow/types.ts` seam. It posts an approval
   message with Approve/Deny **buttons**, awaits a tap, and resolves
   `requestApproval` `true`/`false`. **Connector-agnostic** — it services every
@@ -82,10 +82,10 @@ Socket-Mode analog).
 - **The pinned Discord vocabulary (§6):** three triggers (`message.received`,
   `interaction`, `approval.responded`), three actions (`postMessage`,
   `postApproval`, `replyInThread`), and the trigger/context payload shapes.
-- **The control surface:** the reserved **`/localflow run|status|stop`** slash
+- **The control surface:** the reserved **`/saiife run|status|stop`** slash
   command (`discord-control-bridge.ts`) seeds/queries/stops flow runs against the
   engine — the *same* `EngineControlSeam` Slack's bridge uses (§4.2).
-- **Single guild (server), single localflow environment.** Config-as-code
+- **Single guild (server), single saiife environment.** Config-as-code
   `discord` block in `config.json` (non-secret refs only); the **one** secret
   (bot token) in the keychain.
 
@@ -130,7 +130,7 @@ v10, message components, application commands).
 | **HTTP Interactions** | Discord **HTTP POSTs** interactions to a configured public **Interactions Endpoint URL**, each signed **Ed25519** (`X-Signature-Ed25519` + `X-Signature-Timestamp`, verified against the app **public key**). **Message events do NOT come here** — they still require the Gateway. | **Yes** — a public URL, and **still the Gateway** for messages. | **Ed25519** (asymmetric; a *public* key, not a shared secret). | Spec'd (§4.4); needs the shared-receiver `ed25519` extension (§13.7). |
 
 **Why the Gateway is the recommended default.** Same reason as Slack Socket Mode
-— localflow is a **local-first desktop app** behind NAT (the dev-machine memory:
+— saiife is a **local-first desktop app** behind NAT (the dev-machine memory:
 an 8 GB Apple-silicon Mac). The Gateway gives a fully local, zero-ingress event +
 interaction path and **needs no signature verification at all**. It is *also* the
 only path that carries `message.received`; the HTTP Interactions endpoint would
@@ -197,7 +197,7 @@ heartbeat/RESUME/rate-limit handling.
 
 ## 3. The unique value: a SECOND `ApprovalPort` against the same seam
 
-localflow's gate seam is already pinned (`src/main/flow/types.ts`), and Slack
+saiife's gate seam is already pinned (`src/main/flow/types.ts`), and Slack
 already supplied the **first** real implementation:
 
 ```ts
@@ -255,7 +255,7 @@ the gated action runs. (Deny → resolve(false) → clean rejected stop.)
 
 ---
 
-## 4. Architecture in localflow
+## 4. Architecture in saiife
 
 ### 4.1 Where it sits
 
@@ -265,7 +265,7 @@ bot token) the descriptor's `status()` returns `needs-config`, the engine refuse
 any Discord node (`action-runner.ts`), and — critically — if Discord is *not* the
 selected approval surface, the engine's `ApprovalPort` is unchanged (Slack's, or
 the safe-reject stub) so a gate still stops cleanly rather than hanging.
-localflow's "works with no integration" guarantee is unchanged.
+saiife's "works with no integration" guarantee is unchanged.
 
 Architecturally the connector is **the live implementation behind the registry's
 pinned `invokeAction`/`subscribe`** (registered via
@@ -279,11 +279,11 @@ are isolated in `discord-client.ts` (the blast radius for any API change).
 |---|---|---|
 | `src/main/discord/discord-descriptor.ts` | `slack-descriptor.ts` | The static `IntegrationDescriptorDef` (`id: 'discord'`, config fields, the pinned triggers/actions of §6). Added to `DESCRIPTOR_DEFS`. A snapshot test guards the ids. |
 | `src/main/discord/discord-connector.ts` | `slack-connector.ts` | The `LiveConnector`. Dispatches an action id → a `discord-client` call; a trigger id → a subscription over the active transport (Gateway or HTTP). Holds an `ApprovalMechanism` for `postApproval` + interaction routing; sources `approval.responded` from the port's decisions. The one place action/trigger dispatch lives. Holds NO API shape, NO secret. |
-| `src/main/discord/discord-client.ts` | `slack-client.ts` | Thin **REST** client. **All** Discord request/response shapes live *only* here: `POST /channels/{id}/messages`, `PATCH …/messages/{id}` (edit), `POST /interactions/{id}/{token}/callback` (ack + update), `PUT /applications/{app}/…/commands` (register `/localflow`), `GET /gateway/bot`, and the `{ code, message }` error envelope. `Authorization: Bot <token>`. Per-route `429`/`retry_after` backoff. Behind a `DiscordApi` interface so tests inject `MockDiscordApi` (§12). |
+| `src/main/discord/discord-client.ts` | `slack-client.ts` | Thin **REST** client. **All** Discord request/response shapes live *only* here: `POST /channels/{id}/messages`, `PATCH …/messages/{id}` (edit), `POST /interactions/{id}/{token}/callback` (ack + update), `PUT /applications/{app}/…/commands` (register `/saiife`), `GET /gateway/bot`, and the `{ code, message }` error envelope. `Authorization: Bot <token>`. Per-route `429`/`retry_after` backoff. Behind a `DiscordApi` interface so tests inject `MockDiscordApi` (§12). |
 | `src/main/discord/discord-gateway.ts` | `slack-socket.ts` | **Gateway** client (Socket-Mode analog). Opens the outbound WSS, sends `IDENTIFY` (bot token + intents), heartbeats on the `HELLO` interval, `RESUME`s after a drop, and emits normalized `DiscordInbound` for `MESSAGE_CREATE` / `INTERACTION_CREATE`. **No signature verification** — authenticated at `IDENTIFY`. Behind a `GatewayTransport` interface for a `MockGatewayTransport` (§12). |
 | `src/main/discord/discord-interactions-server.ts` | `slack-events-server.ts` | The **HTTP Interactions** path (alt to the Gateway). Consumes the **shared** `webhook-receiver.ts` configured with a **`discordVerifier` (`scheme: 'ed25519'` — the shared-receiver extension, §4.4/§13.7)**; answers Discord's `PING` (type 1) with a `PONG`; emits the same normalized `DiscordInbound`. Only mounted when `mode: 'http'`. **Message events still need the Gateway** (§13.1). |
-| `src/main/discord/discord-approval-port.ts` | `slack-approval-port.ts` | **The headline.** localflow's **second** `ApprovalPort` (`flow/types.ts`). `requestApproval` posts an approval message via `discord-client`, parks a resolver in a pending `Map<"{runId}:{nodeId}", {resolve,messageRef,timer}>`, returns the promise. An inbound component interaction resolves it `true`/`false`, responds `UPDATE_MESSAGE` (ack + strip buttons + stamp), emits the `approval.responded` decision. Enforces the liveness timeout (§7.3) and idempotency (§7.2). **Connector-agnostic** — knows only `ApprovalRequest`. A near-line-for-line peer of `SlackApprovalPort`. |
-| `src/main/discord/discord-control-bridge.ts` | `slack-control-bridge.ts` | The reserved **`/localflow`** command handler: `run <flow>` / `status [run]` / `stop <run>`. Reuses the **same `EngineControlSeam` and `ControlReply` types** Slack's bridge defined (the narrow start/query/stop engine seam) — an interaction reply is delivered as an ephemeral interaction-callback. Non-`/localflow` interactions flow to the `interaction` trigger instead. |
+| `src/main/discord/discord-approval-port.ts` | `slack-approval-port.ts` | **The headline.** saiife's **second** `ApprovalPort` (`flow/types.ts`). `requestApproval` posts an approval message via `discord-client`, parks a resolver in a pending `Map<"{runId}:{nodeId}", {resolve,messageRef,timer}>`, returns the promise. An inbound component interaction resolves it `true`/`false`, responds `UPDATE_MESSAGE` (ack + strip buttons + stamp), emits the `approval.responded` decision. Enforces the liveness timeout (§7.3) and idempotency (§7.2). **Connector-agnostic** — knows only `ApprovalRequest`. A near-line-for-line peer of `SlackApprovalPort`. |
+| `src/main/discord/discord-control-bridge.ts` | `slack-control-bridge.ts` | The reserved **`/saiife`** command handler: `run <flow>` / `status [run]` / `stop <run>`. Reuses the **same `EngineControlSeam` and `ControlReply` types** Slack's bridge defined (the narrow start/query/stop engine seam) — an interaction reply is delivered as an ephemeral interaction-callback. Non-`/saiife` interactions flow to the `interaction` trigger instead. |
 | `src/main/discord/discord-components.ts` | `slack-blocks.ts` | **Pure** component builders: `buildApprovalMessage(req)`, `buildResolvedMessage(req, decidedBy, approved)`, `buildExpiredMessage(req)`, `buildNotifyMessage(text)`; the `custom_id` codec (`encodeCustomId`/`parseCustomId` — the `lf:approve|deny:{runId}:{nodeId}` correlation, §7.1); and the pure **parse** of a raw interaction / message / command payload → a typed `DiscordInbound` / `DiscordApprovalDecision`. Unit-testable in isolation (the correctness boundary). |
 | `src/main/discord/discord-token-store.ts` | `slack-token-store.ts` | Keychain-backed token access — a **thin wrapper over the hub's `CredentialStore`** (`revealForConnector('discord', 'botToken')`). Reuses the existing keychain sidecar; opens no second one. Named to grep distinctly (asserts no IPC/renderer caller). **One secret** (vs Slack's three — §8). |
 | `src/main/discord/discord-config.ts` | `slack-config.ts` | Reads the non-secret `discord` refs (guild id, default channel, application id, public key, mode, ingress url, environment) — the validate-at-the-boundary pattern. Holds only Discord-specific coercion (the `mode` default, snowflake normalization). |
@@ -362,7 +362,7 @@ already take an `ApprovalPort`.
 Both modes normalize to the same `DiscordInbound`, so `discord-connector.ts`,
 `discord-approval-port.ts`, and `discord-control-bridge.ts` are transport-agnostic.
 
-### 4.5 Reused localflow surfaces
+### 4.5 Reused saiife surfaces
 
 - `src/shared/integrations.ts` — the pinned `IntegrationDescriptor` /
   `IntegrationRegistry` / `LiveConnector` this connector satisfies; `IntegrationId`
@@ -410,10 +410,10 @@ secret and lives in config.
 | `botToken` | Discord bot token | **yes** | yes | string | The only secret. `Authorization: Bot <token>`, and the Gateway `IDENTIFY`. Keychain only. |
 | `guildId` | Server (guild) id | no | yes | string | The single server the connector operates in (snowflake). |
 | `defaultChannel` | Approvals / notify channel | no | yes | string | Channel id where approvals + notifications post by default (an action may override per-node). |
-| `applicationId` | Application id | no | yes* | string | Needed to register `/localflow` and address interaction callbacks. (\*Required once the control surface / interactions are on — Phase 2.) |
+| `applicationId` | Application id | no | yes* | string | Needed to register `/saiife` and address interaction callbacks. (\*Required once the control surface / interactions are on — Phase 2.) |
 | `publicKey` | Application public key | no | no* | string | **Public**, not secret. Ed25519 verify key for `mode: 'http'` only. Required **when `mode: 'http'`**. |
 | `mode` | Ingress mode | no | no | string | `'gateway'` (default) or `'http'`. Drives which transport + which key is required. |
-| `environment` | localflow environment (1-9) | no | yes | number | Which env hosts Discord work (same field/validation as the others). |
+| `environment` | saiife environment (1-9) | no | yes | number | Which env hosts Discord work (same field/validation as the others). |
 | `interactionsUrl` | Interactions endpoint URL | no | no | string | The public ingress for `mode: 'http'` only. Placeholder `https://<tunnel>/discord/interactions`. |
 
 `status('discord')` reports `needs-config` until `botToken`, `guildId`,
@@ -456,7 +456,7 @@ changes — they iterate the array.
 | trigger id | label | source | note |
 |---|---|---|---|
 | `message.received` | Message received | A Discord `MESSAGE_CREATE` in a channel the bot can see. | Wakes a flow on an inbound chat message (payload §6.3). **Needs the Message Content privileged intent for non-empty text** (§2.3, §13.3). Bot-authored messages are dropped. |
-| `interaction` | Interaction | A non-`/localflow`, non-approval `INTERACTION_CREATE` (a user-defined slash command or component). | The chat analog of Slack's `slash.command`, generalized to Discord's unified interaction model. The reserved `/localflow` (control, §4.2) and Approve/Deny buttons (the port) are **not** this trigger. |
+| `interaction` | Interaction | A non-`/saiife`, non-approval `INTERACTION_CREATE` (a user-defined slash command or component). | The chat analog of Slack's `slash.command`, generalized to Discord's unified interaction model. The reserved `/saiife` (control, §4.2) and Approve/Deny buttons (the port) are **not** this trigger. |
 | `approval.responded` | Approval responded | An approval button was tapped (the component interaction the `ApprovalPort` also consumes). | Fires **in addition** to resolving the gate — lets a flow log/notify on the decision. Payload `{ runId, nodeId, approved, decidedBy }`. |
 
 ### 6.2 Actions
@@ -498,7 +498,7 @@ export interface DiscordMessagePayload {
   threadId?: string      // present when posted in a thread
 }
 
-/** interaction trigger payload (non-/localflow, non-approval interactions). */
+/** interaction trigger payload (non-/saiife, non-approval interactions). */
 export interface DiscordInteractionPayload {
   interactionId: string
   token: string          // per-interaction token for the callback (short-lived)
@@ -676,7 +676,7 @@ channel to tap. A per-gate approver allow-list (only certain Discord user ids ma
 resolve a gate; others' taps get an ephemeral "not an approver") is phase 2
 (§13.6) — the interaction payload already carries `decidedBy`.
 
-**Control-surface authority.** `/localflow run|status|stop` can start and stop
+**Control-surface authority.** `/saiife run|status|stop` can start and stop
 runs. It is gated by guild membership (only members of the installed server can
 reach the command) and — as a phased item — the same approver allow-list. `run`
 starts a flow the user already authored; `stop` requests a stop (never
@@ -713,7 +713,7 @@ composite that races both) is flagged §13.2.
 
 ## 11. Error handling
 
-localflow's principle (error-message-style memory; the Slack connector's §11):
+saiife's principle (error-message-style memory; the Slack connector's §11):
 **every failure is human-readable, actionable, and carries the real underlying
 exception. No silent catch. No bare "failed" / "not found".** An action signals
 failure by **rejecting** with that message; the action-runner prefixes it.
@@ -730,10 +730,10 @@ failure by **rejecting** with that message; the action-runner prefixes it.
 | **Interaction ack window missed** (>3s, e.g. a slow resolve) | the elapsed time | The port acks FIRST (the `UPDATE_MESSAGE` callback is the resolve step) so this is avoided by construction; if it ever races, Discord shows "interaction failed" to the user and the gate falls back to the timeout path — surfaced, never a phantom resolve. |
 | **Duplicate interaction / redelivery** | the interaction id | Idempotent no-op (§7.2) — the pending entry is already gone. |
 | **Approval timeout** (no tap before `approvalTimeoutSec`) | the elapsed time | Not an error: the port `PATCH`es "Expired" and **resolves `false`** → the run ends `rejected` cleanly (§7.3). Surfaced on the feed, not as a failure. |
-| **Interaction for an unknown/stale gate** (run ended, or localflow restarted losing the map) | the key that missed | The port replies with an ephemeral/edited "This approval is no longer active (the run has ended or localflow restarted)." and drops the tap. No phantom resolve. |
+| **Interaction for an unknown/stale gate** (run ended, or saiife restarted losing the map) | the key that missed | The port replies with an ephemeral/edited "This approval is no longer active (the run has ended or saiife restarted)." and drops the tap. No phantom resolve. |
 | **Empty message text** (Message Content intent absent) | the missing intent | `message.received` surfaces a one-time legible notice ("Discord message text is empty — enable the Message Content intent in the Developer Portal") rather than waking flows on blank content (§2.3, §13.3). |
 | **`status('discord') !== 'connected'`** | the derived reason (missing token / decrypt error / disabled / missing publicKey under http) | The action-runner fails the Discord node *before* any call: "Flow needs Discord connected — action '<id>' can't run. Connect it in Settings." |
-| **`/localflow` control error** (unknown flow, bad run id) | the name/id that missed | The bridge replies **ephemerally** in Discord: "No flow named '<x>' — try `/localflow status` to list runs." Never a silent drop. |
+| **`/saiife` control error** (unknown flow, bad run id) | the name/id that missed | The bridge replies **ephemerally** in Discord: "No flow named '<x>' — try `/saiife status` to list runs." Never a silent drop. |
 
 The connector **never** catches-and-drops. Where Discord returns a precise code,
 the connector forwards *that* rather than minting a vaguer one.
@@ -742,7 +742,7 @@ the connector forwards *that* rather than minting a vaguer one.
 
 ## 12. Testing strategy (offline / mockable — no live calls in CI)
 
-Testable **without a live Discord server**, matching localflow's existing seams
+Testable **without a live Discord server**, matching saiife's existing seams
 (pure modules, injected backends, fixture payloads) — a peer of the Slack test
 suite:
 
@@ -789,7 +789,7 @@ suite:
 - **Port-selection test** — assert `selectApprovalPort` picks Discord when only
   Discord is connected, Slack when only Slack is, the configured/flagged winner when
   both, and the safe-reject stub when neither (§4.3).
-- **`/localflow` control-bridge test** — with a fake `EngineControlSeam` (reused
+- **`/saiife` control-bridge test** — with a fake `EngineControlSeam` (reused
   from Slack): assert `run <flow>` starts a run, `status` lists snapshots, `stop
   <run>` requests a stop, an unknown flow yields the ephemeral legible error.
 - **Token-store test** — `revealForConnector` round-trip via a fake `SecretBackend`;
@@ -825,7 +825,7 @@ only in manual dogfooding against a development server.
    the trigger with a legible degraded notice (chosen), or gate the trigger behind a
    config flag until the intent is confirmed? Approvals + slash commands are
    unaffected either way.
-4. **Slash-command registration.** Discord requires `/localflow` to be *registered*
+4. **Slash-command registration.** Discord requires `/saiife` to be *registered*
    (`PUT /applications/{app}/guilds/{guild}/commands` — **guild-scoped is instant**;
    global takes up to ~1h to propagate). Does MVP register it automatically on
    connect (guild-scoped, recommended), or document a manual one-time step? (Slack
@@ -837,7 +837,7 @@ only in manual dogfooding against a development server.
    multi-guild isolation, a hosted relay for the HTTP path. Recommendation: build
    MVP "for me", keep the token/config shapes guild-ready (they already are — §8).
 6. **Per-approver authorization.** MVP trusts any member who can see the channel. An
-   allow-list (only certain Discord user ids may resolve a gate / drive `/localflow`)
+   allow-list (only certain Discord user ids may resolve a gate / drive `/saiife`)
    is a phase-2 safety upgrade; `decidedBy` is already carried. The *default* (open
    vs restricted) is a product-security call.
 7. **The `ed25519` shared-receiver extension (HTTP path only).** The shared
@@ -886,7 +886,7 @@ server with **no ingress**) against a development server, and it already benefit
   adapter, `postMessage`. "For me" fork. Single server, single environment.
 - **Phase 2 — full vocabulary + control:** `postApproval` / `replyInThread`
   actions; `message.received` (Message Content intent) / `interaction` /
-  `approval.responded` triggers; the `/localflow run|status|stop` control bridge
+  `approval.responded` triggers; the `/saiife run|status|stop` control bridge
   (with slash-command registration, §13.4); per-approver allow-list (§13.6).
 - **Phase 3 — HTTP Interactions path:** `discord-interactions-server.ts` on the
   shared `webhook-receiver` **extended with the `ed25519` scheme + PING/PONG body
@@ -900,7 +900,7 @@ server with **no ingress**) against a development server, and it already benefit
 
 ---
 
-## Appendix — reused localflow surfaces (by path)
+## Appendix — reused saiife surfaces (by path)
 
 - `src/shared/integrations.ts` — the pinned `IntegrationDescriptor` /
   `IntegrationRegistry` / `LiveConnector` this connector satisfies; `IntegrationId`

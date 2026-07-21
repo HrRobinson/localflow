@@ -1,11 +1,11 @@
-# localflow — Design Spec
+# saiife — Design Spec
 
 **Date:** 2026-07-06
 **Status:** Approved for planning
 
 ## Overview
 
-localflow is a macOS desktop app that acts as mission control for multiple
+saiife is a macOS desktop app that acts as mission control for multiple
 Claude Code sessions. Instead of juggling separate terminal windows, the user
 gets one window with a grid of live terminal panes, each running a real
 `claude` CLI session. Colored pane borders show at a glance which session
@@ -92,7 +92,7 @@ reports it.
 
 ## Repo & publishing
 
-- Public GitHub repo `localflow`, MIT license.
+- Public GitHub repo `saiife`, MIT license.
 - README with demo GIF and quickstart; CONTRIBUTING.md; PR template.
 - Structure: `src/main`, `src/renderer`, `src/shared`.
 - TypeScript strict mode; ESLint + Prettier.

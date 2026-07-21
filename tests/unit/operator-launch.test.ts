@@ -4,8 +4,8 @@ import { credentialEnv, OperatorLaunchTracker } from '../../src/main/operator-la
 describe('credentialEnv', () => {
   it('flattens a grant to the shipped skill env vars', () => {
     expect(credentialEnv('http://127.0.0.1:5000', 'tok')).toEqual({
-      LOCALFLOW_ENDPOINT: 'http://127.0.0.1:5000',
-      LOCALFLOW_TOKEN: 'tok'
+      SAIIFE_ENDPOINT: 'http://127.0.0.1:5000',
+      SAIIFE_TOKEN: 'tok'
     })
   })
 })

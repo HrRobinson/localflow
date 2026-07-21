@@ -2,12 +2,12 @@
 
 **Date:** 2026-07-15
 **Status:** Approved (design), pending spec review
-**Feature:** Close lfguard G2's one coverage gap — raw operator bytes written to a
+**Feature:** Close saiifeguard G2's one coverage gap — raw operator bytes written to a
 pane via the control API bypass every agent hook and reach the pty unguarded.
 
 ## Problem
 
-lfguard G2 wired the command guard into all three agents (Claude / Codex / Gemini)
+saiifeguard G2 wired the command guard into all three agents (Claude / Codex / Gemini)
 as native pre-tool blocking hooks. That covers commands an *agent* decides to run.
 It does **not** cover the operator control-API path:
 
@@ -25,7 +25,7 @@ the gap.
 The guard check runs on **every** operator prompt write, regardless of pane type
 (defense-in-depth), not only on unguarded shell/custom panes. Rationale:
 
-- The false-positive cost is low. lfguard denies *specific catastrophic command
+- The false-positive cost is low. saiifeguard denies *specific catastrophic command
   shapes*, not prose. Ordinary prompt prose ("delete the old migrations") tokenizes
   to a harmless argv and passes; only text that literally *is* a destructive command
   is stopped — which is acceptable even when the target is an agent.
@@ -48,13 +48,13 @@ source and `toGuardEvent` mapper from G2 are reused unchanged.
 POST /panes/:handle/prompt (control-api.ts)
   ├─ existing checks: kind==terminal, status!=exited, typeof text==string
   ├─ deps.guard.check(text)  ──►  operator-guard.ts
-  │                                  spawn: lfguard test <text> --pack <ids…>
+  │                                  spawn: saiifeguard test <text> --pack <ids…>
   │                                  (argv array, NO shell — text is one argv elem)
   │                                  exit 1 → deny (parse stderr)  |  exit 0 → allow
   │                                  missing bin / spawn err / timeout / other → allow
   ├─ allow  → deps.manager.write(handle, `${text}\r`)   (unchanged)
   └─ deny   → three signals:
-       • deps.manager.emitNotice(handle, "⛔ lfguard blocked: <reason>")
+       • deps.manager.emitNotice(handle, "⛔ saiifeguard blocked: <reason>")
        • deps.onGuardBlock(record, environment)  → consoleBus.emit(toGuardEvent(...))
        • return 403 { error, reason, pack }
 ```
@@ -66,20 +66,20 @@ POST /panes/:handle/prompt (control-api.ts)
 
 - The operator's text is passed as a single argv element. No quoting, escaping, or
   injection concerns on *our* side.
-- Multi-line / pasted / chained text passes through verbatim. lfguard's own
+- Multi-line / pasted / chained text passes through verbatim. saiifeguard's own
   hand-rolled tokenizer segments it (`;`, `&&`, `|`, newlines, `$(…)`, `bash -c`) —
   which is exactly what the engine is built for. We do **not** pre-split the text.
 
 ### The deny signal is the exit code; stderr is enrichment
 
-`lfguard test <cmd>` (see `guard/crates/lfguard/src/main.rs`):
+`saiifeguard test <cmd>` (see `guard/crates/saiifeguard/src/main.rs`):
 - **exit 0** = allow.
 - **exit 1** = deny, and prints to stderr exactly:
-  `lfguard: BLOCKED by <pack>: <reason>[ (inline: <i>)]`
+  `saiifeguard: BLOCKED by <pack>: <reason>[ (inline: <i>)]`
 - `--pack <id>` is a global flag (repeatable), additively enabling opt-in packs on
   top of the always-on `core.*` packs.
 
-The parser matches the last `lfguard: BLOCKED by (<pack>): (<reason>)` line to
+The parser matches the last `saiifeguard: BLOCKED by (<pack>): (<reason>)` line to
 populate `pack` and `reason`. If the parse misses (format drift, prefix noise), we
 **still deny** with `reason: 'blocked by command guard', pack: 'unknown'` — the exit
 code is authoritative, stderr is best-effort enrichment.
@@ -126,7 +126,7 @@ export function makeOperatorGuard(opts: OperatorGuardOptions): OperatorGuard
 
 **Fail-open is absolute.** Any failure mode of the guard itself results in the write
 being allowed. The guard must never make a legitimate prompt write impossible — worst
-case is unguarded, never stuck. (Matches lfguard's project-wide invariant.)
+case is unguarded, never stuck. (Matches saiifeguard's project-wide invariant.)
 
 ### 2. `src/main/control-api.ts` (modify)
 
@@ -145,7 +145,7 @@ before `deps.manager.write`:
 if (deps.guard) {
   const v = await deps.guard.check(b.text)
   if (!v.allowed) {
-    deps.manager.emitNotice(handle, `\r\n⛔ lfguard blocked: ${v.reason}\r\n`)
+    deps.manager.emitNotice(handle, `\r\n⛔ saiifeguard blocked: ${v.reason}\r\n`)
     deps.onGuardBlock?.(
       { ts: Date.now(), tag: handle, command: b.text, reason: v.reason, pack: v.pack },
       environment
@@ -203,11 +203,11 @@ console plumbing, no new console source, no new dependency.
 
 1. Operator `POST /panes/pane-7/prompt { text: "rm -rf /" }`.
 2. Handler validates, calls `deps.guard.check("rm -rf /")`.
-3. `operator-guard` spawns `lfguard test "rm -rf /"` → exit 1, stderr
-   `lfguard: BLOCKED by core.filesystem: catastrophic recursive delete of /`.
+3. `operator-guard` spawns `saiifeguard test "rm -rf /"` → exit 1, stderr
+   `saiifeguard: BLOCKED by core.filesystem: catastrophic recursive delete of /`.
 4. Parsed → `{ allowed: false, reason: "catastrophic recursive delete of /",
    pack: "core.filesystem" }`.
-5. Handler: `emitNotice("pane-7", "\r\n⛔ lfguard blocked: catastrophic recursive
+5. Handler: `emitNotice("pane-7", "\r\n⛔ saiifeguard blocked: catastrophic recursive
    delete of /\r\n")` → renderer shows the line in pane-7.
 6. Handler: `onGuardBlock({ ts, tag: "pane-7", command: "rm -rf /", reason, pack },
    env)` → `consoleBus.emit(toGuardEvent(...))` → bottom-console `guard` row.
@@ -239,7 +239,7 @@ console plumbing, no new console source, no new dependency.
 Injected `spawn` returning a controllable fake child (fires `stderr` data,
 `close`/`exit` with a chosen code, or an `error` event); injected/short `timeoutMs`.
 
-- deny: exit 1 + stderr `lfguard: BLOCKED by core.filesystem: catastrophic rm` →
+- deny: exit 1 + stderr `saiifeguard: BLOCKED by core.filesystem: catastrophic rm` →
   `{ allowed: false, reason: 'catastrophic rm', pack: 'core.filesystem' }`.
 - allow: exit 0 → `{ allowed: true }`.
 - unparseable stderr but exit 1 → still `allowed:false`, `reason:'blocked by command

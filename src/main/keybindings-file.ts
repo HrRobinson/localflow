@@ -16,7 +16,7 @@ export function loadOrCreateKeybindings(file: string): Record<KeyAction, string>
     const parsed: unknown = JSON.parse(readFileSync(file, 'utf8'))
     return mergeBindings(parsed)
   } catch (err) {
-    console.warn(`localflow: failed to read keybindings file at ${file}, using defaults`, err)
+    console.warn(`saiife: failed to read keybindings file at ${file}, using defaults`, err)
     return { ...DEFAULT_BINDINGS }
   }
 }

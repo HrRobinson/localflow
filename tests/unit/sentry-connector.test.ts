@@ -98,10 +98,10 @@ describe('SentryConnector — action dispatch', () => {
     const c = new SentryConnector({ api })
     await c.invokeAction('assignIssue', { id: '4509', assignedTo: 'user:7' })
     await c.invokeAction('ignoreIssue', { id: '4509' })
-    await c.invokeAction('commentIssue', { id: '4509', text: 'fix PR #12 opened by localflow' })
+    await c.invokeAction('commentIssue', { id: '4509', text: 'fix PR #12 opened by saiife' })
     expect(api.calls.assignIssue).toEqual([{ id: '4509', assignedTo: 'user:7' }])
     expect(api.calls.ignoreIssue).toEqual([{ id: '4509', statusDetails: undefined }])
-    expect(api.calls.commentIssue).toEqual([{ id: '4509', text: 'fix PR #12 opened by localflow' }])
+    expect(api.calls.commentIssue).toEqual([{ id: '4509', text: 'fix PR #12 opened by saiife' }])
   })
 
   it('rejects a mutation failure verbatim (the pinned convention)', async () => {

@@ -1,6 +1,6 @@
-# localflow v2 — Roadmap
+# saiife v2 — Roadmap
 
-Direction agreed 2026-07-06: localflow evolves from "Claude session grid" into a
+Direction agreed 2026-07-06: saiife evolves from "Claude session grid" into a
 keyboard-driven workspace manager for AI agent terminals, with GitHub
 Desktop-grade UI. Each milestone is its own spec → plan → PR cycle.
 
@@ -57,7 +57,7 @@ Research (2026-07-06) confirmed both have Claude-like hooks systems:
   `--profile`. Resume: `codex resume --last`.
 - Gemini: `settings.json` hooks incl. `BeforeAgent`, `Notification`
   (`ToolPermission` → needs-you), `AfterAgent`; injectable via
-  `GEMINI_CLI_SYSTEM_SETTINGS_PATH` env pointing at a localflow-managed file.
+  `GEMINI_CLI_SYSTEM_SETTINGS_PATH` env pointing at a saiife-managed file.
   Resume: `--resume latest`.
 - Adapter layer maps each agent's events onto the existing
   working/needs-you/idle state machine and localhost listener.
@@ -142,13 +142,13 @@ with." First non-terminal pane type: an embedded **browser pane**
   levels stay coherent. Not before: don't label a capability that doesn't
   exist.
 - **Reality check on native apps (researched 2026-07-08):** embedding a
-  running native app's window (Spotify desktop, etc.) inside localflow is
+  running native app's window (Spotify desktop, etc.) inside saiife is
   impossible on macOS — the OS does not allow cross-process window
   reparenting, and screen-capture tricks are non-interactive hacks. On
   Linux it is *technically* possible on X11 (XEmbed / XReparentWindow) but
   the tech is effectively dead, Electron does not expose it, and Wayland
   forbids cross-client embedding by design — not worth building for one
-  dying display server. Managing native windows beside localflow remains
+  dying display server. Managing native windows beside saiife remains
   AeroSpace's job. What DOES work everywhere: web apps in a webview, and
   CLI/TUI apps by path via the existing custom-command agent.
 - **Scope guards:** DRM'd web players (Spotify web needs Widevine, absent
@@ -177,20 +177,20 @@ with." First non-terminal pane type: an embedded **browser pane**
 
 **Superseded by docs/superpowers/specs/2026-07-08-m4-settings-design.md
 (approved design; shipped — scope: keybindings editor + agent management +
-themes). Provider tokens were dropped from the roadmap — localflow stores no
+themes). Provider tokens were dropped from the roadmap — saiife stores no
 provider secrets.**
 
 - Keybindings editor (click binding, press keys).
 - Agent management (paths, extra args, default agent).
 - **Provider tokens — DROPPED (user decision 2026-07-08):** every supported
   agent authenticates in-service with its own subscription or credit
-  account, so localflow never stores provider secrets. The safeStorage
+  account, so saiife never stores provider secrets. The safeStorage
   design that stood here is void; do not resurrect it.
 - **Local LLMs (user request 2026-07-07):** first-class support for agents
   running against local models — per-agent env can point at local endpoints
   (e.g. Ollama's OpenAI-compatible API via base-URL overrides), and the
   agent presets/docs show a "local model" recipe (aider/opencode/custom
-  against localhost). No cloud account required to use localflow.
+  against localhost). No cloud account required to use saiife.
 - **Terminal conveniences via config, not hardcode (user principle
   2026-07-07):** terminal-app niceties (clear-scrollback a la cmd+k, font
   size step, copy-mode, etc.) ship as remappable keybinding ACTIONS and
@@ -263,7 +263,7 @@ provider secrets.**
 - "Open in editor" per session: button + keybinding launching `code <cwd>`
   (configurable editor command) in the external app. Near-term, cheap.
 - Web-IDE pane (later): embed code-server/openvscode in a webview pane inside
-  the grid. Feasible (localflow is Chromium); real embedding of native VS Code
+  the grid. Feasible (saiife is Chromium); real embedding of native VS Code
   windows is impossible on macOS — don't promise it.
 
 ## Platform & tooling

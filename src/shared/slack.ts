@@ -8,7 +8,7 @@
  * NO raw Slack API shape lives here — those are isolated in
  * `src/main/slack/slack-client.ts` (the API blast radius, §4.1) and the raw
  * envelope parsing in `src/main/slack/slack-blocks.ts`. This file holds ONLY
- * localflow-facing vocabulary: the pinned trigger/action ids and the normalized
+ * saiife-facing vocabulary: the pinned trigger/action ids and the normalized
  * message / slash / approval-decision shapes.
  */
 
@@ -42,7 +42,7 @@ export interface SlackMessagePayload {
   threadTs?: string
 }
 
-/** `slash.command` trigger payload (non-/localflow commands). */
+/** `slash.command` trigger payload (non-/saiife commands). */
 export interface SlackSlashPayload {
   /** e.g. "/deploy". */
   command: string

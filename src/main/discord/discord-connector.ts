@@ -58,9 +58,9 @@ export interface DiscordConnectorDeps {
   defaultChannel: string
   /** The shared approval port — enables `postApproval` + interaction routing. */
   approvals?: ApprovalMechanism
-  /** The `/localflow` control bridge; a reply is delivered via `onControlReply`. */
+  /** The `/saiife` control bridge; a reply is delivered via `onControlReply`. */
   control?: DiscordControlBridge
-  /** Sink for a `/localflow` ephemeral reply (callback delivery is deferred). */
+  /** Sink for a `/saiife` ephemeral reply (callback delivery is deferred). */
   onControlReply?: (ref: InteractionCallbackRef, reply: ControlReply) => void
   log?: (message: string) => void
 }
@@ -196,7 +196,7 @@ export class DiscordConnector implements LiveConnector {
       this.approvals?.handleInteraction(raw)
       return
     }
-    // 2. The reserved `/localflow` command → the control bridge (NOT a trigger).
+    // 2. The reserved `/saiife` command → the control bridge (NOT a trigger).
     const command = parseCommand(raw)
     if (command && command.name === CONTROL_COMMAND_NAME) {
       if (this.control) {

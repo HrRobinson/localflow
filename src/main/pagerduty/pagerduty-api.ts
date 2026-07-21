@@ -58,7 +58,7 @@ export interface RawPagerDutyService {
   html_url?: string | null
 }
 
-// ── Mutation inputs / results (localflow-shaped) ─────────────────────────────
+// ── Mutation inputs / results (saiife-shaped) ─────────────────────────────
 
 export interface StatusChangeInput {
   id: string
@@ -387,7 +387,7 @@ export class MockPagerDutyApi implements PagerDutyApi {
     private readonly data: MockPagerDutyData = {},
     opts: { fromEmail?: string } = {}
   ) {
-    this.fromEmail = opts.fromEmail ?? 'localflow-automation@example.com'
+    this.fromEmail = opts.fromEmail ?? 'saiife-automation@example.com'
   }
 
   getIncident(id: string): Promise<RawPagerDutyIncident> {

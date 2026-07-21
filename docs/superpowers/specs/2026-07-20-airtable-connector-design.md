@@ -48,7 +48,7 @@ truth (§4.5).
 
 ## 1. Goal + MVP scope
 
-**Goal (one sentence):** Let a localflow user assemble, on the canvas, a
+**Goal (one sentence):** Let a saiife user assemble, on the canvas, a
 structured-data worker that wakes when a row is created or changed in an Airtable
 table, reads the relevant rows through the Airtable Web API, lets an agent node
 judge them, routes on that judgment via edge conditions, and performs gated cell
@@ -88,7 +88,7 @@ keychain, **never** rendered.
   (`flow-engine.ts` gate handling, `node-runners/agent-runner.ts`,
   `node-runners/action-runner.ts`). No write ever runs un-gated by construction of
   the flow the author drew.
-- **Single account, single localflow environment.** Config-as-code `airtable`
+- **Single account, single saiife environment.** Config-as-code `airtable`
   block in `config.json` (non-secret refs only — base id, table, poll cadence,
   environment); PAT (and, phase 2, the webhook MAC secret) in the keychain.
 
@@ -111,7 +111,7 @@ keychain, **never** rendered.
   write request; MVP writes one record per action node. Batching is phase 2.
 - **Flow templates / the "starter tracker worker" graph.** Owned by the templates
   track, which consumes §3 verbatim.
-- **An Airtable-specific deterministic backstop** (per-action limits à la lfguard).
+- **An Airtable-specific deterministic backstop** (per-action limits à la saiifeguard).
   Named as a phased item (§7.3, §12 Phase 3); the author's gate is the MVP control.
 
 ---
@@ -165,7 +165,7 @@ Notion/Sheets become *peer connectors* under the same `*-connector` / `*-api` /
   changedRecordsById, destroyedRecordIds }, … } ], cursor: <nextInt>, mightHaveMore }`.
   The **cursor is a monotonic integer**; payloads are retained 7 days; the webhook
   **expires after ~7 days** without a refresh (`POST …/webhooks/{id}/refresh`).
-  **Consequence for localflow:** the ping cannot seed a run (it has no data), so
+  **Consequence for saiife:** the ping cannot seed a run (it has no data), so
   the trigger is a **poll of `/payloads`** — with a persisted cursor and an
   injected clock — exactly the PostHog/email reconcile shape (§4).
 - **Rate limits — 5 requests/second per base is the sharp edge.** Exceeding it
@@ -572,14 +572,14 @@ authority.**
 
 ---
 
-## 7. Architecture in localflow
+## 7. Architecture in saiife
 
 A new **main-process module set** under `src/main/airtable/`, mirroring
 `src/main/posthog/` (the poll sibling) and `src/main/shopify/` (the descriptor/
 token/normalize skeleton). It is **opt-in**: with no `airtable` config entry (and
 no stored PAT) the descriptor's `status()` returns `needs-config` and the engine
 refuses any Airtable node before any network call (`action-runner.ts`) —
-localflow's "works with no integration" guarantee is unchanged. The connector is
+saiife's "works with no integration" guarantee is unchanged. The connector is
 the **live implementation behind the registry's pinned `invokeAction` /
 `subscribe`**, registered via `registerConnector('airtable', connector)`
 (`integration-registry.ts:54`) at startup in `src/main/index.ts`.
@@ -599,7 +599,7 @@ the **live implementation behind the registry's pinned `invokeAction` /
 | `src/main/airtable/airtable-verifier.ts` *(phase 2)* | The ping HMAC config for the **shared receiver** (§4.5): `x-airtable-content-mac`, hex, `hmac-sha256=` prefix strip. Trivial; only the ping-wake path needs it. Not built in MVP. |
 | `src/shared/airtable.ts` | Shared types (`AirtableRecordContext`, the action param shapes, the trigger `SeedEvent` payload shape) needed by both main and any renderer palette surface. |
 
-### 7.2 Reused localflow surfaces (and what is deliberately NOT reused)
+### 7.2 Reused saiife surfaces (and what is deliberately NOT reused)
 
 **Reused:**
 
@@ -663,7 +663,7 @@ failure), and a write with no path to it never runs. **The connector never
 auto-writes outside the graph the author drew.** An optional **deterministic
 Airtable backstop** (e.g. `airtable.limits`: max writes/run, forbid
 `updateRecord` to a named field/table without a gate, a max-rows-touched ceiling)
-is a phased item (§12 Phase 3), lfguard-style — flagged, not built in MVP.
+is a phased item (§12 Phase 3), saiifeguard-style — flagged, not built in MVP.
 
 ---
 
@@ -686,7 +686,7 @@ boundary):
 | `viewId` | View (optional) | no | no | string | Narrows `record.created`/`updated` and `listRecords` to a view. |
 | `webhookId` | Webhook id (Strategy A) | no | no | string | The `/payloads` cursor stream's webhook (manual or connector-managed, §4.4). |
 | `pollSeconds` | Poll cadence (seconds) | no | no | number | Default 60 (§4.2). Same field/validation as PostHog's. |
-| `environment` | localflow environment (1-9) | no | yes | number | Which env hosts Airtable work (same field/validation as the others). |
+| `environment` | saiife environment (1-9) | no | yes | number | Which env hosts Airtable work (same field/validation as the others). |
 
 `status('airtable')` reports `needs-config` until `personalAccessToken`, `baseId`,
 `tableId`, and `environment` are present; `error` if a stored secret can't be
@@ -725,7 +725,7 @@ to prefix it with the node/action.
 
 ## 10. Testing strategy (offline / mockable — no live calls in CI)
 
-Testable **without a live Airtable account**, matching localflow's existing seams
+Testable **without a live Airtable account**, matching saiife's existing seams
 (pure modules, injected backends, an injected clock, fixture events):
 
 - **`AirtableApi` interface + `MockAirtableApi` seam.** `airtable-api.ts` is
@@ -816,7 +816,7 @@ only in manual dogfooding against a personal base.
    shipped tracker worker ships with a conservative default (max writes/run; forbid
    ungated writes to a named "locked" field/table) is a product-safety call for the
    backstop phase (§12 Phase 3). Whatever the default, it is **deterministic**
-   (lfguard-style), never model-mediated.
+   (saiifeguard-style), never model-mediated.
 7. **`tableId` by id vs name.** Airtable accepts a table id (`tbl…`) or its display
    name in the path; names are friendlier but rename-fragile, ids are stable but
    opaque. MVP accepts either (the config coerces); flagged as a UX/robustness call
@@ -865,7 +865,7 @@ needs no ingress).
   receiver (§4.5) — the first cloud-ingress dependency; the email-trigger
   composition wired by the templates track.
 - **Phase 3 — deterministic Airtable backstop:** the `airtable.limits` policy
-  (§7.3), lfguard-style, with the default decided (§11.6).
+  (§7.3), saiifeguard-style, with the default decided (§11.6).
 - **Phase 4 — richer conditions consumption:** verify the pinned envelope drives
   `gt`/`gte`/`contains`/`truthy`/`exists` over `record.fields.<name>`; ship the
   "triage tracker" template.
@@ -879,7 +879,7 @@ needs no ingress).
 
 ---
 
-## Appendix — reused localflow surfaces (by path)
+## Appendix — reused saiife surfaces (by path)
 
 - `src/shared/integrations.ts` — pinned `IntegrationDescriptor` /
   `IntegrationRegistry` / `LiveConnector` (incl. the optional 3rd `config` arg on
@@ -914,5 +914,5 @@ needs no ingress).
 - **Deliberately NOT reused:** `src/main/net/ssrf-guard.ts` (fixed cloud host, no
   self-host, §7.2), `src/shared/money.ts` (user-defined number fields, never-coerce,
   §7.2).
-- `guard/` (lfguard) — the deterministic-guard posture a future Airtable backstop
+- `guard/` (saiifeguard) — the deterministic-guard posture a future Airtable backstop
   (§12 Phase 3) would borrow.

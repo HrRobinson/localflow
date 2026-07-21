@@ -7,7 +7,7 @@ import { confinePath, gitDiff, gitStatus } from '../../src/main/git'
 
 /** A fresh real git repo in a temp dir (realpath'd — macOS tmpdir is a symlink). */
 function makeRepo(): string {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'localflow-git-')))
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'saiife-git-')))
   execFileSync('git', ['init', '-q'], { cwd: dir })
   return dir
 }
@@ -19,7 +19,7 @@ describe('confinePath', () => {
   // `toplevel` always exists (it comes from `git rev-parse --show-toplevel`
   // for a real repo), so these lexical-behavior tests use a real temp dir to
   // match that precondition.
-  const top = realpathSync(mkdtempSync(join(tmpdir(), 'localflow-confine-')))
+  const top = realpathSync(mkdtempSync(join(tmpdir(), 'saiife-confine-')))
 
   it('accepts a legit repo-relative path, returning it absolute', () => {
     expect(confinePath(top, 'src/main.ts')).toBe(join(top, 'src/main.ts'))
@@ -85,7 +85,7 @@ describe('confinePath', () => {
 
 describe('gitStatus (real git)', () => {
   it('reports repo:false for a non-repo directory', async () => {
-    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'localflow-norepo-')))
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'saiife-norepo-')))
     expect(await gitStatus(dir)).toEqual({ repo: false })
   })
 
@@ -109,7 +109,7 @@ describe('gitDiff (real git)', () => {
   it('does NOT leak a file outside the repo via an absolute path', async () => {
     const repo = makeRepo()
     // A readable secret OUTSIDE the repo, created by this test.
-    const outside = realpathSync(mkdtempSync(join(tmpdir(), 'localflow-outside-')))
+    const outside = realpathSync(mkdtempSync(join(tmpdir(), 'saiife-outside-')))
     const secret = join(outside, 'secret.txt')
     writeFileSync(secret, 'TOP-SECRET-CONTENTS\n')
     const res = await gitDiff(repo, secret, false)
@@ -144,7 +144,7 @@ describe('gitDiff (real git)', () => {
   })
 
   it('returns the friendly empty result for a non-repo cwd', async () => {
-    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'localflow-norepo-')))
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'saiife-norepo-')))
     expect(await gitDiff(dir, 'anything.txt', false)).toEqual({ text: '', truncated: false })
   })
 
@@ -156,7 +156,7 @@ describe('gitDiff (real git)', () => {
   it('does NOT leak an outside file through a symlinked directory (realpath escape)', async () => {
     const repo = makeRepo()
     // A secret OUTSIDE the repo, in its own temp dir.
-    const outside = realpathSync(mkdtempSync(join(tmpdir(), 'localflow-symlink-secret-')))
+    const outside = realpathSync(mkdtempSync(join(tmpdir(), 'saiife-symlink-secret-')))
     const secret = join(outside, 'secret.txt')
     writeFileSync(secret, 'TOP-SECRET-VIA-SYMLINK\n')
     // An UNTRACKED symlinked directory inside the repo pointing at `outside`.
@@ -178,7 +178,7 @@ describe('gitDiff (real git)', () => {
 
   it('confinePath rejects a symlinked directory component even though it is lexically inside', () => {
     const repo = makeRepo()
-    const outside = realpathSync(mkdtempSync(join(tmpdir(), 'localflow-symlink-secret-')))
+    const outside = realpathSync(mkdtempSync(join(tmpdir(), 'saiife-symlink-secret-')))
     symlinkSync(outside, join(repo, 'linkdir'))
     // Lexically this looks fine (no absolute path, no '..', no .git segment) —
     // only realpath containment reveals the escape.

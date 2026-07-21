@@ -97,7 +97,7 @@ describe('buildGeminiHookSettings', () => {
 
 describe('buildGeminiHookSettings BeforeTool', () => {
   const guard: ResolvedGuard = {
-    bin: '/g/lfguard',
+    bin: '/g/saiifeguard',
     auditLog: '/g/audit.jsonl',
     packs: [],
     seenDir: '/g/guard-seen'
@@ -135,23 +135,23 @@ describe('buildGeminiHookSettings BeforeTool', () => {
 
 describe('writeGeminiHookSettings', () => {
   it('writes valid JSON with 0600 permissions and returns the path', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'localflow-test-'))
+    const dir = mkdtempSync(join(tmpdir(), 'saiife-test-'))
     const file = writeGeminiHookSettings(dir, 'p2', 1234, 'tok2', null)
-    expect(file).toBe(join(dir, 'localflow-gemini-hooks-p2.json'))
+    expect(file).toBe(join(dir, 'saiife-gemini-hooks-p2.json'))
     const parsed = JSON.parse(readFileSync(file, 'utf8'))
     expect(parsed.hooks.AfterAgent).toBeDefined()
     expect(statSync(file).mode & 0o777).toBe(0o600)
   })
 
   it('throws when paneId attempts path traversal', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'localflow-test-'))
+    const dir = mkdtempSync(join(tmpdir(), 'saiife-test-'))
     expect(() => writeGeminiHookSettings(dir, '../escape', 1234, 'tok2', null)).toThrow()
   })
 })
 
 describe('removeGeminiHookSettings', () => {
   it('removes a previously written settings file and never throws', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'localflow-test-'))
+    const dir = mkdtempSync(join(tmpdir(), 'saiife-test-'))
     const file = writeGeminiHookSettings(dir, 'p3', 1234, 'tok3', null)
     removeGeminiHookSettings(dir, 'p3')
     expect(existsSync(file)).toBe(false)

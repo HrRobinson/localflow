@@ -66,7 +66,7 @@ describe('SessionManager', () => {
       return pty
     }
     mgr = new SessionManager({
-      settingsDir: mkdtempSync(join(tmpdir(), 'localflow-sm-')),
+      settingsDir: mkdtempSync(join(tmpdir(), 'saiife-sm-')),
       port: 9999,
       token: 'tok',
       spawnFn
@@ -218,7 +218,7 @@ describe('SessionManager', () => {
     let t = 0
     const ptysT: FakePty[] = []
     const mgrT = new SessionManager({
-      settingsDir: mkdtempSync(join(tmpdir(), 'localflow-sm-')),
+      settingsDir: mkdtempSync(join(tmpdir(), 'saiife-sm-')),
       port: 9999,
       token: 'tok',
       now: () => t,
@@ -241,11 +241,11 @@ describe('SessionManager', () => {
     expect(spawnCalls[0].bin).toBe('fake-claude')
     expect(spawnCalls[0].cwd).toBe('/some/project')
     expect(spawnCalls[0].args[0]).toBe('--settings')
-    expect(spawnCalls[0].args[1]).toContain(`localflow-hooks-${info.id}.json`)
+    expect(spawnCalls[0].args[1]).toContain(`saiife-hooks-${info.id}.json`)
   })
 
   it('deleteSession removes the per-session hook-settings file', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'localflow-sm-'))
+    const dir = mkdtempSync(join(tmpdir(), 'saiife-sm-'))
     const mgrD = new SessionManager({
       settingsDir: dir,
       port: 9999,
@@ -253,7 +253,7 @@ describe('SessionManager', () => {
       spawnFn: () => new FakePty()
     })
     const info = mgrD.create('/p', claudeSpec, 1)
-    const file = join(dir, `localflow-hooks-${info.id}.json`)
+    const file = join(dir, `saiife-hooks-${info.id}.json`)
     expect(existsSync(file)).toBe(true)
     mgrD.deleteSession(info.id)
     expect(existsSync(file)).toBe(false)
@@ -380,7 +380,7 @@ describe('SessionManager', () => {
 
   it('spawn failure yields an exited session with an error message', () => {
     const failing = new SessionManager({
-      settingsDir: mkdtempSync(join(tmpdir(), 'localflow-sm-')),
+      settingsDir: mkdtempSync(join(tmpdir(), 'saiife-sm-')),
       port: 9999,
       token: 'tok',
       spawnFn: () => {
@@ -400,7 +400,7 @@ describe('SessionManager', () => {
 
   it('spawn failure surfaces the real error code, e.g. a permission problem', () => {
     const failing = new SessionManager({
-      settingsDir: mkdtempSync(join(tmpdir(), 'localflow-sm-')),
+      settingsDir: mkdtempSync(join(tmpdir(), 'saiife-sm-')),
       port: 9999,
       token: 'tok',
       spawnFn: () => {
@@ -416,7 +416,7 @@ describe('SessionManager', () => {
 
   it('spawn failure from a non-Error throw still yields a readable message', () => {
     const failing = new SessionManager({
-      settingsDir: mkdtempSync(join(tmpdir(), 'localflow-sm-')),
+      settingsDir: mkdtempSync(join(tmpdir(), 'saiife-sm-')),
       port: 9999,
       token: 'tok',
       spawnFn: () => {
@@ -431,7 +431,7 @@ describe('SessionManager', () => {
   it('a nonexistent cwd is blamed by name instead of mis-blaming the agent binary', () => {
     let spawnCalled = false
     const withCheck = new SessionManager({
-      settingsDir: mkdtempSync(join(tmpdir(), 'localflow-sm-')),
+      settingsDir: mkdtempSync(join(tmpdir(), 'saiife-sm-')),
       port: 9999,
       token: 'tok',
       spawnFn: () => {
@@ -455,7 +455,7 @@ describe('SessionManager', () => {
 
   it('an existing cwd spawns normally when pathExists is supplied', () => {
     const withCheck = new SessionManager({
-      settingsDir: mkdtempSync(join(tmpdir(), 'localflow-sm-')),
+      settingsDir: mkdtempSync(join(tmpdir(), 'saiife-sm-')),
       port: 9999,
       token: 'tok',
       spawnFn: (bin, args, opts) => {
@@ -807,7 +807,7 @@ describe('SessionManager', () => {
         return new FakePty()
       }
       const m = new SessionManager({
-        settingsDir: mkdtempSync(join(tmpdir(), 'localflow-oc-fresh-')),
+        settingsDir: mkdtempSync(join(tmpdir(), 'saiife-oc-fresh-')),
         port: 1,
         token: 't',
         spawnFn
@@ -831,7 +831,7 @@ describe('SessionManager', () => {
         return new FakePty()
       }
       const m = new SessionManager({
-        settingsDir: mkdtempSync(join(tmpdir(), 'localflow-custom-fresh-')),
+        settingsDir: mkdtempSync(join(tmpdir(), 'saiife-custom-fresh-')),
         port: 1,
         token: 't',
         spawnFn
@@ -849,7 +849,7 @@ describe('SessionManager', () => {
         return new FakePty()
       }
       const m = new SessionManager({
-        settingsDir: mkdtempSync(join(tmpdir(), 'localflow-ov-')),
+        settingsDir: mkdtempSync(join(tmpdir(), 'saiife-ov-')),
         port: 1,
         token: 't',
         spawnFn
@@ -875,7 +875,7 @@ describe('SessionManager', () => {
         return new FakePty()
       }
       const m = new SessionManager({
-        settingsDir: mkdtempSync(join(tmpdir(), 'localflow-se-')),
+        settingsDir: mkdtempSync(join(tmpdir(), 'saiife-se-')),
         port: 1,
         token: 't',
         spawnFn
@@ -885,19 +885,19 @@ describe('SessionManager', () => {
         command: 'fake-openclaw',
         resumeArgs: [],
         hookAdapter: 'none',
-        env: { LOCALFLOW_ENDPOINT: 'http://127.0.0.1:1', LOCALFLOW_TOKEN: 'stale' }
+        env: { SAIIFE_ENDPOINT: 'http://127.0.0.1:1', SAIIFE_TOKEN: 'stale' }
       }
       m.restore('oc-1', '/tmp', spec, 'oc', 1)
       // A live pty keeps its env; the merge only shapes the NEXT spawn.
-      m.updateSpecEnv('oc-1', { LOCALFLOW_TOKEN: 'fresh' })
+      m.updateSpecEnv('oc-1', { SAIIFE_TOKEN: 'fresh' })
       m.restart('oc-1')
-      expect(calls[0].env.LOCALFLOW_TOKEN).toBe('fresh')
-      expect(calls[0].env.LOCALFLOW_ENDPOINT).toBe('http://127.0.0.1:1')
+      expect(calls[0].env.SAIIFE_TOKEN).toBe('fresh')
+      expect(calls[0].env.SAIIFE_ENDPOINT).toBe('http://127.0.0.1:1')
     })
 
     it('updateSpecEnv ignores unknown ids and browser panes', () => {
       const m = new SessionManager({
-        settingsDir: mkdtempSync(join(tmpdir(), 'localflow-se2-')),
+        settingsDir: mkdtempSync(join(tmpdir(), 'saiife-se2-')),
         port: 1,
         token: 't',
         spawnFn: () => new FakePty()
@@ -991,7 +991,7 @@ describe('SessionManager', () => {
       let t = 1000
       const ptysT: FakePty[] = []
       const mgrT = new SessionManager({
-        settingsDir: mkdtempSync(join(tmpdir(), 'localflow-sm-')),
+        settingsDir: mkdtempSync(join(tmpdir(), 'saiife-sm-')),
         port: 9999,
         token: 'tok',
         now: () => t,
@@ -1019,7 +1019,7 @@ describe('SessionManager', () => {
       let t = 1000
       const ptysT: FakePty[] = []
       const mgrT = new SessionManager({
-        settingsDir: mkdtempSync(join(tmpdir(), 'localflow-sm-')),
+        settingsDir: mkdtempSync(join(tmpdir(), 'saiife-sm-')),
         port: 9999,
         token: 'tok',
         now: () => t,
@@ -1043,7 +1043,7 @@ describe('SessionManager', () => {
       let t = 1000
       const ptysT: FakePty[] = []
       const mgrT = new SessionManager({
-        settingsDir: mkdtempSync(join(tmpdir(), 'localflow-sm-')),
+        settingsDir: mkdtempSync(join(tmpdir(), 'saiife-sm-')),
         port: 9999,
         token: 'tok',
         now: () => t,
@@ -1293,7 +1293,7 @@ describe('SessionManager', () => {
     // embeds `--dangerously-bypass-hook-trust` and a `check --hook-exit`
     // command string, so we can assert whether the guard rode the CLI.
     const guard: ResolvedGuard = {
-      bin: '/fake/lfguard',
+      bin: '/fake/saiifeguard',
       auditLog: '/fake/audit.log',
       packs: ['default'],
       seenDir: '/fake/guard-seen'
@@ -1314,7 +1314,7 @@ describe('SessionManager', () => {
         return pty
       }
       return new SessionManager({
-        settingsDir: mkdtempSync(join(tmpdir(), 'localflow-g2-')),
+        settingsDir: mkdtempSync(join(tmpdir(), 'saiife-g2-')),
         port: 9999,
         token: 'tok',
         now: () => t,
@@ -1393,7 +1393,7 @@ describe('SessionManager', () => {
   describe('SessionManager.emitNotice', () => {
     it('fans a synthetic line out to every onData subscriber', () => {
       const mgr = new SessionManager({
-        settingsDir: mkdtempSync(join(tmpdir(), 'localflow-sm-')),
+        settingsDir: mkdtempSync(join(tmpdir(), 'saiife-sm-')),
         port: 0,
         token: 'tok'
       })
@@ -1411,7 +1411,7 @@ describe('SessionManager', () => {
 
 describe('SessionManager guardVerification (Codex self-verify badge)', () => {
   const guard: ResolvedGuard = {
-    bin: '/fake/lfguard',
+    bin: '/fake/saiifeguard',
     auditLog: '/fake/audit.log',
     packs: ['default'],
     seenDir: '/fake/guard-seen'
@@ -1446,7 +1446,7 @@ describe('SessionManager guardVerification (Codex self-verify badge)', () => {
       return pty
     }
     return new SessionManager({
-      settingsDir: mkdtempSync(join(tmpdir(), 'localflow-gv-')),
+      settingsDir: mkdtempSync(join(tmpdir(), 'saiife-gv-')),
       port: 9999,
       token: 'tok',
       now: () => t,

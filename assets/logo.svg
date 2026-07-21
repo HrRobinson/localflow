@@ -1,5 +1,5 @@
 <svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
-  <!-- localflow app icon: three session panes in the status colors
+  <!-- saiife app icon: three session panes in the status colors
        (working blue, needs-you yellow, done green) on the app surface. -->
   <rect x="0" y="0" width="1024" height="1024" rx="229" fill="#141519"/>
   <rect x="232" y="272" width="150" height="480" rx="42" fill="#3b82f6"/>

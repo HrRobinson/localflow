@@ -47,7 +47,7 @@ export const pagerdutyDescriptor: IntegrationDescriptorDef = {
       secret: false,
       required: true,
       type: 'string',
-      placeholder: 'localflow-automation@acme.com'
+      placeholder: 'saiife-automation@acme.com'
     },
     {
       key: 'region',
@@ -75,7 +75,7 @@ export const pagerdutyDescriptor: IntegrationDescriptorDef = {
     },
     {
       key: 'environment',
-      label: 'localflow environment (1-9)',
+      label: 'saiife environment (1-9)',
       secret: false,
       required: true,
       type: 'number'

@@ -1,7 +1,7 @@
 # PagerDuty Connector — Design
 
 **Date:** 2026-07-20
-**Status:** Design (spec) — not started. Design-approval gate for localflow's
+**Status:** Design (spec) — not started. Design-approval gate for saiife's
 **on-call incident worker**. Where Sentry is the *sensor* (an error surfaced) and
 GitHub is the *actuator* (a fix authored, a human merges), PagerDuty is the
 **coordinator**: the surface an on-call human is paged through, and therefore the
@@ -45,7 +45,7 @@ alone.
 
 ## 1. Goal + MVP scope
 
-**Goal (one sentence):** Let a localflow user assemble, on the canvas, an on-call
+**Goal (one sentence):** Let a saiife user assemble, on the canvas, an on-call
 incident worker that wakes on a PagerDuty page (`incident.triggered`), reads the
 incident + service facts through the PagerDuty REST API, drives an agent pane to
 triage it — pulling the Sentry stack trace and driving a GitHub fix PR through
@@ -66,7 +66,7 @@ API key / webhook secret in the OS keychain, **never** rendered.
   `Authorization: Token token=<key>`, stored in the keychain via `CredentialStore`.
   Write actions additionally send the **`From:` header** with a configured PagerDuty
   user's email (PagerDuty attributes REST mutations to a real user — §8). The
-  **Events API v2 routing key** (for *creating*/triggering incidents from localflow)
+  **Events API v2 routing key** (for *creating*/triggering incidents from saiife)
   is designed-for and stored the same way, but the MVP write surface is
   REST-management, not enqueue (§8, §13.1).
 - A **PagerDuty API client** (`pagerduty-api.ts`) — the **sole** place any
@@ -94,14 +94,14 @@ API key / webhook secret in the OS keychain, **never** rendered.
   gates. **`acknowledgeIncident`, `resolveIncident`, `escalateIncident`, and
   `addNote` all flow-gated** — even `acknowledge`, which is arguably auto-safe
   (§9). The connector **never auto-mutates**.
-- **Single account, single localflow environment.** Config-as-code `pagerduty`
+- **Single account, single saiife environment.** Config-as-code `pagerduty`
   block in `config.json` (non-secret refs only: region, `fromEmail`, default
   service/escalation-policy ids, `webhookUrl`); API key + webhook secret +
   (optional) routing key in the keychain.
 
 ### Out of scope (MVP) — explicitly deferred
 
-- **Creating/triggering incidents from localflow** (Events API v2 `enqueue` with a
+- **Creating/triggering incidents from saiife** (Events API v2 `enqueue` with a
   routing key — `event_action: trigger`). The routing-key credential + client path
   are *built* so a phase-2 `triggerIncident` action is additive; the MVP write
   surface is management of an **existing** incident (§8, §13.1).
@@ -138,9 +138,9 @@ is the **on-call coordination layer**: the page that wakes a human, the
 acknowledge that says "I've got it", the escalation that says "I don't, wake the
 next person", and the resolve that closes the loop. That is a **coordination**
 role, and it is exactly the role a flow can automate *around* the Sentry+GitHub
-pair: PagerDuty pages → localflow triages and (if it can) fixes → PagerDuty
+pair: PagerDuty pages → saiife triages and (if it can) fixes → PagerDuty
 records the outcome. PagerDuty's own **Incident Workflows / Event Orchestration**
-cannot drive a coding agent across a git host; localflow's value here is the
+cannot drive a coding agent across a git host; saiife's value here is the
 **cross-tool compose** (§7), not re-implementing PagerDuty's routing.
 
 ### 2.2 The PagerDuty API for trigger → read → act
@@ -168,7 +168,7 @@ Grounded in the completed feasibility gate:
   There is no pure "app/bot" actor as GitHub Apps or Linear's `actor=app` offer;
   the connector acts **as a configured service-account user** (§8). This is a real
   identity-posture wrinkle (it is why the verdict is YELLOW, not GREEN), not a
-  blocker: a dedicated "localflow automation" PagerDuty user is the clean shape.
+  blocker: a dedicated "saiife automation" PagerDuty user is the clean shape.
 - **Auth.** A single **REST API key** (`Authorization: Token token=<key>`) — either
   an account-level "General Access" key or a user token. No JWT dance (simpler than
   GitHub's App path). The **Events API v2 routing key** is a *separate* per-service
@@ -228,17 +228,17 @@ below; neither blocks the MVP slice.
 
 ## 3. The core loop → PagerDuty primitives
 
-localflow's on-call loop is `trigger → read → triage (agent, compose) → act
+saiife's on-call loop is `trigger → read → triage (agent, compose) → act
 (gated)`. Each stage maps to a concrete PagerDuty primitive and the concrete
 flow-engine mechanism that runs it:
 
-| Stage | PagerDuty primitive | localflow / flow-engine mechanism |
+| Stage | PagerDuty primitive | saiife / flow-engine mechanism |
 |---|---|---|
 | **trigger** | A verified Webhooks-v3 event: `incident.triggered` (the page), `incident.acknowledged`, `incident.escalated`, `incident.resolved`. | The shared `webhook-receiver` verifies the `X-PagerDuty-Signature` `v1=` HMAC → the thin `pagerduty-webhook-server` parses the envelope → the connector normalizes it to a `SeedEvent` → its `subscribe(triggerId, handler)` hands it to the engine, which `startRun`s the flow with the payload in trigger-node context. |
 | **read** | REST `GET /incidents/{id}` / `GET /services/{id}`. | An `action` node (`getIncident` / `getService`) → `registry.invokeAction('pagerduty', ref, params)` → `PagerDutyConnector` calls `pagerduty-api.ts` → normalizes → the action-runner writes the result to context under the node id. |
-| **triage** | *(none — localflow's own coding-agent capability, composing with Sentry+GitHub)* | A builtin **`agent` node** (`agent-runner.ts`) drives a coding-agent pane through the guarded operator control-API (`POST /panes`, `/panes/:handle/prompt`, lfguard-guarded). It reads the Sentry stack trace and drives a GitHub fix through the sibling connectors' actions in the **same flow context** (§7); it reports via `FLOW_RESULT`. |
-| **route** | *(none — pure localflow)* | `selectEdges` evaluates edge conditions over the context the reads/agent wrote (`context.ts`) — e.g. `incident.urgency eq 'high'`, or `fix.opened truthy` to choose the resolve branch vs the escalate branch. Deterministic value compares; no LLM routes. |
-| **gate** | *(none — pure localflow)* | A `gate` node the author placed pauses the run `needs-you` (`ApprovalPort`, `types.ts`). `resolveIncident` / `escalateIncident` / `addNote` / `acknowledgeIncident` sit **downstream of the gate the author drew** (§9). |
+| **triage** | *(none — saiife's own coding-agent capability, composing with Sentry+GitHub)* | A builtin **`agent` node** (`agent-runner.ts`) drives a coding-agent pane through the guarded operator control-API (`POST /panes`, `/panes/:handle/prompt`, saiifeguard-guarded). It reads the Sentry stack trace and drives a GitHub fix through the sibling connectors' actions in the **same flow context** (§7); it reports via `FLOW_RESULT`. |
+| **route** | *(none — pure saiife)* | `selectEdges` evaluates edge conditions over the context the reads/agent wrote (`context.ts`) — e.g. `incident.urgency eq 'high'`, or `fix.opened truthy` to choose the resolve branch vs the escalate branch. Deterministic value compares; no LLM routes. |
+| **gate** | *(none — pure saiife)* | A `gate` node the author placed pauses the run `needs-you` (`ApprovalPort`, `types.ts`). `resolveIncident` / `escalateIncident` / `addNote` / `acknowledgeIncident` sit **downstream of the gate the author drew** (§9). |
 | **act** | REST write: `PUT /incidents/{id}` (status / escalation), `POST /incidents/{id}/notes`. | The gated `action` node (`acknowledgeIncident` / `resolveIncident` / `escalateIncident` / `addNote`) → `invokeAction` → `pagerduty-api.ts` write with the `From:` acting-user header. **Failure = a rejected promise** (the pinned convention); the action-runner forwards the *real* PagerDuty error verbatim. |
 
 **The authority is the graph the author drew, not the connector.** The connector
@@ -250,7 +250,7 @@ outcome* (note / escalate / resolve).
 
 ---
 
-## 4. Architecture in localflow
+## 4. Architecture in saiife
 
 ### 4.1 Where it sits
 
@@ -259,7 +259,7 @@ A new **main-process module set** under `src/main/pagerduty/`, mirroring
 descriptor/connector/normalize split). It is **opt-in**: with no `pagerduty`
 config entry (and no stored credential) the descriptor's `status()` returns
 `needs-config` and the engine refuses any PagerDuty node before any network call —
-localflow's "works with no integration" guarantee is unchanged.
+saiife's "works with no integration" guarantee is unchanged.
 
 The connector is the live implementation behind the registry's pinned
 `invokeAction`/`subscribe`, registered with
@@ -385,12 +385,12 @@ through `PaneDriver` (`src/main/flow/pane-driver.ts`) → the exported
 `handleRequest` router (`src/main/control-api.ts`) under an `OperatorGrantStore`
 grant: `createTerminal` → `POST /panes` (`agentId` ∈ `OPERATOR_TERMINAL_AGENTS` =
 `{claude, codex, gemini}`), `prompt` → `POST /panes/:handle/prompt`
-(lfguard-guarded). The pane's cwd is derived server-side from the group's members.
+(saiifeguard-guarded). The pane's cwd is derived server-side from the group's members.
 This keeps the PagerDuty-triggered triage **inside the operator boundary** — the
-capability gate, the lfguard prompt guard, and per-environment isolation apply
+capability gate, the saiifeguard prompt guard, and per-environment isolation apply
 identically. The connector only *starts the run* and *records the outcome*.
 
-### 4.7 Reused localflow surfaces
+### 4.7 Reused saiife surfaces
 
 - `src/shared/integrations.ts` — the pinned `IntegrationDescriptor` /
   `IntegrationRegistry` / `LiveConnector` this connector satisfies; `IntegrationId`
@@ -433,13 +433,13 @@ boundary):
 | key | label | secret | required | type | note |
 |---|---|---|---|---|---|
 | `apiKey` | PagerDuty REST API key | **yes** | yes | string | `Authorization: Token token=…`. Keychain only. Placeholder `u+…` / account key. |
-| `fromEmail` | Acting user email (`From:`) | no | yes | string | The PagerDuty user REST mutations are attributed to (§8). Non-secret ref. A dedicated "localflow automation" user is recommended. |
+| `fromEmail` | Acting user email (`From:`) | no | yes | string | The PagerDuty user REST mutations are attributed to (§8). Non-secret ref. A dedicated "saiife automation" user is recommended. |
 | `webhookSecret` | Webhook v3 signing secret | **yes** | yes | string | Verifies `X-PagerDuty-Signature` `v1=`. Keychain only. |
 | `routingKey` | Events API v2 routing key | **yes** | no | string | Per-service integration key for `enqueue` (create/trigger). Keychain only. Deferred write path (§13.1). |
 | `region` | Region (`us` / `eu`) | no | yes | string | Selects the fixed base URL (§4.5). Default `us`. Validated enum, **not** free-form (no SSRF). |
 | `serviceId` | Default service id | no | no | string | e.g. `PXXXXXX`. Optional; actions/triggers may filter per-node. |
 | `escalationPolicyId` | Default escalation policy | no | no | string | Used by `escalateIncident` when reassigning. Non-secret ref. |
-| `environment` | localflow environment (1-9) | no | yes | number | Which env hosts PagerDuty work (same field/validation as the siblings). |
+| `environment` | saiife environment (1-9) | no | yes | number | Which env hosts PagerDuty work (same field/validation as the siblings). |
 | `webhookUrl` | Ingress webhook URL | no | no | string | The tunnel/relay delivery address (§4.4). Placeholder `https://<tunnel>/pagerduty/webhook`. |
 
 `status('pagerduty')` reports `needs-config` until `apiKey` + `webhookSecret` +
@@ -594,7 +594,7 @@ trigger, the reads, and the gated writes; the **triage + fix** live in a builtin
         │     Diagnose it. If you can fix it, fix it on a new branch and end with
         │     FLOW_RESULT: {\"branch\":\"<name>\",\"summary\":\"<diagnosis>\",\"fixable\":true};
         │     if not, end with FLOW_RESULT: {\"summary\":\"<why>\",\"fixable\":false}."
-        │  → PaneDriver.createTerminal / prompt (guarded control-API, lfguard)
+        │  → PaneDriver.createTerminal / prompt (guarded control-API, saiifeguard)
         │  → parseFlowResult(peek) → context['triage'] = { branch?, summary, fixable }
         ▼
 [action: pagerduty / addNote]                 GATED upstream OR posted straight —
@@ -646,7 +646,7 @@ Node-by-node against the engine:
 4. **Agent triages.** The builtin `agent` node diagnoses and (if fixable) authors a
    branch, reporting `{ branch?, summary, fixable }` via `FLOW_RESULT`.
 5. **`addNote` records the diagnosis.** The agent's `summary` (+ later the PR link)
-   lands on the incident timeline — the human sees localflow's reasoning in
+   lands on the incident timeline — the human sees saiife's reasoning in
    PagerDuty.
 6. **Route on `fixable`.** Fixable → the GitHub fix sub-loop (gate → `openPR` → the
    human merges → gate → `resolveIncident`). Not fixable → gate → `escalateIncident`.
@@ -672,7 +672,7 @@ supplies authority.
 - **The `From:` acting-user header (writes).** PagerDuty attributes REST mutations
   (status changes, notes, escalation) to a **named user**, supplied as
   `From: <fromEmail>`. `fromEmail` is a **non-secret** ref (an email, not a
-  credential); the recommended shape is a dedicated **"localflow automation"
+  credential); the recommended shape is a dedicated **"saiife automation"
   PagerDuty user** so the incident timeline reads clearly and the actor is auditable.
   This is the closest PagerDuty offers to an app identity (§2.2) — there is no bot
   actor, which is why the verdict is YELLOW.
@@ -725,7 +725,7 @@ escalating **wakes another human**. Both belong behind an author-placed gate by
 construction (§7). There is no "connector default policy" that resolves or escalates
 on its own.
 
-**Optional deterministic backstop (phased, §14).** In the spirit of **lfguard**
+**Optional deterministic backstop (phased, §14).** In the spirit of **saiifeguard**
 (`guard/`), a small declarative `pagerduty.limits` policy enforced **inside the
 connector before any mutation** — e.g. `resolveRequiresGate: true` (default on),
 `maxEscalationsPerRun: 1`. Deterministic, no model in the loop — defense in depth
@@ -754,7 +754,7 @@ routing, just less expressively.
 
 ## 11. Error handling
 
-localflow's principle (error-message-style memory; demonstrated in
+saiife's principle (error-message-style memory; demonstrated in
 `credential-store.ts`, `action-runner.ts`, `control-api.ts`): **every failure is
 human-readable, actionable, and carries the real underlying exception. No silent
 catch. No bare "failed" / 404-vibe.** A write signals failure by **rejecting** its
@@ -775,7 +775,7 @@ surfaces it on the run.
 | **Escalate with no higher level (400)** | PagerDuty's escalation error | Rejects: "Can't escalate #<n>: it is already at the top of its escalation policy." No silent no-op. |
 | **Rate-limit (429 / `Retry-After`)** | the reset time from the header | `pagerduty-api` retries with **capped backoff** honoring the header; only after exhausting retries does it reject with "PagerDuty rate limit hit; resets in ~Ns." Not swallowed. |
 | **Agent pane instant-exit** (triage) | the pane's REAL exit tail | The `agent` node fails forwarding `info.message` verbatim — never a vaguer wrapper. |
-| **lfguard blocks the triage prompt** | the canonical deny message | `PaneDriver.prompt` returns 403; the agent node surfaces the guard's own message verbatim. |
+| **saiifeguard blocks the triage prompt** | the canonical deny message | `PaneDriver.prompt` returns 403; the agent node surfaces the guard's own message verbatim. |
 | **Ingress/tunnel down** | the unreachable `webhookUrl` | Startup/health check fails loudly: "PagerDuty webhook URL '<url>' is unreachable — no pages will arrive." Never a silent dead trigger. |
 
 The connector **never** catches-and-drops. Where PagerDuty returns a precise error,
@@ -786,7 +786,7 @@ only prefixes it with the node/action.
 
 ## 12. Testing strategy (offline / mockable — no live calls in CI)
 
-Testable **without a live PagerDuty account**, matching localflow's existing seams
+Testable **without a live PagerDuty account**, matching saiife's existing seams
 (pure modules, injected backends, fixture events):
 
 - **`PagerDutyApi` interface + `MockPagerDutyApi` seam.** `pagerduty-api.ts` is
@@ -835,10 +835,10 @@ only in manual dogfooding against a scratch account.
 
 1. **REST-management-only vs Events API v2 in MVP.** MVP manages an **existing**
    incident (REST: ack/resolve/escalate/note). The **Events API v2** routing-key
-   path (create/trigger incidents from localflow, `event_action:trigger`) is *built*
+   path (create/trigger incidents from saiife, `event_action:trigger`) is *built*
    (credential + client) but not surfaced as an action. **Recommendation:
    REST-management MVP; add a phase-2 `triggerIncident` action** once a real
-   "localflow raises a page" use-case lands. Either way, both surfaces stay isolated
+   "saiife raises a page" use-case lands. Either way, both surfaces stay isolated
    in `pagerduty-api.ts`.
 2. **Webhook-secret rotation — multiple `v1=` signatures.** The shared receiver's
    `parseHeader` returns one signature and verifies against one secret; a rotation
@@ -849,7 +849,7 @@ only in manual dogfooding against a scratch account.
    and try both. **Recommendation: (a) for MVP, (b) as the durable fix** — flagged
    as a shared-infra follow-up, not a connector-only concern.
 3. **The `From:` acting identity — single service-account vs per-flow actor.** MVP
-   uses one configured `fromEmail` (a dedicated "localflow automation" user). A
+   uses one configured `fromEmail` (a dedicated "saiife automation" user). A
    future product surface might attribute each flow's writes to the flow's owner.
    **Recommendation: single service-account user for MVP** (clean audit trail,
    simplest config).
@@ -906,13 +906,13 @@ dogfoodable against a scratch account.
   Wire the full §7 loop composing **Sentry** (`getEvent`) + **GitHub** (`openPR`).
   Programmatic webhook-subscription management (§13.5).
 - **Phase 3 — deterministic write backstop:** the `pagerduty.limits` policy (§9),
-  lfguard-style (`resolveRequiresGate`, `maxEscalationsPerRun`).
+  saiifeguard-style (`resolveRequiresGate`, `maxEscalationsPerRun`).
 - **Phase 4 — richer conditions consumption:** once the conditions track lands
   `FlowEdgeCondition` (§10), verify the pinned fields drive
   `eq`/`ne`/`gt`/`contains`/`exists` end-to-end (e.g. "only escalate when
   `incident.urgency eq 'high'` and `incident.priority eq 'p1'`").
 - **Phase 5 — the Events API v2 trigger path:** a `triggerIncident` action so a flow
-  can *raise* a page from localflow (§13.1), plus `incident.annotated`/`.reassigned`
+  can *raise* a page from saiife (§13.1), plus `incident.annotated`/`.reassigned`
   triggers and multi-service fan-out.
 - **Phase 6 — expand alerting hosts (the same-slot sibling): Opsgenie.** **Opsgenie**
   (Atlassian) occupies the **same on-call/alerting slot** as PagerDuty — a page, an
@@ -928,7 +928,7 @@ dogfoodable against a scratch account.
 
 ---
 
-## Appendix — reused / satisfied localflow surfaces (by path)
+## Appendix — reused / satisfied saiife surfaces (by path)
 
 - `src/shared/integrations.ts` — the pinned `IntegrationDescriptor` /
   `IntegrationRegistry` / `LiveConnector` this connector satisfies; `IntegrationId`
@@ -957,7 +957,7 @@ dogfoodable against a scratch account.
 - `src/main/flow/pane-driver.ts` — `PaneDriver.createTerminal`/`prompt` → the
   guarded operator control-API (`POST /panes`, `/panes/:handle/prompt`).
 - `src/main/control-api.ts` — `handleRequest`, `OPERATOR_TERMINAL_AGENTS`
-  (`{claude, codex, gemini}`), the lfguard prompt guard on `/prompt`.
+  (`{claude, codex, gemini}`), the saiifeguard prompt guard on `/prompt`.
 - `src/main/flow/trigger-subscriber.ts` — how `subscribe` seeds runs;
   `coerceEvent` / `matchesFilter` the webhook `SeedEvent` flows through.
 - `src/main/flow/context.ts` — `resolveField` / `applyTemplate` / `selectEdges`;
@@ -966,7 +966,7 @@ dogfoodable against a scratch account.
   human-"no"-is-not-a-failure gate contract) and the `ApprovalPort` gate seam.
 - `src/main/sentry/*` + `src/main/github/*` — the **sibling connectors** the §7
   on-call loop composes with (Sentry for the error detail, GitHub for the fix PR).
-- `guard/` (lfguard) — the deterministic-guard *posture* the optional §9 write
+- `guard/` (saiifeguard) — the deterministic-guard *posture* the optional §9 write
   backstop borrows (a policy floor under the author's gates, no model in the loop).
 - `docs/superpowers/specs/2026-07-18-sentry-connector-design.md` — the built sibling
   whose webhook-wrapper shape, vocabulary-pinning, error-table, and offline-testing

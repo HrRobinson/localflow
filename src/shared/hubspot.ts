@@ -8,7 +8,7 @@
  * NO raw HubSpot v3 shape lives here — those (the `properties` bag, search
  * filter groups, the error envelope) are isolated in `src/main/hubspot/
  * hubspot-api.ts` (the API blast radius, §7.1). This file holds ONLY
- * localflow-facing, already-normalized vocabulary: ids as strings, money/counts
+ * saiife-facing, already-normalized vocabulary: ids as strings, money/counts
  * as numbers, enums lowercased — the exact types the edge-condition operators
  * and the agent node read (§3.3). No secret ever appears in these shapes: the
  * private-app token and the webhook client secret stay in the keychain (§4).

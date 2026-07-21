@@ -47,10 +47,10 @@ export default function Activity({ sessions, activeId, onOpenSession }: Props): 
     // state synchronously here would just cascade an extra render).
     if (currentId === null) return
     let cancelled = false
-    void window.localflow.getActivity(currentId).then((list) => {
+    void window.saiife.getActivity(currentId).then((list) => {
       if (!cancelled) setEntries(list)
     })
-    const off = window.localflow.onActivity((id, entry) => {
+    const off = window.saiife.onActivity((id, entry) => {
       if (id === currentId) setEntries((prev) => upsertActivity(prev, entry))
     })
     return () => {
@@ -107,7 +107,7 @@ export default function Activity({ sessions, activeId, onOpenSession }: Props): 
       )}
 
       <p className="m-0 text-[11px] tracking-[0.06em] text-gray-600 uppercase">
-        Activity · since localflow started
+        Activity · since saiife started
       </p>
 
       {entries.length === 0 ? (

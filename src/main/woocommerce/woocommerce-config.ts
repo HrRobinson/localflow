@@ -6,7 +6,7 @@ import { checkStoreUrl } from './wc-ssrf'
  * user-edited, so only well-typed values are honored and any garbage DISABLES
  * the feature (returns `null`) rather than throwing. An absent/disabled block
  * means the connector never starts a webhook server and never subscribes — the
- * opt-in posture localflow's "works with no integration" guarantee relies on
+ * opt-in posture saiife's "works with no integration" guarantee relies on
  * (spec §4.1).
  *
  * Secrets are NOT here: the consumer key/secret and the webhook signing secret
@@ -20,7 +20,7 @@ export interface WoocommerceConfig {
   enabled: true
   /** The self-hosted store base URL — https + SSRF-safe (spec §5.1). */
   storeUrl: string
-  /** Which localflow environment (1-9) hosts WooCommerce work. */
+  /** Which saiife environment (1-9) hosts WooCommerce work. */
   environment: number
 }
 

@@ -41,7 +41,7 @@ export const linearDescriptor: IntegrationDescriptorDef = {
     },
     {
       key: 'environment',
-      label: 'localflow environment (1-9)',
+      label: 'saiife environment (1-9)',
       secret: false,
       required: true,
       type: 'number'
@@ -56,7 +56,7 @@ export const linearDescriptor: IntegrationDescriptorDef = {
     }
   ],
   triggers: [
-    { id: 'issue.delegated', label: 'Issue delegated to localflow' },
+    { id: 'issue.delegated', label: 'Issue delegated to saiife' },
     { id: 'issue.prompted', label: 'Human replied in the issue' }
   ],
   actions: [

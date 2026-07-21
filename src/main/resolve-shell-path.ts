@@ -31,8 +31,8 @@ export interface ResolveShellPathOptions {
 // Wrap the shell's $PATH in unguessable sentinels so a chatty rc file that
 // prints banners/noise to stdout can't corrupt the parse — we slice out only
 // what sits between the markers.
-const SENTINEL_START = '__LOCALFLOW_PATH_START__'
-const SENTINEL_END = '__LOCALFLOW_PATH_END__'
+const SENTINEL_START = '__SAIIFE_PATH_START__'
+const SENTINEL_END = '__SAIIFE_PATH_END__'
 const PROBE = `printf '%s%s%s' '${SENTINEL_START}' "$PATH" '${SENTINEL_END}'`
 
 // GUI-launched apps often miss these even when the shell probe fails; ensure

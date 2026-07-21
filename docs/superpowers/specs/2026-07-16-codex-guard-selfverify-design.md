@@ -4,8 +4,8 @@
 **Status:** Approved — decisions resolved, buildable. Option B (invocation-signal), bounded per-pane marker mechanism.
 **Builds on:** the shipped guard-hook pipeline (`guard-hook.ts` → `codex-hooks.ts`/`hook-adapter.ts` →
 `session-manager.ts` spawn), the guard audit log (`guard-audit-tail.ts` → `console-bus.ts` → `Console.tsx`),
-the M2 status-adapter tiers (`docs/superpowers/specs/2026-07-07-m2-status-adapters-design.md`), and lfguard
-G2 (`docs/superpowers/specs/2026-07-15-lfguard-g2-design.md`).
+the M2 status-adapter tiers (`docs/superpowers/specs/2026-07-07-m2-status-adapters-design.md`), and saiifeguard
+G2 (`docs/superpowers/specs/2026-07-15-saiifeguard-g2-design.md`).
 **Supersedes:** the earlier DRAFT (`draft-spec-codex-selfverify.md`), which spec'd the deny-only audit signal
 (Option C / "1a"). That approach is REPLACED by the bounded invocation-marker mechanism below; the DRAFT's
 Problem analysis, the "what is observable" investigation, and the HookEvent rule-out remain valid and are
@@ -33,7 +33,7 @@ spec addresses:
 > than assumed), the pane starts and runs completely normally, and the guard hook simply never fires for the
 > life of the session. The pane is indistinguishable from a correctly-guarded one: alive, no error message,
 > `guardOnCli` was true so the code *believes* protection is wired. The user runs commands all session
-> believing lfguard is standing behind them. It is not.
+> believing saiifeguard is standing behind them. It is not.
 
 This is worse than the instant-exit case precisely because it produces no signal at all today — a
 confident-but-wrong state, not a degraded-but-honest one. It violates the codebase's own stated design
@@ -45,9 +45,9 @@ the explicit bar for what's safe to ship).
 The indicator can only ever be as honest as the signal underneath it, and the signal here is **strictly
 one-sided**:
 
-- **A positive observation is airtight.** If lfguard's `check` command runs *even once* for a given pane,
+- **A positive observation is airtight.** If saiifeguard's `check` command runs *even once* for a given pane,
   that is direct proof that Codex actually invoked the configured `-c hooks.PreToolUse=...` command, that
-  `lfguard` actually ran, and therefore that the injected `-c` grammar was accepted and honored for that
+  `saiifeguard` actually ran, and therefore that the injected `-c` grammar was accepted and honored for that
   pane, this session. Nothing about the parsing-uncertainty in `codex-hooks.ts`'s docblock survives a single
   observed invocation.
 - **The absence of an observation proves nothing.** A pane that has simply not run a tool-call command yet,
@@ -79,7 +79,7 @@ marker is a separate, tiny, overwrite-in-place file, described next.
 ## RESOLVED decisions (locked)
 
 1. **Option B — clears on first observed invocation (allow OR deny), not only on deny.** RESOLVED.
-2. **Mechanism = bounded per-pane invocation marker, NOT allow-logging.** lfguard's `check` path, given a
+2. **Mechanism = bounded per-pane invocation marker, NOT allow-logging.** saiifeguard's `check` path, given a
    new `--seen-dir <PATH>` flag, overwrites a tiny per-tag marker file `<seen-dir>/<audit-tag>` on every
    evaluation. Overwrite (truncate) semantics ⇒ one small file per pane, rewritten each call, no unbounded
    growth. Best-effort / fail-open: a marker-write failure never affects the guard verdict or the pane. This
@@ -109,7 +109,7 @@ independent reasons — do not wire status events into the badge:
    `applyHookEvent` (`session-manager.ts:448-453`) only acts on these three.
 2. **The guard hook and the status hooks are two structurally separate `-c` overrides that never share a
    code path.** `buildCodexHookArgs` builds `guardArgs` (the `hooks.PreToolUse=[...]` override that shells
-   straight to `lfguard check` via `guardHookCommand`, never touching localflow's HTTP endpoint) completely
+   straight to `saiifeguard check` via `guardHookCommand`, never touching saiife's HTTP endpoint) completely
    independently of the tier-specific `notify=[...]` / `hooks.{UserPromptSubmit,PermissionRequest,Stop}=[...]`
    overrides that *do* curl `http://127.0.0.1:<port>/event`. Codex could accept one `-c` flag and reject the
    other; a `Stop` event reaching `applyHookEvent` proves the *status* wiring fired, not the *guard* wiring.
@@ -118,9 +118,9 @@ independent reasons — do not wire status events into the badge:
    enforcement, anywhere.** The e2e "idle pane keeps its badge" test (below) is a regression guard against a
    future refactor accidentally reintroducing this.
 
-### The chosen signal: a per-pane invocation marker written by `lfguard check`
+### The chosen signal: a per-pane invocation marker written by `saiifeguard check`
 
-`lfguard check` (`guard/crates/lfguard/src/main.rs:135-177`) is the single point that runs for **every**
+`saiifeguard check` (`guard/crates/saiifeguard/src/main.rs:135-177`) is the single point that runs for **every**
 `PreToolUse` invocation Codex actually dispatches to the guard. It already receives `--audit-tag <paneId>`
 (`guardHookCommand`, `guard-hook.ts:19-32`), where the tag is exactly the pane id. Adding a marker write
 there, gated on a new `--seen-dir` flag and keyed by that same tag, yields a signal that fires on the
@@ -136,7 +136,7 @@ Data path (new pieces in **bold**):
 ```
 Codex pane runs a Bash command
   └─ Codex invokes the -c hooks.PreToolUse command  (guardHookCommand)
-       └─ lfguard check --hook-exit ... --audit-tag <paneId> --seen-dir <dir>   [Rust]
+       └─ saiifeguard check --hook-exit ... --audit-tag <paneId> --seen-dir <dir>   [Rust]
             ├─ evaluate(command)  → allow/deny verdict  (UNCHANGED)
             ├─ **write_seen_marker(dir, tag)** → overwrite <dir>/<paneId>  (NEW, best-effort)
             └─ append_audit(...) only on Deny  (UNCHANGED)
@@ -149,13 +149,13 @@ Codex pane runs a Bash command
                            └─ TerminalPane badge stops rendering  (quiet-on-success)
 ```
 
-### 1. Rust: `--seen-dir` flag + `write_seen_marker` (`guard/crates/lfguard/src/main.rs`)
+### 1. Rust: `--seen-dir` flag + `write_seen_marker` (`guard/crates/saiifeguard/src/main.rs`)
 
 New field on the `Check` subcommand struct (alongside `audit_log`/`audit_tag`, lines 43-47):
 
 ```rust
 /// Overwrite a per-tag invocation marker at <PATH>/<audit-tag> on EVERY
-/// evaluation (allow or deny), so localflow can observe that the hook
+/// evaluation (allow or deny), so saiife can observe that the hook
 /// actually fired for this pane. Best-effort; overwrite (truncate)
 /// semantics — one small file per tag, no unbounded growth.
 #[arg(long = "seen-dir", value_name = "PATH")]
@@ -272,7 +272,7 @@ export interface GuardSeenWatchOptions {
 }
 
 /**
- * Watches `dir` for per-pane invocation markers written by `lfguard check
+ * Watches `dir` for per-pane invocation markers written by `saiifeguard check
  * --seen-dir`. Fires `onSeen(<paneId>)` on each write/rename. Best-effort:
  * observability, not enforcement — all failures are swallowed and can never
  * crash the main process. Returns a stop function.
@@ -317,7 +317,7 @@ reset-on-respawn precedent of `needsYouSince`/`resumeFailed`:
 
 ```ts
 /**
- * Codex cli-args-* panes only: whether lfguard's guard hook has been observed
+ * Codex cli-args-* panes only: whether saiifeguard's guard hook has been observed
  * firing for this pane since the current pty was spawned.
  * - 'unverified': guard configured on this launch's CLI, but no invocation
  *   observed yet (the pane may simply not have run a command — silence is not
@@ -355,7 +355,7 @@ the user it's running unguarded).
 
 ```ts
 /**
- * Marks a Codex pane's guard as observed-enforcing: called once lfguard's
+ * Marks a Codex pane's guard as observed-enforcing: called once saiifeguard's
  * invocation marker for this pane's id has been written. No-op for an unknown
  * id, a non-Codex/undefined pane, or a pane already 'observed' (idempotent —
  * a second invocation must not re-fire changedCbs). Never un-sets: only a
@@ -386,7 +386,7 @@ Render conditionally right after the existing `agentLabel` chip (line 134-136), 
 {session.guardVerification === 'unverified' && (
   <span
     className="rounded border border-amber-400/40 bg-amber-400/10 px-1.5 py-px font-mono text-[10px] text-amber-300"
-    title="lfguard is configured for this Codex pane, but no enforcement has been observed yet — it is armed but unproven. The badge clears the first time a command actually reaches the guard this session. It does not mean the guard is broken."
+    title="saiifeguard is configured for this Codex pane, but no enforcement has been observed yet — it is armed but unproven. The badge clears the first time a command actually reaches the guard this session. It does not mean the guard is broken."
   >
     guard: not yet observed
   </span>
@@ -443,7 +443,7 @@ why the *badge* is scoped to `cli-args-*` even though the *marker* is universal.
 
 **Upgrading `cli-args-notify` → `cli-args-full`, and "fixing" the `-c` grammar itself.** These are genuine
 correctness questions about what Codex's CLI actually accepts, closable only by running a real `codex`
-binary — this machine has none, CI can't install one, and no passive observation from inside localflow
+binary — this machine has none, CI can't install one, and no passive observation from inside saiife
 substitutes for that verification. This spec's badge is a **mitigation** (make the risk visible), not a fix;
 it should ship *with*, not instead of, the standing action item to get `codex --help`/docs in front of a
 human. If/when the grammar is confirmed, the badge's job doesn't go away — it still catches
@@ -454,7 +454,7 @@ Also out of scope, matching the DRAFT and the options memo:
 
 - **Synthetic blocking canary injected into the live pane** — intrusive, contaminates the agent's transcript
   before the user's first turn, own false-negative mode. Not this spec.
-- **Probing `lfguard check` as a bare subprocess** — only re-verifies the already-well-tested Rust binary,
+- **Probing `saiifeguard check` as a bare subprocess** — only re-verifies the already-well-tested Rust binary,
   not the actually-unverified Codex-side `-c` wiring. Actively misleading if shipped as "the" verification.
 - **A positive "verified" chip / one-time success toast** — deliberately excluded per quiet-on-success; the
   one-sided signal cannot back a durable positive claim. May be revisited later as UX polish, not now.
@@ -465,10 +465,10 @@ Also out of scope, matching the DRAFT and the options memo:
 
 ## Testing plan (TDD)
 
-Follows the M2 spec's split between what's testable locally (localflow's + lfguard's own logic) and what
+Follows the M2 spec's split between what's testable locally (saiife's + saiifeguard's own logic) and what
 fundamentally requires a real `codex` binary (unchanged constraint). Each task below is written test-first.
 
-### Rust unit/integration (`guard/crates/lfguard/tests/hook_exit.rs`, additive)
+### Rust unit/integration (`guard/crates/saiifeguard/tests/hook_exit.rs`, additive)
 
 - `seen_dir_marker_written_on_allow`: run `check --hook-exit --seen-dir <dir> --audit-tag pane1` with
   `ALLOW_JSON`; assert `<dir>/pane1` exists and is non-empty. (Proves the marker fires on ALLOW — the whole
@@ -509,13 +509,13 @@ fundamentally requires a real `codex` binary (unchanged constraint). Each task b
 ### E2E (`tests/e2e/guard.spec.ts`, extend; `tests/fixtures/fake-codex.sh`, extend)
 
 - **Badge clears on first invocation**: launch a fake-codex-backed pane with a guard resolved; drive a
-  command through the fixture that causes `lfguard check --seen-dir` to run (allow is enough — need not be a
+  command through the fixture that causes `saiifeguard check --seen-dir` to run (allow is enough — need not be a
   deny); assert the "guard: not yet observed" header badge disappears. Proves the full local chain
   spawn → marker write → watcher → `markGuardObserved` → `SessionInfo` → renderer.
 - **Idle pane keeps its badge** (regression guard): a Codex pane that spawns and runs no command keeps the
   badge for the test duration — proves the badge doesn't self-clear and that no status/`Stop` event path can
   ever satisfy it. This is the guard against reintroducing the HookEvent false-confidence bug.
-- Same explicit caveat the M2 spec carries: these prove localflow's + lfguard's own logic, **not** that a
+- Same explicit caveat the M2 spec carries: these prove saiife's + saiifeguard's own logic, **not** that a
   real `codex` binary invokes the `-c hooks.PreToolUse=...` command the fixture simulates. That gap is
   unclosable without a real `codex` install (see Out of scope).
 
@@ -531,7 +531,7 @@ fundamentally requires a real `codex` binary (unchanged constraint). Each task b
 
 Each task: write/adjust the failing test first, then implement.
 
-1. **Rust: `--seen-dir` flag + `write_seen_marker`** (`guard/crates/lfguard/src/main.rs`). Add the `Check`
+1. **Rust: `--seen-dir` flag + `write_seen_marker`** (`guard/crates/saiifeguard/src/main.rs`). Add the `Check`
    struct field, thread through `main()` + `cmd_check`, add the best-effort helper; write on every eval
    before verdict return. Tests: the 7 `hook_exit.rs` cases above.
 2. **TS: `ResolvedGuard.seenDir` + `guardHookCommand`** (`src/main/guard-hook.ts`). Add the field and the
@@ -556,10 +556,10 @@ status hooks all untouched), one small new Rust flag+helper, one new small TS wa
 
 ### Branching note
 
-The guard-crate change (Task 1) touches `guard/crates/lfguard/src/main.rs`, which the **in-flight
-`feat/lfguard-wrapper-hardening` branch also edits**. To avoid churn/conflicts, land this feature's Rust
+The guard-crate change (Task 1) touches `guard/crates/saiifeguard/src/main.rs`, which the **in-flight
+`feat/saiifeguard-wrapper-hardening` branch also edits**. To avoid churn/conflicts, land this feature's Rust
 change on a branch that carries — or rebases onto — the wrapper-hardening work, rather than branching from a
-stale `main`. Confirm `feat/lfguard-wrapper-hardening` is merged (or rebase onto it) before starting Task 1.
+stale `main`. Confirm `feat/saiifeguard-wrapper-hardening` is merged (or rebase onto it) before starting Task 1.
 
 ---
 

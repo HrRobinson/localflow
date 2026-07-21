@@ -82,9 +82,9 @@ function errRunner(code: string, message: string): StsRunner {
 
 const awsReq = (over: Partial<CloudCredentialRequest> = {}): CloudCredentialRequest => ({
   cloud: 'aws',
-  roleArn: 'arn:aws:iam::123456789012:role/localflow-agent-sandbox',
+  roleArn: 'arn:aws:iam::123456789012:role/saiife-agent-sandbox',
   externalId: 'lf-ext-id',
-  sessionName: 'localflow-pane7-abc123',
+  sessionName: 'saiife-pane7-abc123',
   durationSeconds: 1800,
   region: 'us-east-1',
   ...over
@@ -147,11 +147,11 @@ describe('mintCredential (AWS)', () => {
       expect(err).toBeInstanceOf(Error)
       const msg = (err as Error).message
       // human sentence + actionable + real detail (spec §9)
-      expect(msg).toContain('arn:aws:iam::123456789012:role/localflow-agent-sandbox')
+      expect(msg).toContain('arn:aws:iam::123456789012:role/saiife-agent-sandbox')
       expect(msg).toContain('AccessDenied')
       expect(msg).toContain('not authorized to perform sts:AssumeRole')
       expect(msg.toLowerCase()).toContain('trust policy')
-      expect(msg).toContain('localflow-pane7-abc123') // session name = non-secret context
+      expect(msg).toContain('saiife-pane7-abc123') // session name = non-secret context
       // and never any credential material — scan the WHOLE error chain
       // (message + stack + nested cause), not just the top-level message.
       const chain = flattenErrorChain(err)

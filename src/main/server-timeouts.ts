@@ -1,7 +1,7 @@
 import type { Server } from 'node:http'
 
 /**
- * Shared socket/request timeouts for localflow's loopback HTTP servers
+ * Shared socket/request timeouts for saiife's loopback HTTP servers
  * (hook-server, control-api). Node's defaults leave the socket inactivity
  * timeout disabled entirely, so a wedged local client (or a stray process
  * that connects and never finishes a request) would pin sockets in the main

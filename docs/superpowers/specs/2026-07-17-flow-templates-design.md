@@ -128,7 +128,7 @@ Notes grounding this in the merged contract:
   re-maps every one to a fresh runtime id (§3). This keeps `isFlowGraph`'s
   "every edge endpoint names a present node" invariant (`flows.ts:112`) true in
   both the template and the instance.
-- **Naming disambiguation (important):** localflow **already** has a
+- **Naming disambiguation (important):** saiife **already** has a
   `SessionTemplate` (`src/shared/templates.ts`) — a *pane layout* ("claude +
   browser") surfaced as cards on `Landing.tsx` via `createTemplate`. A
   `FlowTemplate` is a different thing (a *flow graph*), lives in a different
@@ -148,7 +148,7 @@ Shipped in `src/main/flow/builtin-templates.ts` as a `FlowTemplate[]` constant
 | `ecom-support` | **Ecom Support Worker** | `ecom` | `trigger`(`integration:'email'`, ref = the email inbound trigger) → `agent` (drafts a reply / classifies) → `router` with two `FlowEdge`s carrying `condition:{ field, equals }` → one branch to an `action` (`integration:'email'`, reply/send), the other to a **`gate`** (human approval) → `action` (escalated reply). A real, runnable-shaped worker on **connected** integrations today. |
 | `crm-lead` | **CRM Lead Worker** | `crm` | `trigger`(`integration:'linear'`, an issue/intake trigger) → `agent` (triage/enrich the lead) → `router` (`condition:{ field:'priority', equals:'high' }`) → `action`(`integration:'linear'`, create/update issue) on one branch, a `gate` then `action` on the other. Mirrors the Linear-integration design's pull→work→route→close loop. |
 
-**Why these three:** they cover the two integration families localflow already
+**Why these three:** they cover the two integration families saiife already
 ships descriptors for (`email`, `linear`) plus the blank escape hatch, so the
 Ecom and CRM templates are **instantiable and mostly-connectable today** — not
 vaporware waiting on an unbuilt connector. The Ecom template's *evolution* to the
@@ -195,7 +195,7 @@ omitted, so the shipped template is always valid against the **current** registr
 | `src/renderer/src/lib/flow-reducer.ts` | **edit** | Add pure `instantiateTemplate(template, { flowId, nodeIdFn, edgeIdFn, existingNames })` → a fresh `FlowGraph`. Sits next to `emptyGraph`; reuses the injected-id-source discipline already there. |
 | `src/renderer/src/components/flow/FlowList.tsx` | **edit** | Render a **"New from template"** affordance: the template cards (grouped by category) next to the existing "New flow" button. Emits `onInstantiate(templateId)`. |
 | `src/renderer/src/components/FlowCanvas.tsx` | **edit** | Fetch templates, own the instantiate handler (clone → `setGraph` → `setDirty(true)` → open), pass `templates` + `onInstantiate` into `FlowList`. |
-| `src/shared/api.ts` | **edit** | Add `listFlowTemplates(): Promise<FlowTemplate[]>` to `LocalflowApi` (read-only; mirrors `listTemplates`). |
+| `src/shared/api.ts` | **edit** | Add `listFlowTemplates(): Promise<FlowTemplate[]>` to `SaiifeApi` (read-only; mirrors `listTemplates`). |
 | `src/main/index.ts` | **edit** | Register `ipcMain.handle('flow:list-templates', () => BUILTIN_FLOW_TEMPLATES)` next to the existing `flow:list` / `flow:get` / `flow:save` handlers (index.ts:1088). |
 | `src/preload/*` | **edit** | Bridge `listFlowTemplates` (the existing preload pattern for `listTemplates`). |
 | `src/renderer/src/components/Landing.tsx` | **edit** | Add a **"Worker…"** entry to the create control (pseudo-agent select value, like `'browser'`); when picked, list saved flows and launch the chosen one via `runFlow`. (§5.) |
@@ -302,7 +302,7 @@ same `isFlowGraph` save boundary every flow already passes (`index.ts:433`).
 
 ```
 FlowCanvas (no graph) renders FlowList
-   │  useEffect → window.localflow.listFlowTemplates()  (flow:list-templates IPC)
+   │  useEffect → window.saiife.listFlowTemplates()  (flow:list-templates IPC)
    │             → main returns BUILTIN_FLOW_TEMPLATES
    ▼
 FlowList shows template cards (Blank / Ecom / CRM), grouped by category
@@ -321,7 +321,7 @@ setGraph(graph); setSelectedId(null); setDirty(true)          // opens on canvas
    ▼
 user customizes (addNode/connect/updateNodeConfig — the existing pure reducer)
    ▼
-user clicks Save → window.localflow.saveFlow(graph) → flow:save
+user clicks Save → window.saiife.saveFlow(graph) → flow:save
    │  main: isFlowGraph(graph) gate → loadFlows filter-by-id → push → atomic write
    ▼
 flows.json now has a new, user-owned flow.  (Run = Save-then-Run, unchanged.)
@@ -337,13 +337,13 @@ config panel, validation, save — is the merged canvas untouched.
 user builds + saves a flow "Refund Triage"  → flows.json
    ▼
 Landing.tsx create control: select gains a "Worker…" option (like 'browser')
-   │  when selected: window.localflow.listFlows()  (existing flow:list IPC)
+   │  when selected: window.saiife.listFlows()  (existing flow:list IPC)
    │  → a second select / list of saved flow summaries by name
    ▼
 user picks "Refund Triage" + clicks New session
    │  Landing calls a new onLaunchWorker(flowId)  (App wires it to runFlow)
    ▼
-window.localflow.runFlow(flowId)  (existing flow:run IPC, index.ts:1099)
+window.saiife.runFlow(flowId)  (existing flow:run IPC, index.ts:1099)
    │  main: getFlow(id) → flowEngine.run(graph, seed event)
    ▼
 the engine walks the graph (spawns its own panes per the flow-engine design);
@@ -408,7 +408,7 @@ fast follow if discovery testing wants it (§10.1).
 
 ## 6. Error handling
 
-Following localflow's principle (the error-message-style memory; demonstrated in
+Following saiife's principle (the error-message-style memory; demonstrated in
 `flow-store.ts`'s legible notices and `saveFlow`'s human errors): **every failure
 is human-readable, actionable, and carries the real cause. No silent catch.**
 

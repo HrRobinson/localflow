@@ -1,18 +1,18 @@
 import type { SlackSlashPayload } from '../../shared/slack'
 
 /**
- * The reserved **`/localflow`** control surface (spec §4.2, §9): `run <flow>`,
+ * The reserved **`/saiife`** control surface (spec §4.2, §9): `run <flow>`,
  * `status [run]`, `stop <run>` — seed / query / stop flow runs from chat.
  * openclaw's chat-control, upgraded and GATED: it carries a NARROW engine seam
  * (start / query / stop), not arbitrary engine access, and `stop` only REQUESTS
  * a stop (never force-kills mid-action). Every reply is EPHEMERAL and legible;
  * an unknown flow / run id is a specific, actionable message, never a silent drop.
  *
- * Non-`/localflow` slash commands are NOT handled here — they flow to the
+ * Non-`/saiife` slash commands are NOT handled here — they flow to the
  * `slash.command` trigger (§6.1) instead.
  */
 
-export const CONTROL_COMMAND = '/localflow'
+export const CONTROL_COMMAND = '/saiife'
 
 /** The minimal run snapshot the bridge reads for `status`. */
 export interface ControlRunSnapshot {
@@ -39,7 +39,7 @@ const ephemeral = (text: string): ControlReply => ({ text, ephemeral: true })
 export class SlackControlBridge {
   constructor(private readonly engine: EngineControlSeam) {}
 
-  /** Handle a `/localflow …` slash payload → an ephemeral reply. */
+  /** Handle a `/saiife …` slash payload → an ephemeral reply. */
   handle(payload: SlackSlashPayload): ControlReply {
     if (payload.command !== CONTROL_COMMAND) {
       return ephemeral(

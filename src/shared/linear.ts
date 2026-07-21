@@ -40,7 +40,7 @@ export interface LinearSessionEvent {
   prompt?: string
 }
 
-/** Kinds of `AgentActivity` localflow emits back to Linear (spec §4.5, §6.3). */
+/** Kinds of `AgentActivity` saiife emits back to Linear (spec §4.5, §6.3). */
 export type AgentActivityKind = 'thought' | 'action' | 'elicitation' | 'response' | 'error'
 
 /**
@@ -70,7 +70,7 @@ export type LinearSessionState = 'pending' | 'active' | 'awaitingInput' | 'compl
 export interface LinearPaneLink {
   agentSessionId: string
   issueId: string
-  /** A localflow session id. */
+  /** A saiife session id. */
   paneId: string
   /** Environment 1-9 hosting this Linear work. */
   environment: number

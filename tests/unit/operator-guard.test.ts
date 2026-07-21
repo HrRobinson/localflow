@@ -15,7 +15,7 @@ function fakeRunner(result: { code: number | null; stderr: string; timedOut: boo
 }
 
 const base = {
-  resolveBinary: () => '/bin/lfguard',
+  resolveBinary: () => '/bin/saiifeguard',
   getPacks: () => [] as string[]
 }
 
@@ -23,7 +23,7 @@ describe('makeOperatorGuard', () => {
   it('denies on exit 1 and parses pack + reason from stderr', async () => {
     const { runner } = fakeRunner({
       code: 1,
-      stderr: 'lfguard: BLOCKED by core.filesystem: catastrophic rm',
+      stderr: 'saiifeguard: BLOCKED by core.filesystem: catastrophic rm',
       timedOut: false
     })
     const g = makeOperatorGuard({ ...base, runner })
@@ -38,8 +38,8 @@ describe('makeOperatorGuard', () => {
     const { runner } = fakeRunner({
       code: 1,
       stderr:
-        'lfguard: pack warning (core.git): noise\n' +
-        'lfguard: BLOCKED by core.filesystem: catastrophic rm (inline: bash -c)',
+        'saiifeguard: pack warning (core.git): noise\n' +
+        'saiifeguard: BLOCKED by core.filesystem: catastrophic rm (inline: bash -c)',
       timedOut: false
     })
     const g = makeOperatorGuard({ ...base, runner })
@@ -109,12 +109,12 @@ describe('makeOperatorGuard', () => {
   it('forwards packs as repeated --pack args and passes command as one argv element', async () => {
     const { runner, calls } = fakeRunner({ code: 0, stderr: '', timedOut: false })
     const g = makeOperatorGuard({
-      resolveBinary: () => '/bin/lfguard',
+      resolveBinary: () => '/bin/saiifeguard',
       getPacks: () => ['cloud.gcloud', 'db.postgres'],
       runner
     })
     await g.check('gcloud auth print-access-token')
-    expect(calls[0].bin).toBe('/bin/lfguard')
+    expect(calls[0].bin).toBe('/bin/saiifeguard')
     expect(calls[0].args).toEqual([
       'test',
       'gcloud auth print-access-token',

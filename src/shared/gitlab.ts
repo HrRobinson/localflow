@@ -3,7 +3,7 @@
  * to run context (§6.3) and the id vocabulary the flow-templates track + canvas
  * palette read (§6). Imported by main (the connector / normalizer) and any future
  * renderer palette surface. No I/O, no secrets: the PAT and webhook secret live
- * in the keychain (§5); these types carry only localflow-facing vocabulary.
+ * in the keychain (§5); these types carry only saiife-facing vocabulary.
  *
  * NO raw GitLab REST shape lives here — those are isolated in
  * `src/main/gitlab/gitlab-api.ts` (the API-version blast radius, §4.2). This file

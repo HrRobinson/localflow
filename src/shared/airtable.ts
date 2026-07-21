@@ -6,7 +6,7 @@
  *
  * NO raw Airtable request/response shape lives here — those are isolated in
  * `src/main/airtable/airtable-api.ts` (the API blast radius, spec §7.1). This
- * file holds ONLY localflow-facing vocabulary. No secret ever lives in these
+ * file holds ONLY saiife-facing vocabulary. No secret ever lives in these
  * shapes: the personal access token stays in the keychain (spec §5); config.json
  * and these types carry only non-secret references.
  *
@@ -91,6 +91,6 @@ export interface AirtableConfig {
   webhookId?: string
   /** Poll cadence in seconds; absent ⇒ the poller default (spec §4.2). */
   pollSeconds?: number
-  /** Which localflow environment (1-9) hosts Airtable work. */
+  /** Which saiife environment (1-9) hosts Airtable work. */
   environment: number
 }

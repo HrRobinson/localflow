@@ -16,7 +16,7 @@
 - **Main stays dumb.** Main emits normalized events and answers the snapshot. ALL filtering/scoping is renderer-side.
 - **Console toggle default is `cmd+/`** (`cmd+j` is already `focus-down`). Remappable like every other binding.
 - **Config additions are optional with defaults.** A `config.json` lacking the console fields loads normally.
-- Follow existing patterns exactly: `sendToWindow` for pushes, `ipcMain.handle` for request/response, preload methods declared on `LocalflowApi` in `src/shared/api.ts`, unit tests in `tests/unit/*.test.ts`, e2e in `tests/e2e/*.spec.ts`.
+- Follow existing patterns exactly: `sendToWindow` for pushes, `ipcMain.handle` for request/response, preload methods declared on `SaiifeApi` in `src/shared/api.ts`, unit tests in `tests/unit/*.test.ts`, e2e in `tests/e2e/*.spec.ts`.
 - Commit after each task with a Conventional Commits subject **≤50 characters**.
 
 ---
@@ -450,7 +450,7 @@ git commit -m "feat: console filter reducer and scope"
 - Modify: `src/main/index.ts` (instantiate bus; tap status ~line 304 and operator `pushActivity` ~line 207; add `console:list` handler + `console:event` push subscription)
 - Modify: `src/main/control-api.ts` (add optional `onCapture` dep, ~line 15 interface and ~line 194 after successful ingest)
 - Modify: `src/preload/index.ts` (add `listConsole`, `onConsoleEvent`)
-- Modify: `src/shared/api.ts` (declare both on `LocalflowApi`)
+- Modify: `src/shared/api.ts` (declare both on `SaiifeApi`)
 
 **Interfaces:**
 - Consumes: `ConsoleEventBus` (Task 1), `toStatusEvent`/`toOperatorEvent`/`toCaptureEvent` (Task 1), `ConsoleEvent` type.
@@ -525,7 +525,7 @@ Add the push subscription where the window/singletons are set up (after `console
 consoleBus.subscribe((event) => sendToWindow('console:event', event))
 ```
 
-- [ ] **Step 4: Declare the methods on `LocalflowApi`**
+- [ ] **Step 4: Declare the methods on `SaiifeApi`**
 
 In `src/shared/api.ts`, add (near `listCaptures` line 132 and `onOperatorActivity` line 145). Import `ConsoleEvent` from `./console` at the top:
 
@@ -695,7 +695,7 @@ git commit -m "feat: console-toggle binding + drawer shell"
 - Modify: `src/renderer/src/App.tsx` (pass focus props for scope derivation to `<Console>`)
 
 **Interfaces:**
-- Consumes: `window.localflow.listConsole` / `onConsoleEvent` (Task 3); `visibleEvents`, `deriveConsoleScope`, `ConsoleFilter`, `ConsoleScope`, `ConsoleFocus` (Task 2); `ConsoleEvent`, `ConsoleSource` (Task 1).
+- Consumes: `window.saiife.listConsole` / `onConsoleEvent` (Task 3); `visibleEvents`, `deriveConsoleScope`, `ConsoleFilter`, `ConsoleScope`, `ConsoleFocus` (Task 2); `ConsoleEvent`, `ConsoleSource` (Task 1).
 - Produces: `Console` component now takes `{ open, onClose, focus: ConsoleFocus }`.
 
 - [ ] **Step 1: Extend the Console props to receive focus**
@@ -746,10 +746,10 @@ export function Console({ open, onClose, focus }: ConsoleProps): React.JSX.Eleme
   useEffect(() => {
     if (!open) return
     let alive = true
-    void window.localflow.listConsole().then((snap) => {
+    void window.saiife.listConsole().then((snap) => {
       if (alive) setEvents(snap)
     })
-    const off = window.localflow.onConsoleEvent((e) =>
+    const off = window.saiife.onConsoleEvent((e) =>
       setEvents((prev) => [...prev, e])
     )
     return () => {
@@ -936,7 +936,7 @@ Expected: FAIL, then implement Step 1, then PASS.
 
 - [ ] **Step 4: Add IPC + preload + api**
 
-`index.ts`: `ipcMain.handle('console:getPrefs', () => getConsolePrefs())` and `ipcMain.on('console:setPrefs', (_e, prefs) => setConsolePrefs(prefs))` (mirror `theme:get`/`theme:set` at lines 729-739). Declare `getConsolePrefs(): Promise<ConsolePrefs>` and `setConsolePrefs(prefs: ConsolePrefs): void` on `LocalflowApi`; implement in preload.
+`index.ts`: `ipcMain.handle('console:getPrefs', () => getConsolePrefs())` and `ipcMain.on('console:setPrefs', (_e, prefs) => setConsolePrefs(prefs))` (mirror `theme:get`/`theme:set` at lines 729-739). Declare `getConsolePrefs(): Promise<ConsolePrefs>` and `setConsolePrefs(prefs: ConsolePrefs): void` on `SaiifeApi`; implement in preload.
 
 - [ ] **Step 5: Load + persist in the drawer, and add a drag handle**
 
@@ -1019,8 +1019,8 @@ Expected: PASS.
 - [ ] **Step 5: Wire the actions in the drawer**
 
 In `Console.tsx`, in the expanded-detail region, render a button per `rowActions(e)`:
-- `open-source`: for status rows, focus the session (`window.localflow` existing focus/select mechanism — mirror how a session row elsewhere navigates); for operator/capture rows, open the cockpit for `e.environment`. Wire via the App by passing an `onOpenSource(event)` callback prop into `<Console>` (App owns view/enlarged setters).
-- `rerun-watchpoint`: capture rows only — re-arm via the existing operator watchpoint registration IPC for `detail.watchpointId` in `e.environment`. Pass an `onRerunWatchpoint(event)` callback prop from App (or call the existing control/watchpoint IPC directly if exposed on `window.localflow`). Keep the drawer show-not-author: no request composition.
+- `open-source`: for status rows, focus the session (`window.saiife` existing focus/select mechanism — mirror how a session row elsewhere navigates); for operator/capture rows, open the cockpit for `e.environment`. Wire via the App by passing an `onOpenSource(event)` callback prop into `<Console>` (App owns view/enlarged setters).
+- `rerun-watchpoint`: capture rows only — re-arm via the existing operator watchpoint registration IPC for `detail.watchpointId` in `e.environment`. Pass an `onRerunWatchpoint(event)` callback prop from App (or call the existing control/watchpoint IPC directly if exposed on `window.saiife`). Keep the drawer show-not-author: no request composition.
 
 Add the two callback props to `ConsoleProps` and supply them from `App.tsx`.
 
@@ -1044,11 +1044,11 @@ git commit -m "feat: console row actions (reflect-and-replay)"
 - Create: `tests/e2e/console.spec.ts`
 
 **Interfaces:**
-- Consumes: the whole feature; the control-API endpoint (`endpoint.json` `{ port, token }`, header `X-Localflow-Token`); `launchApp` helper conventions from `smoke.spec.ts`.
+- Consumes: the whole feature; the control-API endpoint (`endpoint.json` `{ port, token }`, header `X-Saiife-Token`); `launchApp` helper conventions from `smoke.spec.ts`.
 
 - [ ] **Step 1: Write the e2e spec**
 
-Create `tests/e2e/console.spec.ts` mirroring `smoke.spec.ts` conventions (`mkdtempSync` userData, `launchApp`, `LOCALFLOW_E2E=1`, stable `data-*` selectors). Cover:
+Create `tests/e2e/console.spec.ts` mirroring `smoke.spec.ts` conventions (`mkdtempSync` userData, `launchApp`, `SAIIFE_E2E=1`, stable `data-*` selectors). Cover:
 
 1. **Toggle**: press `Meta+/` → `[data-console]` visible; press again → hidden. Then rebind `console-toggle` (write `keybindings.json` or via Settings), relaunch, and toggle with the remapped key.
 2. **Three sources appear**: create a session and drive a hook event → a `[data-console-row][data-source="status"]` appears; POST an operator action via the control API → `[data-source="operator"]`; register + POST a watchpoint capture → `[data-source="capture"]`, and clicking it reveals `[data-console-detail]`.
@@ -1080,4 +1080,4 @@ git commit -m "test: e2e for bottom console"
 - **Spec coverage:** bus/ring + since-launch (T1), three sources tapped additively (T3), IPC snapshot+push (T3), pure filter reducer + scope follow/pin (T2, T5), drawer UX with newest-at-bottom/auto-scroll/expand (T5), keybinding `cmd+/` (T4), persistence + drag-resize (T6), row actions reflect-and-replay with guards (T7), full e2e (T8). Network source is reserved in the enum (T1) and never produced — matches "deferred to v2."
 - **Additive guarantee:** every tap keeps the existing `sendToWindow`/`record` call and adds a `bus.emit` beside it; `onCapture` is an optional dep so control-api behavior is unchanged when unset.
 - **Type consistency:** `ConsoleEventInput = Omit<ConsoleEvent,'id'|'ts'>` is produced by mappers and consumed by `bus.emit`; `ConsoleFocus` shape (`view`/`enlarged`/`environment`) matches App state exactly; `ConsolePrefs.sources` is `ConsoleSource[]` serialized (Set is rebuilt in the renderer).
-- **Deferred detail:** T7's exact `open-source`/`rerun-watchpoint` IPC wiring depends on the existing session-focus + watchpoint-register APIs; the implementer must confirm the concrete `window.localflow` methods at implementation time and pass App callbacks rather than reaching into main directly.
+- **Deferred detail:** T7's exact `open-source`/`rerun-watchpoint` IPC wiring depends on the existing session-focus + watchpoint-register APIs; the implementer must confirm the concrete `window.saiife` methods at implementation time and pass App callbacks rather than reaching into main directly.

@@ -47,25 +47,25 @@ export default function Settings(): React.JSX.Element {
 
   useEffect(() => {
     let cancelled = false
-    void window.localflow.listAgents().then((list) => {
+    void window.saiife.listAgents().then((list) => {
       if (!cancelled) setAgents(list)
     })
-    void window.localflow.getLastAgent().then((last) => {
+    void window.saiife.getLastAgent().then((last) => {
       if (!cancelled) setLastAgentId(last?.agentId ?? null)
     })
-    void window.localflow.listThemes().then((list) => {
+    void window.saiife.listThemes().then((list) => {
       if (!cancelled) setThemes(list)
     })
-    void window.localflow.getTheme().then((t) => {
+    void window.saiife.getTheme().then((t) => {
       if (!cancelled) {
         setThemeName(t.name)
         setThemeError(t.error ?? null)
       }
     })
-    void window.localflow.getGuardPacks().then((p) => {
+    void window.saiife.getGuardPacks().then((p) => {
       if (!cancelled) setGuardPacks(p)
     })
-    void window.localflow.getAllowTypedPaths().then((allow) => {
+    void window.saiife.getAllowTypedPaths().then((allow) => {
       if (!cancelled) setAllowTypedPaths(allow)
     })
     return () => {
@@ -74,14 +74,14 @@ export default function Settings(): React.JSX.Element {
   }, [])
 
   const setPath = async (agentId: AgentId): Promise<void> => {
-    const updated = await window.localflow.setAgentPath(agentId)
+    const updated = await window.saiife.setAgentPath(agentId)
     if (updated) setAgents(updated)
   }
 
   const setPathTyped = async (agentId: AgentId): Promise<void> => {
     const draft = typedPathDrafts[agentId] ?? ''
     if (!looksLikeTypedPath(draft)) return
-    const result = await window.localflow.setAgentPathTyped(agentId, draft)
+    const result = await window.saiife.setAgentPathTyped(agentId, draft)
     const applied = applyTypedPathResult(result)
     if (applied.agents) setAgents(applied.agents)
     // Keep the draft in place on rejection so the user can fix it in place,
@@ -93,7 +93,7 @@ export default function Settings(): React.JSX.Element {
   const toggleAllowTypedPaths = (): void => {
     const next = !allowTypedPaths
     setAllowTypedPaths(next)
-    window.localflow.setAllowTypedPaths(next)
+    window.saiife.setAllowTypedPaths(next)
   }
 
   const saveOverride = async (
@@ -101,7 +101,7 @@ export default function Settings(): React.JSX.Element {
     extraArgs: string,
     env: Record<string, string>
   ): Promise<void> => {
-    const result = await window.localflow.setAgentOverride(agentId, { extraArgs, env })
+    const result = await window.saiife.setAgentOverride(agentId, { extraArgs, env })
     if (!result) return
     if (result.ok) {
       setAgents(result.agents)
@@ -113,7 +113,7 @@ export default function Settings(): React.JSX.Element {
     }
   }
   const makeDefault = async (agentId: AgentId): Promise<void> => {
-    const updated = await window.localflow.setDefaultAgent(agentId)
+    const updated = await window.saiife.setDefaultAgent(agentId)
     if (updated) setAgents(updated)
   }
 
@@ -126,7 +126,7 @@ export default function Settings(): React.JSX.Element {
     // than leaving it showing "on" while nothing was actually persisted.
     setGuardPacks(next)
     setGuardPacksNotice(null)
-    const result = await window.localflow.setGuardPacks(next)
+    const result = await window.saiife.setGuardPacks(next)
     if (!result.ok) {
       setGuardPacks(previous)
       setGuardPacksNotice(
@@ -276,9 +276,9 @@ export default function Settings(): React.JSX.Element {
                 {(reservedErrors[agent.id]?.length ?? 0) > 0 && (
                   <p className="env-error m-0 text-[11px] text-red-400">
                     {reservedErrors[agent.id]!.join(', ')}{' '}
-                    {reservedErrors[agent.id]!.length > 1 ? 'are' : 'is'} managed by
-                    localflow&apos;s status feed and can&apos;t be overridden. The other values were
-                    not saved either — remove the line to save.
+                    {reservedErrors[agent.id]!.length > 1 ? 'are' : 'is'} managed by saiife&apos;s
+                    status feed and can&apos;t be overridden. The other values were not saved either
+                    — remove the line to save.
                   </p>
                 )}
               </label>
@@ -305,7 +305,7 @@ export default function Settings(): React.JSX.Element {
             aria-label="Theme"
             onChange={(e) => {
               const name = e.target.value
-              void window.localflow.setTheme(name).then((t) => {
+              void window.saiife.setTheme(name).then((t) => {
                 setThemeName(t.name)
                 setThemeError(t.error ?? null)
               })
@@ -320,7 +320,7 @@ export default function Settings(): React.JSX.Element {
           <button
             className={`theme-open-folder ${rowBtn}`}
             onMouseDown={(e) => e.preventDefault()}
-            onClick={() => window.localflow.openThemesFolder()}
+            onClick={() => window.saiife.openThemesFolder()}
           >
             Open themes folder
           </button>
@@ -329,7 +329,7 @@ export default function Settings(): React.JSX.Element {
       </section>
 
       <section className="flex flex-col gap-3">
-        <h3>Command guard (lfguard)</h3>
+        <h3>Command guard (saiifeguard)</h3>
         <p className="text-[12px] opacity-70">
           Blocks destructive commands agents try to run. Changes apply to newly-launched panes.
         </p>

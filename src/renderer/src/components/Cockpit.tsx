@@ -22,7 +22,7 @@ export default function Cockpit({ environment }: Props): React.JSX.Element {
   const [status, setStatus] = useState<OperatorStatus | null>(null)
 
   const reload = useCallback(async (): Promise<void> => {
-    setStatus(await window.localflow.operatorStatus(environment))
+    setStatus(await window.saiife.operatorStatus(environment))
   }, [environment])
 
   useEffect(() => {
@@ -32,7 +32,7 @@ export default function Cockpit({ environment }: Props): React.JSX.Element {
 
   // Append live activity for THIS environment without a full refetch.
   useEffect(() => {
-    return window.localflow.onOperatorActivity((env, entry: ActivityEntry) => {
+    return window.saiife.onOperatorActivity((env, entry: ActivityEntry) => {
       if (env !== environment) return
       setStatus((cur) =>
         cur ? { ...cur, connected: true, activity: [...cur.activity, entry].slice(-200) } : cur
@@ -45,8 +45,8 @@ export default function Cockpit({ environment }: Props): React.JSX.Element {
 
   const reloadSub = useCallback(async (): Promise<void> => {
     const [c, w] = await Promise.all([
-      window.localflow.listCaptures(environment),
-      window.localflow.listWatchpoints(environment)
+      window.saiife.listCaptures(environment),
+      window.saiife.listWatchpoints(environment)
     ])
     setCaptures(c)
     setWatchpoints(w)
@@ -70,7 +70,7 @@ export default function Cockpit({ environment }: Props): React.JSX.Element {
     setWpKinds((cur) => (cur.includes(kind) ? cur.filter((k) => k !== kind) : [...cur, kind]))
 
   const registerWatchpoint = async (): Promise<void> => {
-    const wp = await window.localflow.registerWatchpoint(
+    const wp = await window.saiife.registerWatchpoint(
       environment,
       wpWorkflow.trim(),
       wpStep.trim(),
@@ -83,11 +83,11 @@ export default function Cockpit({ environment }: Props): React.JSX.Element {
   }
 
   const grant = async (): Promise<void> => {
-    await window.localflow.grantOperator(environment)
+    await window.saiife.grantOperator(environment)
     await reload()
   }
   const revoke = async (): Promise<void> => {
-    await window.localflow.revokeOperator(environment)
+    await window.saiife.revokeOperator(environment)
     await reload()
   }
 
@@ -228,7 +228,7 @@ export default function Cockpit({ environment }: Props): React.JSX.Element {
                     <button
                       className="capture-resume text-idle cursor-pointer rounded border border-white/10 px-1.5"
                       onClick={() =>
-                        void window.localflow.resumeCapture(environment, c.id, true).then(reloadSub)
+                        void window.saiife.resumeCapture(environment, c.id, true).then(reloadSub)
                       }
                       onMouseDown={(e) => e.preventDefault()}
                     >
@@ -237,9 +237,7 @@ export default function Cockpit({ environment }: Props): React.JSX.Element {
                     <button
                       className="capture-stop cursor-pointer rounded border border-white/10 px-1.5 text-gray-400"
                       onClick={() =>
-                        void window.localflow
-                          .resumeCapture(environment, c.id, false)
-                          .then(reloadSub)
+                        void window.saiife.resumeCapture(environment, c.id, false).then(reloadSub)
                       }
                       onMouseDown={(e) => e.preventDefault()}
                     >

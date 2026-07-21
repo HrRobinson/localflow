@@ -38,7 +38,7 @@ dependency and stops** — it does not design their internals.
 
 ## 1. Goal + MVP scope
 
-**Goal (one sentence):** Let a localflow user assemble, on the canvas, a CRM /
+**Goal (one sentence):** Let a saiife user assemble, on the canvas, a CRM /
 sales worker that wakes when a Salesforce record is created or modified (a SOQL
 `LastModifiedDate` reconcile poll), reads the relevant record facts through the
 REST API, routes on those facts via edge conditions, and performs gated writes
@@ -77,12 +77,12 @@ connected-app credentials in the OS keychain, **never** rendered.
   four gated-write actions (incl. the distinctive `submitForApproval`), and the
   **context-field shape** an action writes for downstream edge conditions.
 - **Authority = the flow's gates**, plus a **distinctive second gate**: Salesforce
-  is (uniquely among localflow's connectors) a system with a **first-class,
+  is (uniquely among saiife's connectors) a system with a **first-class,
   org-configured human-approval workflow**. A worker can **submit a record to its
   Approval Process** and defer the decision to the org's existing approver — the
   `needs-you` concept realized in the system the sales manager already lives in
-  (§9). The universal localflow `gate` node still applies to every write.
-- **Single org, single localflow environment.** Config-as-code `salesforce` block
+  (§9). The universal saiife `gate` node still applies to every write.
+- **Single org, single saiife environment.** Config-as-code `salesforce` block
   in `config.json` (non-secret refs only: instance/login URL, integration
   username, connected-app client id, sObject defaults, poll cadence, environment);
   the JWT private key / client secret in the keychain.
@@ -139,13 +139,13 @@ The pull → read → act loop is **fully buildable today** on GA REST surfaces:
   **client-credentials** and a dedicated **Integration User** needs no interactive
   login and no user in the loop.
 - **Trigger** has no simple hosted-webhook path (§2.3), so it is **poll-primary** —
-  but the poll is a GA, well-understood SOQL reconcile, and localflow already has
+  but the poll is a GA, well-understood SOQL reconcile, and saiife already has
   the exact machinery (the email reconcile → the PostHog poller). Nothing in the
   loop is preview-gated or missing.
 
 It is GREEN rather than YELLOW because every surface is generally available and
 stable; the one real constraint — no signed HTTP webhook — is a *known ingress
-shape localflow has already solved twice* (§2.3), not a capability gap.
+shape saiife has already solved twice* (§2.3), not a capability gap.
 
 ### 2.2 The Salesforce API for pull → read → act
 
@@ -203,16 +203,16 @@ Two secondary constraints, both mild:
 
 ## 3. The core loop → Salesforce primitives
 
-localflow's CRM loop is `trigger → read → route → act (gated)`. Each stage maps to
+saiife's CRM loop is `trigger → read → route → act (gated)`. Each stage maps to
 a concrete Salesforce primitive and the concrete flow-engine mechanism that runs
 it:
 
-| Stage | Salesforce primitive | localflow / flow-engine mechanism |
+| Stage | Salesforce primitive | saiife / flow-engine mechanism |
 |---|---|---|
 | **trigger** | A SOQL reconcile poll finding a new/changed record (`SELECT … FROM <object> WHERE LastModifiedDate >= :cursor …`). No webhook. | `salesforce-poller` ticks on the injected clock, diffs against the persisted `(LastModifiedDate, Id)` cursor, normalizes a new row → a `SeedEvent`, and hands it to the connector's `subscribe(triggerId, handler, config)` handler → the engine `startRun`s the flow with the record in trigger-node context (`trigger-subscriber.ts`, `SeedEvent`). |
 | **read** | SOQL `query` / the sObject record `GET`. | An `action` node (`query` / `getRecord`) → `registry.invokeAction('salesforce', ref, params)` → `SalesforceConnector` calls `salesforce-api` → `salesforce-normalize` maps it → the connector **resolves** the typed result, which the action-runner writes to context under the node id (`action-runner.ts`). |
-| **route** | *(none — pure localflow)* | `selectEdges` evaluates edge conditions over the context the read wrote (`context.ts`). Deterministic value compares (`field === equals` today; the richer `FlowEdgeCondition` operators soon, §10). **No LLM decides routing.** |
-| **gate** | *(none — pure localflow)* **OR** the org's **Approval Process** (§9). | A `gate` node the author placed pauses the run `needs-you`; the human approves in the cockpit. **Distinctively**, a `submitForApproval` action can instead route the decision into Salesforce's own approval queue (§9). A write node sits **downstream of the gate the author drew**. |
+| **route** | *(none — pure saiife)* | `selectEdges` evaluates edge conditions over the context the read wrote (`context.ts`). Deterministic value compares (`field === equals` today; the richer `FlowEdgeCondition` operators soon, §10). **No LLM decides routing.** |
+| **gate** | *(none — pure saiife)* **OR** the org's **Approval Process** (§9). | A `gate` node the author placed pauses the run `needs-you`; the human approves in the cockpit. **Distinctively**, a `submitForApproval` action can instead route the decision into Salesforce's own approval queue (§9). A write node sits **downstream of the gate the author drew**. |
 | **act** | sObject `POST` (`createRecord` / `createTask`), sObject `PATCH` (`updateRecord`), Process-Approvals `Submit` (`submitForApproval`). | The gated `action` node → `invokeAction` → `salesforce-api` write. **Failure = a rejected promise** (the pinned convention); the action-runner forwards the *real* Salesforce error (`action-runner.ts`). |
 
 **The authority is the graph the author drew, not the connector.** The connector
@@ -224,7 +224,7 @@ they choose — including the choice to defer to the org's own approval governan
 
 ---
 
-## 4. Architecture in localflow
+## 4. Architecture in saiife
 
 ### 4.1 Where it sits
 
@@ -233,7 +233,7 @@ A new **main-process module set** under `src/main/salesforce/`, mirroring
 conventions of `src/main/integrations/`. It is **opt-in**: with no `salesforce`
 config entry (and no stored credential) the descriptor's `status()` returns
 `needs-config` and the engine refuses any Salesforce node before any network call
-— localflow's "works with no integration" guarantee is unchanged
+— saiife's "works with no integration" guarantee is unchanged
 (`integration-registry.ts` `deriveStatus`).
 
 The connector is, architecturally, **a live `LiveConnector` the registry delegates
@@ -317,7 +317,7 @@ trigger backbone is the poller, which reaches *out*:
 Because the poll is outbound HTTPS, Salesforce needs **no tunnel/relay** — a
 distribution advantage over the webhook connectors (§2.3).
 
-### 4.6 Reused localflow surfaces
+### 4.6 Reused saiife surfaces
 
 - `src/shared/integrations.ts` — the pinned `IntegrationDescriptor` /
   `IntegrationRegistry` / `LiveConnector` this connector satisfies; the
@@ -376,7 +376,7 @@ boundary). The **auth fork** determines which secret is required — MVP pins on
 | `apiVersion` | REST API version | no | no | string | e.g. `v62.0`; defaults to a pinned version in `salesforce-api.ts`. |
 | `defaultObject` | Default sObject for triggers | no | no | string | e.g. `Lead`; the trigger node's `config.object` overrides it. |
 | `pollSeconds` | Poll cadence (seconds) | no | no | number | Default a conservative cadence (mindful of the daily API allocation, §2.2). |
-| `environment` | localflow environment (1-9) | no | yes | number | Which env hosts Salesforce work (same field/validation as the others). |
+| `environment` | saiife environment (1-9) | no | yes | number | Which env hosts Salesforce work (same field/validation as the others). |
 
 `status('salesforce')` reports `needs-config` until the auth-fork secret + `clientId`
 + `loginUrl` + `environment` (and `username` for the JWT fork) are present; `error`
@@ -528,7 +528,7 @@ dozen other ways.
 [router]                               explicit branch point
    ├── edge: enrich.score >= 80  (richer, §10)
    │        ▼
-   │   [gate: "approve high-value follow-up"]     localflow gate → needs-you (cockpit)
+   │   [gate: "approve high-value follow-up"]     saiife gate → needs-you (cockpit)
    │        │  approved ▼
    │   [action: createTask]        Subject="Call new high-value lead", WhoId="{{t.record.id}}"
    │        │  invokeAction('salesforce','createTask',{ fields:{ Subject, WhoId, ActivityDate } })
@@ -554,7 +554,7 @@ Node-by-node against the engine:
    handler → the engine `startRun`s the flow. The trigger node is immediately
    `done`; the record is in `context['t']`.
 2. **Agent enriches.** An `agent` node reasons over `t.record` and writes
-   `context['enrich']` (score/segment). *(Enrichment is a localflow agent node,
+   `context['enrich']` (score/segment). *(Enrichment is a saiife agent node,
    not a Salesforce call — the connector supplies the record; the flow supplies
    the reasoning.)*
 3. **Router branches.** `selectEdges` evaluates each out-edge over `context` —
@@ -695,25 +695,25 @@ no path to it never runs. **The connector never auto-writes outside the graph th
 author drew.**
 
 **The distinctive fit — Salesforce's native Approval Process as a `needs-you`
-gate.** Salesforce is **one of the very few systems localflow integrates that ships
+gate.** Salesforce is **one of the very few systems saiife integrates that ships
 a first-class, org-configured human-approval workflow**: an **Approval Process**
 routes a record to a defined approver (a sales manager) who approves or rejects in
 the Salesforce UI / mobile / email-approval, with the org's own escalation and
 audit. The `submitForApproval` action (`process/approvals/` `Submit`) lets a
-localflow worker **hand the human decision to that native workflow** instead of —
-or in addition to — localflow's own `gate` node. This maps the `needs-you` concept
+saiife worker **hand the human decision to that native workflow** instead of —
+or in addition to — saiife's own `gate` node. This maps the `needs-you` concept
 onto the approval surface the sales org **already lives in**, with the org's
-existing governance, rather than asking approvers to move into the localflow
+existing governance, rather than asking approvers to move into the saiife
 cockpit. No other current connector (Shopify, PostHog, Stripe, …) has a native
-approval concept to defer to — for those, the gate is *always* localflow's. For
+approval concept to defer to — for those, the gate is *always* saiife's. For
 Salesforce it can be the **org's own**. That is the distinctive design.
 
 Two levels of that fit, honestly scoped:
 
 1. **Submit (MVP — GREEN today).** `submitForApproval` is a single REST call: it
-   enters the record into its Approval Process and resolves. The localflow run
+   enters the record into its Approval Process and resolves. The saiife run
    continues; the record is now "pending approval" in Salesforce, owned by the org
-   approver. Combine with a localflow `gate` before it (a localflow check first,
+   approver. Combine with a saiife `gate` before it (a saiife check first,
    then route to the org) or use it standalone (delegate the whole decision to the
    org). Either way it is **one gated action node**, the pinned convention.
 2. **Resume on the decision (phase 2 — flagged).** To make the flow *wait* for the
@@ -721,18 +721,18 @@ Two levels of that fit, honestly scoped:
    `ProcessInstance` outcome — which is **another reconcile poll** (poll the
    approval status / `ProcessInstanceWorkitem` by target record) plus a
    run-suspend/resume. That turns the native approval into a full `needs-you`
-   equivalent that resumes the localflow run. Deferred because it is a second poll
+   equivalent that resumes the saiife run. Deferred because it is a second poll
    + a suspend/resume mechanic; the *submit* alone is already a distinctive,
    shippable fit.
 
-**Optional deterministic backstop (phased — §14).** In the spirit of **lfguard**
+**Optional deterministic backstop (phased — §14).** In the spirit of **saiifeguard**
 (the Rust destructive-command guard) but as a **CRM policy**: a small declarative
 `salesforce.limits` config (non-secret), e.g. `{ createAllowedObjects: ['Task',
 'Lead'], updateRequiresGate: true, maxRecordsPerRun: 50 }`, enforced **inside the
 connector before the write** as a hard reject (the pinned failure convention).
 Defense-in-depth — a deterministic floor under the author's gates for a
 mis-authored flow or a wrong LLM-seeded param, no model in the loop, exactly
-lfguard's posture. Its default (present/absent, values) is a product call (§13.4).
+saiifeguard's posture. Its default (present/absent, values) is a product call (§13.4).
 
 **Never render secrets.** The JWT private key / client secret / access token live
 only in the keychain / process memory; no error, log, or context field ever
@@ -759,7 +759,7 @@ less expressively.
 
 ## 11. Error handling
 
-localflow's principle (the error-message-style memory; demonstrated in
+saiife's principle (the error-message-style memory; demonstrated in
 `credential-store.ts` and `action-runner.ts`): **every failure is human-readable,
 actionable, and carries the real underlying exception. No silent catch. No bare
 "failed" / "not found".** A write signals failure by **rejecting** with that
@@ -793,7 +793,7 @@ only to prefix it with the node/action.
 
 ## 12. Testing strategy (offline / mockable — no live calls in CI)
 
-Testable **without a live Salesforce org**, matching localflow's existing seams
+Testable **without a live Salesforce org**, matching saiife's existing seams
 (pure modules, injected backends, injected clock, fixture events):
 
 - **`SalesforceApi` interface + `MockSalesforceApi` seam.** `salesforce-api.ts` is
@@ -872,7 +872,7 @@ exercised only in manual dogfooding against a Developer Edition / sandbox org.
    a conservative floor (e.g. `updateRequiresGate: true`, an object allow-list) so a
    mis-authored flow can't mass-update Accounts. A product-safety call, not a
    technical one — flagged before the backstop phase. Whatever the default, it is
-   **deterministic** (lfguard-style), never model-mediated.
+   **deterministic** (saiifeguard-style), never model-mediated.
 5. **Connected App vs External Client App (Spring '26).** Salesforce positions
    **External Client Apps** as the go-forward vehicle (§8). MVP builds on a Connected
    App (still supported); the auth module is drawn so the migration is a
@@ -935,7 +935,7 @@ and, behind a gate, files a follow-up Task) and is dogfoodable.
 
 ---
 
-## Appendix — reused localflow surfaces (by path)
+## Appendix — reused saiife surfaces (by path)
 
 - `src/shared/integrations.ts` — the pinned `IntegrationDescriptor` /
   `IntegrationRegistry` / `LiveConnector` contract this connector satisfies;
@@ -968,7 +968,7 @@ and, behind a gate, files a follow-up Task) and is dogfoodable.
   human-"no"-is-not-a-failure), the injected `now()` the poller shares.
 - `src/main/flow/flow-model.ts` — the `INTEGRATION_IDS` allow-list (edited, §6.0);
   the strict graph validator.
-- `guard/` (lfguard) — the deterministic-guard *posture* the optional CRM backstop
+- `guard/` (saiifeguard) — the deterministic-guard *posture* the optional CRM backstop
   (§9) borrows (a policy floor under the author's gates, no model in the loop).
 </content>
 </invoke>

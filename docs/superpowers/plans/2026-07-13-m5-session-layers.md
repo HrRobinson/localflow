@@ -15,7 +15,7 @@
 - `npm run check` (lint + typecheck + unit) must pass at every task boundary.
 - Never trust a cwd or file path from the renderer or the control API — always resolve from the main-process session record (pattern: the `git:status` handler in `src/main/index.ts`).
 - The renderer never sees secrets; control-API additions must be env-scoped through the existing grant model.
-- e2e affordances only under `LOCALFLOW_E2E === '1'`.
+- e2e affordances only under `SAIIFE_E2E === '1'`.
 - UI copy: the group is a "session", children are "panes". Code keeps `SessionInfo` as the pane record.
 - All new keybindings are remappable actions in `src/shared/keybindings.ts` with non-conflicting defaults.
 - Status rollup ALWAYS uses the existing `worstStatus` from `src/shared/environment.ts` — do not write a second priority order.
@@ -204,7 +204,7 @@ Write these as real assertions following the existing test file's construction p
 
 - [ ] **Step 1: Replace persistence calls.** Startup: `const state = loadSavedState(sessionsFile)`; call `manager.restoreGroups(state.groups)` BEFORE the session loop; pass `saved.groupId` through both `manager.restore(...)` and `manager.restoreBrowser(...)` (new last arg). Save (inside the existing `onSessionsChanged` handler): map `groupId` into the saved session objects and write `saveState(sessionsFile, { sessions, groups: manager.listGroups() })`. Delete the Task-1 compat wrappers.
 - [ ] **Step 2: Register the four IPC handlers** next to `session:rename`, with boundary validation (`typeof name === 'string'`, `typeof paneId === 'string'`), mirroring neighbors.
-- [ ] **Step 3: api/preload.** Extend `window.localflow` exactly like `renameSession` is done today (same file positions, same typing style).
+- [ ] **Step 3: api/preload.** Extend `window.saiife` exactly like `renameSession` is done today (same file positions, same typing style).
 - [ ] **Step 4:** `npm run check` — PASS (this is the task that must remove any Task-1 leftovers).
 - [ ] **Step 5: Commit** `feat: wire session groups through IPC`
 
@@ -366,7 +366,7 @@ export function parseSessionTemplates(raw: unknown): SessionTemplate[]
 ```
 
 - config.json key: `sessionTemplates` (read fresh from the config file per call, following the `loadEditorCommand` read-fresh pattern in `src/main/editor-config.ts`).
-- IPC `templates:list () → SessionTemplate[]`; `templates:create (name: string, cwd: string | undefined, environment: number) → SessionInfo[] | null` — dialog for cwd unless `LOCALFLOW_E2E` (copy the `session:create` dir logic verbatim); creates a group named after the PROJECT dir (`basename(cwd)`), then one pane per template entry via Task 8's pane-ops (`addCompanionPane` from the first-created pane, or direct create+assign — pick one and stay consistent), skipping panes whose agent binary is missing rather than failing the whole template.
+- IPC `templates:list () → SessionTemplate[]`; `templates:create (name: string, cwd: string | undefined, environment: number) → SessionInfo[] | null` — dialog for cwd unless `SAIIFE_E2E` (copy the `session:create` dir logic verbatim); creates a group named after the PROJECT dir (`basename(cwd)`), then one pane per template entry via Task 8's pane-ops (`addCompanionPane` from the first-created pane, or direct create+assign — pick one and stay consistent), skipping panes whose agent binary is missing rather than failing the whole template.
 - Landing: template cards render beside agent cards (reuse card CSS), label = template name, subtitle = pane summary ("claude + browser").
 
 - [ ] **Step 1:** Failing parse tests: valid template passes; entry with bad kind skipped; browser without url skipped; terminal defaults agentId claude; non-array → []; whole template with zero valid panes → skipped.
@@ -402,7 +402,7 @@ export type OperatorPaneRequest =
 
 - [ ] **Step 1:** Failing router tests (follow the file's existing deps() fixture): happy browser create in own env; terminal create pulls cwd from group member; groupId from another env → 400 'unknown group'; kind 'x' → 400; no token → 403.
 - [ ] **Step 2:** FAIL → implement → PASS; `npm run check`.
-- [ ] **Step 3:** Update `openclaw/skills/localflow/SKILL.md` + the CLI (`localflow-control.mjs` buildRequest) with the new verb, mirroring how existing verbs are documented/built; extend its CLI test.
+- [ ] **Step 3:** Update `openclaw/skills/saiife/SKILL.md` + the CLI (`saiife-control.mjs` buildRequest) with the new verb, mirroring how existing verbs are documented/built; extend its CLI test.
 - [ ] **Step 4: Commit** `feat: operator can add panes via control API`
 
 ---
@@ -431,7 +431,7 @@ export type OperatorPaneRequest =
 - Modify: `README.md` (sessions & panes section + new keybindings), `tests/e2e/smoke.spec.ts` ONLY if selectors it uses changed (grid markup for solo panes must be unchanged — prefer zero smoke edits)
 - Reference: read `tests/e2e/operator.spec.ts` + `operator-launch.spec.ts` for launch/poll/teardown patterns; NO `waitForTimeout`, use toPass polling; guarded finally teardown.
 
-**Scenarios (one test each, LOCALFLOW_E2E create with explicit cwd + fake agent bins per existing fixtures):**
+**Scenarios (one test each, SAIIFE_E2E create with explicit cwd + fake agent bins per existing fixtures):**
 - [ ] Template create → group box appears with 2 panes, shared header + rollup dot (`.group-box`, `.group-header`, `.group-rollup`). (Write the template into the e2e config file the harness already provisions — grep how e2e seeds config.json.)
 - [ ] Add-pane on a solo pane → group forms; new pane's cwd equals source cwd (assert via the fake agent's marker output, pattern from operator-launch.spec).
 - [ ] close-pane on a grouped pane → focus (cyan ring selector used in existing smoke tests) lands on its sibling.

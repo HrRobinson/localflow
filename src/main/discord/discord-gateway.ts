@@ -162,7 +162,7 @@ export class DiscordGateway {
     }
     this.transport.send({
       op: OP_IDENTIFY,
-      d: { token: this.token(), intents: this.intents, properties: { os: 'localflow' } }
+      d: { token: this.token(), intents: this.intents, properties: { os: 'saiife' } }
     })
   }
 

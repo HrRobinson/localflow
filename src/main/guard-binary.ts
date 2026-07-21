@@ -9,15 +9,15 @@ export interface ResolveGuardOptions {
 }
 
 /**
- * Locate the bundled `lfguard` binary. Dev builds it into the cargo
+ * Locate the bundled `saiifeguard` binary. Dev builds it into the cargo
  * workspace target dir; packaged apps bundle it via electron-builder
- * extraResources to `resourcesPath/lfguard`. Returns null when absent so
+ * extraResources to `resourcesPath/saiifeguard`. Returns null when absent so
  * callers fail open (run the agent unguarded rather than broken).
  */
 export function resolveGuardBinary(opts: ResolveGuardOptions): string | null {
   const exists = opts.exists ?? existsSync
   const path = opts.packaged
-    ? join(opts.resourcesPath, 'lfguard')
-    : join(opts.repoRoot, 'guard', 'target', 'release', 'lfguard')
+    ? join(opts.resourcesPath, 'saiifeguard')
+    : join(opts.repoRoot, 'guard', 'target', 'release', 'saiifeguard')
   return exists(path) ? path : null
 }

@@ -1,7 +1,7 @@
 /**
  * The load-bearing never-auto-send invariant tests (design §5, §10). These are
  * the point of the whole foundation slice: they prove — structurally, not by
- * policy — that localflow cannot send an email except behind an explicit,
+ * policy — that saiife cannot send an email except behind an explicit,
  * recorded human approval. If any of these fail, the guarantee is broken.
  */
 import { describe, it, expect } from 'vitest'
@@ -19,7 +19,7 @@ const SRC_DIR = fileURLToPath(new URL('../../src', import.meta.url))
 
 /**
  * Every non-test source file under `src/`, as { relPath, text }. Covers ALL of
- * localflow's TS/TSX source families — `.ts`, `.tsx` (the renderer, e.g.
+ * saiife's TS/TSX source families — `.ts`, `.tsx` (the renderer, e.g.
  * `ApproveButton.tsx`), `.mts`, `.cts` — so a send caller added in a `.tsx`
  * component cannot slip past the single-caller invariant. Excludes ambient
  * declarations (`.d.ts`) and in-tree test/spec files, matching the "all non-test

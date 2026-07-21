@@ -29,7 +29,7 @@ node actually work). Style/depth template: the Linear and email connector specs
 
 ## 1. Goal + MVP scope
 
-**Goal (one sentence):** Let a localflow flow subscribe to a WooCommerce store
+**Goal (one sentence):** Let a saiife flow subscribe to a WooCommerce store
 event (a new order, or a derived refund-request), **read** the order/customer
 behind it via the WC REST API, and **act** on it through gated-mutation actions
 (refund / cancel / re-address / note) whose authority is the flow graph — with
@@ -57,7 +57,7 @@ the store's API keys held in the OS keychain and **never rendered anywhere**.
   **HTTPS only**.
 - **Webhook ingress**: a receiver that verifies WooCommerce's
   `X-WC-Webhook-Signature` (base64 HMAC-SHA256) before any event reaches a flow.
-- Single store, single localflow environment. Keys in `safeStorage`, **never**
+- Single store, single saiife environment. Keys in `safeStorage`, **never**
   logged, echoed to IPC, or written to `config.json`.
 
 ### Out of scope (MVP) — explicitly deferred
@@ -179,10 +179,10 @@ posture:
 
 ## 3. The ecom-worker loop → WooCommerce primitives
 
-localflow's ecom-worker loop is `event → read → decide → act`. Each stage maps
+saiife's ecom-worker loop is `event → read → decide → act`. Each stage maps
 to a concrete WC primitive and a concrete flow-builder mechanism:
 
-| Stage | WooCommerce primitive | localflow flow mechanism |
+| Stage | WooCommerce primitive | saiife flow mechanism |
 |---|---|---|
 | **event** | `order.created` webhook (HMAC-signed), or a customer message the worker classifies as a refund request (`order.refundRequested`, derived). | `wc-webhook-server` verifies + normalizes → the connector's `subscribe(id, triggerId, handler)` fires → `trigger-subscriber.ts` seeds a run, writing the payload to `context['order.created']` (§4.5). |
 | **read** | `GET /orders/<id>`, `GET /customers/<id>`, `GET /orders?search=`. | An **action node** `getOrder` / `getCustomer` / `searchOrders` → `registry.invokeAction('woocommerce', ref, params)` → `wc-api` → normalized result written to context under the node id (`action-runner.ts`). |
@@ -197,7 +197,7 @@ failure rather than resolving a sentinel (§8).
 
 ---
 
-## 4. Architecture in localflow
+## 4. Architecture in saiife
 
 ### 4.1 Where it sits
 
@@ -213,7 +213,7 @@ from a *connector* (live dispatch, its own module set):
   behavior the `IntegrationRegistry` delegates to for id `'woocommerce'`. It is
   **opt-in**: absent config, the connector never starts a webhook server and
   never subscribes, and `status()` reports `needs-config` — nothing about
-  localflow's "works with no integration" guarantee changes.
+  saiife's "works with no integration" guarantee changes.
 
 Registration extends `INTEGRATION_IDS` and `IntegrationId` in
 `src/shared/integrations.ts` (`… | 'woocommerce'`) and adds the descriptor to
@@ -257,7 +257,7 @@ export const woocommerceDescriptor: IntegrationDescriptorDef = {
     { key: 'consumerKey',    label: 'Consumer key (ck_…)',    secret: true, required: true, type: 'string' },
     { key: 'consumerSecret', label: 'Consumer secret (cs_…)', secret: true, required: true, type: 'string' },
     { key: 'webhookSecret',  label: 'Webhook signing secret', secret: true, required: true, type: 'string' },
-    { key: 'environment', label: 'localflow environment (1-9)', secret: false, required: true, type: 'number' }
+    { key: 'environment', label: 'saiife environment (1-9)', secret: false, required: true, type: 'number' }
   ],
   triggers: [
     { id: 'order.created',         label: 'New order placed' },
@@ -319,7 +319,7 @@ conditions** — that dependency is owned elsewhere (task constraint).
 
 ### 4.6 Authority & safety posture
 
-Identical to the Shopify sibling and to localflow's operator posture:
+Identical to the Shopify sibling and to saiife's operator posture:
 
 - **Mutations are gated by the flow, never by the connector.** `refundOrder` /
   `cancelOrder` / `updateShippingAddress` / `addOrderNote` only ever run because
@@ -341,7 +341,7 @@ Identical to the Shopify sibling and to localflow's operator posture:
                       WOOCOMMERCE STORE (self-hosted WordPress)
         order.created  ──X-WC-Webhook-Signature: base64(hmac-sha256(body, secret))──┐
                                                                                      ▼
-┌──────────────────────────── localflow main process ───────────────────────────────┐
+┌──────────────────────────── saiife main process ───────────────────────────────┐
 │  wc-webhook-server ──verify HMAC, size, ping──► woocommerce-connector.handler       │
 │      (200 fast)                                       │                              │
 │                                                       │ coerceEvent → SeedEvent      │
@@ -469,7 +469,7 @@ change the ids a template pins.
 
 ## 8. Error handling
 
-localflow's rule (error-message-style memory; demonstrated across
+saiife's rule (error-message-style memory; demonstrated across
 `session-manager.ts` / `control-api.ts`): **every failure is human-readable,
 actionable, and carries the real underlying exception. No silent catch, no bare
 "failed", never a 404-vibe.** An action `invokeAction` **rejects** with these
@@ -498,7 +498,7 @@ forwards **that**, never a vaguer mint.
 
 ## 9. Testing strategy (offline — no live store)
 
-Testable **without a live WooCommerce store**, matching localflow's seams
+Testable **without a live WooCommerce store**, matching saiife's seams
 (injected transports, pure functions, fixture events):
 
 - **`MockWcApi` seam** — `wc-api` takes its HTTP transport as a constructor dep
@@ -554,7 +554,7 @@ manual dogfooding.
    way.
 4. **Refund authority granularity.** Is a `refundOrder` node sufficient on its
    own, or must a refund **always** sit behind a `needs-you` gate / an
-   lfguard-style check (the destructive-command posture)? The connector supports
+   saiifeguard-style check (the destructive-command posture)? The connector supports
    either; the *default template* posture is an open product call. (`api_refund`
    defaulting to record-only is the conservative MVP hedge.)
 5. **`order.updated` firehose.** Adding it as a trigger would catch refunds,
@@ -601,7 +601,7 @@ node posts an order note / issues a refund only when the graph authorizes it.
 
 ---
 
-## Appendix — reused / satisfied localflow surfaces (by path)
+## Appendix — reused / satisfied saiife surfaces (by path)
 
 - `src/shared/integrations.ts` — the pinned `IntegrationDescriptor` /
   `IntegrationRegistry` this connector satisfies; `IntegrationId` +

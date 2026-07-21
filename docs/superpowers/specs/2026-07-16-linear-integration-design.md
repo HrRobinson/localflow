@@ -3,12 +3,12 @@
 **Date:** 2026-07-16
 **Status:** Design (spec) — not started. Design-approval gate for the first
 CRM/task integration (Direction 1 of the integration-scope brainstorm).
-**Feature:** Make localflow the execution layer *under* Linear — pull a
-delegated issue, spawn a localflow agent pane to work it, stream live status
+**Feature:** Make saiife the execution layer *under* Linear — pull a
+delegated issue, spawn a saiife agent pane to work it, stream live status
 back onto the Linear `AgentSession`, route human approval through the existing
 `needs-you` primitive, and close the loop. Reuses the pane model, the
 hook-driven status feed, the operator control API + grant, `ApproveButton` /
-`peek`, and lfguard — it does **not** reinvent any of them.
+`peek`, and saiifeguard — it does **not** reinvent any of them.
 
 Research basis: `scratchpad/feasibility-linear.md` (primary),
 `scratchpad/design-scope-integrations.md` (consolidated verdict + Direction 1),
@@ -19,8 +19,8 @@ with `feasibility-salesforce.md` / `feasibility-jira.md` for the
 
 ## 1. Goal + MVP scope
 
-**Goal (one sentence):** Let a Linear user delegate an issue to localflow's app
-identity and have a localflow agent pane work it end-to-end — reporting
+**Goal (one sentence):** Let a Linear user delegate an issue to saiife's app
+identity and have a saiife agent pane work it end-to-end — reporting
 `working / needs-you / done` live onto Linear's native `AgentSession`, and
 pausing for human input via `elicitation` — with zero bespoke status-field
 machinery.
@@ -28,32 +28,32 @@ machinery.
 ### In scope (MVP)
 
 - A new **Linear connector** module in the main process.
-- OAuth2 `actor=app` install so localflow acts as its **own bot identity** (not
+- OAuth2 `actor=app` install so saiife acts as its **own bot identity** (not
   user impersonation).
 - A **webhook receiver** for `AgentSessionEvent` (`created`, `prompted`).
-- On `created`: spawn **one localflow terminal pane per delegated issue** in a
+- On `created`: spawn **one saiife terminal pane per delegated issue** in a
   configured environment, seeded with the issue's `promptContext`, driven
   through the **existing operator control API** (`POST /panes`, then
   `POST /panes/:handle/prompt`).
 - **Status mapping**: subscribe to `SessionManager.onStatus` / `onActivity`
-  (`src/main/session-manager.ts`) and translate each localflow status into a
+  (`src/main/session-manager.ts`) and translate each saiife status into a
   Linear `AgentActivity` (`thought` / `action` / `elicitation` / `response` /
   `error`), which drives `AgentSession.state` (`pending`→`active`→
   `awaitingInput`→`complete`).
-- **Human-in-the-loop, both directions**: localflow `needs-you` → Linear
+- **Human-in-the-loop, both directions**: saiife `needs-you` → Linear
   `elicitation` (→ `awaitingInput`); a human reply in Linear → `prompted`
   webhook → written into the pane via the control API. A human can *also*
-  resolve it inside localflow with the existing `ApproveButton` (writes `\r`).
-- **Close**: on localflow `idle`/`done`, emit a `response` activity
+  resolve it inside saiife with the existing `ApproveButton` (writes `\r`).
+- **Close**: on saiife `idle`/`done`, emit a `response` activity
   (→ `complete`); optionally `issueUpdate(stateId)` to move the workflow state.
-- **Single Linear workspace, single localflow environment** (env 1-9), one
+- **Single Linear workspace, single saiife environment** (env 1-9), one
   issue → one pane. Credentials stored in the OS keychain via Electron
   `safeStorage`; **never logged or rendered**.
 
 ### Out of scope (MVP) — explicitly deferred
 
 - Cross-issue **"needs-you queue" aggregate view** inside Linear (Linear has no
-  built-in one — §10, §11). localflow already has its own Overview `needs-you`
+  built-in one — §10, §11). saiife already has its own Overview `needs-you`
   surface; the *Linear-side* aggregate is a phase-2 item.
 - **Multi-workspace** and **multi-environment** fan-out (the credential/mapping
   shapes are designed to make this additive — §7, §11).
@@ -73,7 +73,7 @@ machinery.
 
 **Verdict from research: YELLOW** — the full loop (pull → work → live status →
 human approval → close) is *fully buildable today* on Linear's native
-**Agents API**, and maps unusually cleanly onto localflow's 3-state model
+**Agents API**, and maps unusually cleanly onto saiife's 3-state model
 (`feasibility-linear.md` §"Verdict"). It is YELLOW, not GREEN, because of three
 named constraints, none of them blockers:
 
@@ -98,42 +98,42 @@ Other constraints, all manageable: **rate limits** are generous (5,000 req/h,
 under them (webhooks, not polling); the **10-second ack contract** on
 `AgentSessionEvent.created` (must emit a `thought` within 10s or Linear marks
 the run unresponsive) shapes the receiver's hot path; **`stale`** after ~30 min
-of silence is a free "lost heartbeat" signal localflow can adopt.
+of silence is a free "lost heartbeat" signal saiife can adopt.
 
 ---
 
 ## 3. The core loop → Linear primitives
 
-localflow's canonical loop (`design-scope-integrations.md`, Direction 1) is
+saiife's canonical loop (`design-scope-integrations.md`, Direction 1) is
 `pull → work → status back → human approval → close`. Each stage maps to a
-concrete Linear primitive and a concrete localflow mechanism:
+concrete Linear primitive and a concrete saiife mechanism:
 
-| Stage | Linear primitive | localflow mechanism |
+| Stage | Linear primitive | saiife mechanism |
 |---|---|---|
 | **pull** | `AgentSessionEvent` webhook, action `created` (fired on delegation/assignment to the app identity). Carries `AgentSession` + `promptContext`. | Connector receives webhook → obtains/uses the environment's operator grant → `POST /panes` (`kind: terminal`, an `OPERATOR_TERMINAL_AGENTS` agent) → `POST /panes/:handle/prompt` with the issue context. Must emit a `thought` **within 10s** to ack. |
-| **work** | `AgentSession.state = pending → active`, driven by `AgentActivity` of kind `thought` (progress/heartbeat) and `action` (tool step). | localflow `working` status (from the hook adapter / state machine, `UserPromptSubmit` → working). Each `onStatus`/`onActivity` tick → debounced `thought`/`action` emit. |
+| **work** | `AgentSession.state = pending → active`, driven by `AgentActivity` of kind `thought` (progress/heartbeat) and `action` (tool step). | saiife `working` status (from the hook adapter / state machine, `UserPromptSubmit` → working). Each `onStatus`/`onActivity` tick → debounced `thought`/`action` emit. |
 | **status back** | Typed `AgentActivity` stream (Markdown bodies). | `SessionManager.onStatus` + `onActivity` taps (already wired in `src/main/index.ts:347,362`). The connector is a third subscriber alongside the renderer IPC + console bus. |
-| **human approval** | `AgentActivity` kind `elicitation` → flips `AgentSession.state` to `awaitingInput`. Human reply in the issue thread → `prompted` webhook. | localflow `needs-you` status (state machine: `Notification` → needs-you) → emit `elicitation`. Return path: `prompted` webhook → `POST /panes/:handle/prompt` writes the human's reply into the pty. **Symmetry:** a human at the localflow cockpit can instead click `ApproveButton` (writes `\r`), which returns the pane to `working` and the connector emits a resuming `thought`. |
-| **close** | `AgentActivity` kind `response` → `AgentSession.state = complete`. Optional `issueUpdate(stateId)` to move workflow state; optional `commentCreate` for a summary. | localflow `idle` after a `Stop` hook (turn complete) → emit `response`. A pane `exited` with a failure tail → emit `error` (→ `AgentSession.state = error`). |
+| **human approval** | `AgentActivity` kind `elicitation` → flips `AgentSession.state` to `awaitingInput`. Human reply in the issue thread → `prompted` webhook. | saiife `needs-you` status (state machine: `Notification` → needs-you) → emit `elicitation`. Return path: `prompted` webhook → `POST /panes/:handle/prompt` writes the human's reply into the pty. **Symmetry:** a human at the saiife cockpit can instead click `ApproveButton` (writes `\r`), which returns the pane to `working` and the connector emits a resuming `thought`. |
+| **close** | `AgentActivity` kind `response` → `AgentSession.state = complete`. Optional `issueUpdate(stateId)` to move workflow state; optional `commentCreate` for a summary. | saiife `idle` after a `Stop` hook (turn complete) → emit `response`. A pane `exited` with a failure tail → emit `error` (→ `AgentSession.state = error`). |
 
 **Failure/edge mappings:**
-- localflow pane instant-exits (the `INSTANT_EXIT_MS` path in
+- saiife pane instant-exits (the `INSTANT_EXIT_MS` path in
   `session-manager.ts`, message carries the real tail) → `AgentActivity` `error`
   with that tail as the body → `AgentSession.state = error`.
-- No localflow activity for ~30 min → Linear marks the session `stale`. The
+- No saiife activity for ~30 min → Linear marks the session `stale`. The
   connector treats `stale` as a recoverable "lost heartbeat": surface it as a
   console notice; a later activity revives it.
 
 ---
 
-## 4. Architecture in localflow
+## 4. Architecture in saiife
 
 ### 4.1 Where it sits
 
 A new **main-process module set** under `src/main/linear/`. It is a peer of the
 operator subsystem, wired in `src/main/index.ts` next to `startControlServer` /
 `startHookServer`. It is **opt-in**: absent config (no OAuth install) means the
-connector never starts, and nothing about localflow's "works with no
+connector never starts, and nothing about saiife's "works with no
 integration" guarantee changes — exactly the posture the OpenClaw operator
 launch took (`2026-07-11-openclaw-operator-launch-design.md`).
 
@@ -141,7 +141,7 @@ The connector is, architecturally, **an in-process operator client**. It does
 not reach into `SessionManager` privately to spawn/drive panes; it goes through
 the **same control-API surface** OpenClaw uses (`src/main/control-api.ts`), so
 the capability boundary (`OPERATOR_TERMINAL_AGENTS`), the prompt **guard**
-(lfguard via `operatorGuard`), and per-environment isolation all apply to
+(saiifeguard via `operatorGuard`), and per-environment isolation all apply to
 Linear-driven work identically. It obtains a grant via the existing
 `OperatorGrantStore.grant(env)` and calls the router. (Two wiring options in
 §4.6; both preserve the guard.)
@@ -155,18 +155,18 @@ Linear-driven work identically. It obtains a grant via the existing
 | `src/main/linear/linear-client.ts` | Thin GraphQL client. All Linear API shapes (mutations, queries) live *only* here — the Developer-Preview blast radius. Emits `AgentActivity`, runs `issueUpdate`/`commentCreate`, does the auth-token refresh. |
 | `src/main/linear/linear-oauth.ts` | OAuth2 `actor=app` install/callback flow + token refresh. Writes tokens **only** to the keychain store (§5). |
 | `src/main/linear/linear-token-store.ts` | Keychain-backed credential storage via Electron `safeStorage`. Get/set/clear. Never returns a token into a log or IPC payload. |
-| `src/main/linear/status-map.ts` | Pure mapping: localflow `SessionStatus` + `ActivityEntry` → Linear `AgentActivity` kind + body. Unit-testable in isolation (mirrors `state-machine.ts`'s purity). |
+| `src/main/linear/status-map.ts` | Pure mapping: saiife `SessionStatus` + `ActivityEntry` → Linear `AgentActivity` kind + body. Unit-testable in isolation (mirrors `state-machine.ts`'s purity). |
 | `src/main/linear/linear-config.ts` | Reads the `linear` block from `config.json` (workspace id, environment scoping, agent choice) — the config-as-code pattern of `operator-config.ts` / `editor-config.ts`. |
 | `src/shared/linear.ts` | Shared types (`LinearSessionEvent`, `AgentActivityInput`, the issue↔pane map entry) needed by both main and any renderer surface. |
 
 ### 4.3 Authenticating as the app actor
 
-The connector authenticates as **localflow's own workspace bot**, via OAuth2
+The connector authenticates as **saiife's own workspace bot**, via OAuth2
 with `actor=app` on the authorization URL (`feasibility-linear.md` §1). On
 install Linear creates a dedicated agent user; the app holds its own access +
 refresh token. Scopes requested: `app:assignable` (be delegated issues) and,
 phase 2, `app:mentionable`. Per-mutation `createAsUser` / `displayIconUrl` are
-available if a run wants to render "worked by <human> via localflow", but MVP
+available if a run wants to render "worked by <human> via saiife", but MVP
 posts as the plain app identity. The bot does **not** count as a billable seat.
 
 ### 4.4 Receiving webhooks (the cloud-ingress problem)
@@ -192,7 +192,7 @@ enforces `MAX_BODY_BYTES`, and 200s **fast** — the heavy work (spawn a pane,
 emit the ack `thought`) happens after the response so the 10-second ack
 contract and the webhook 5-second response expectation are both met.
 
-### 4.5 Status mapping (localflow feed → Linear)
+### 4.5 Status mapping (saiife feed → Linear)
 
 The connector registers as an additional listener on the two existing taps in
 `index.ts`:
@@ -204,7 +204,7 @@ manager.onActivity((id, entry) => { ...renderer + console... ; linear.onPaneActi
 
 `status-map.ts` translates (pure function):
 
-| localflow | Linear `AgentActivity` | resulting `AgentSession.state` |
+| saiife | Linear `AgentActivity` | resulting `AgentSession.state` |
 |---|---|---|
 | `working` (from `UserPromptSubmit`) | `thought` (heartbeat) / `action` (on tool-step activity entries) | `active` |
 | `needs-you` (from `Notification`) | `elicitation` (body = the pending question, sourced from `manager.peek()` — the same peek `ApproveButton` shows) | `awaitingInput` |
@@ -212,7 +212,7 @@ manager.onActivity((id, entry) => { ...renderer + console... ; linear.onPaneActi
 | `exited` with failure message | `error` (body = the instant-exit tail) | `error` |
 | no activity ~30 min | *(none — Linear auto-marks)* | `stale` |
 
-**Debounce/coalesce:** localflow's activity ring already collapses repeated
+**Debounce/coalesce:** saiife's activity ring already collapses repeated
 identical hook events (`recordActivity` in `session-manager.ts` bumps a
 `count`). The connector mirrors that: it does **not** emit one `thought` per
 raw tick — it debounces `working` heartbeats (e.g. ≤1 `thought`/N seconds) to
@@ -249,7 +249,7 @@ primitive"). Two surfaces, one state:
   the issue thread; the `prompted` webhook returns the text; the connector
   writes it into the pane (`POST /panes/:handle/prompt`), the pane returns to
   `working`, the connector emits a resuming `thought`.
-- **In localflow:** the existing `ApproveButton` (`src/renderer/.../ApproveButton.tsx`)
+- **In saiife:** the existing `ApproveButton` (`src/renderer/.../ApproveButton.tsx`)
   arms → peeks the pending question → confirms by writing `\r`. When the pane
   leaves `needs-you`, the connector's `onPaneStatus` sees `working` again and
   emits a `thought` so Linear reflects "resumed" even though the human acted in
@@ -260,16 +260,16 @@ primitive"). Two surfaces, one state:
 
 ```
                           LINEAR CLOUD
-   (issue delegated to localflow app identity → AgentSession created)
+   (issue delegated to saiife app identity → AgentSession created)
         │  AgentSessionEvent{action:"created", agentSession, promptContext}
         │  (HMAC-signed)
         ▼
-┌────────────────────────────── localflow main process ──────────────────────────┐
+┌────────────────────────────── saiife main process ──────────────────────────┐
 │  linear-webhook-server ──verify HMAC, size, parse──► linear-connector           │
 │        (200 fast)                                        │                        │
 │                                                          │ 1. grant/reuse token   │
 │                                                          │ 2. POST /panes ────────┼──► control-api ─► SessionManager.create ─► pty pane
-│                                                          │ 3. POST /panes/:h/prompt (guarded by lfguard) ─► pane gets issue context
+│                                                          │ 3. POST /panes/:h/prompt (guarded by saiifeguard) ─► pane gets issue context
 │                                                          │ 4. emit `thought` (ack ≤10s)
 │                                                          ▼
 │   SessionManager.onStatus / onActivity ──► linear-connector.onPaneStatus ──► status-map ──► linear-client
@@ -369,7 +369,7 @@ verified against `developers.linear.app` at build time.
 
 `needs-you` → `elicitation` → `awaitingInput` → human reply → `prompted` webhook
 → `POST /panes/:handle/prompt` → pane resumes → `thought`. OR: human clicks
-`ApproveButton` in localflow → pane resumes → connector emits `thought`. One
+`ApproveButton` in saiife → pane resumes → connector emits `thought`. One
 state, two surfaces, zero new primitives.
 
 ---
@@ -385,7 +385,7 @@ values are honored; garbage disables the feature rather than throwing):
   "linear": {
     "enabled": true,
     "workspaceId": "<linear-org-id>",          // reference, not a secret
-    "environment": 1,                            // which localflow env (1-9) hosts Linear work
+    "environment": 1,                            // which saiife env (1-9) hosts Linear work
     "agentId": "claude",                         // must be in OPERATOR_TERMINAL_AGENTS
     "webhookUrl": "https://<tunnel-or-relay>/linear/webhook",
     "moveToStateOnDone": "<optional workflow-state id>",
@@ -400,7 +400,7 @@ values are honored; garbage disables the feature rather than throwing):
 - **Issue↔pane map** (in-memory, in `linear-connector.ts`, not persisted —
   mirrors the operator grants being in-memory): each entry ties
   `{ agentSessionId, issueId, paneId, environment, lastActivityAt, lastEmittedState }`.
-  `paneId` is a localflow session id. `lastEmittedState` prevents duplicate
+  `paneId` is a saiife session id. `lastEmittedState` prevents duplicate
   activity emits; `lastActivityAt` supports the debounce and the `stale`
   reasoning. On app restart the map is empty (like grants); in-flight Linear
   sessions are reconciled from `awaitingInput`/`active` `AgentSession`s via the
@@ -416,7 +416,7 @@ values are honored; garbage disables the feature rather than throwing):
 
 ## 8. Error handling
 
-localflow's principle (from the error-message-style memory and demonstrated all
+saiife's principle (from the error-message-style memory and demonstrated all
 over `session-manager.ts` — instant-exit surfaces the *real tail*, the guard
 *emits a visible notice*, `control-api` logs *route + reason*): **every failure
 is human-readable, actionable, and carries the real underlying exception.
@@ -424,7 +424,7 @@ No silent catch. No bare "failed".** Each Linear failure maps to a legible
 console/notice and, where an issue is in flight, to a Linear `error` activity so
 the human sees it *in Linear too*.
 
-| Failure | Surface in localflow | Surface in Linear |
+| Failure | Surface in saiife | Surface in Linear |
 |---|---|---|
 | **Webhook signature/parse invalid** | `console.warn` route + reason, **never** the body or secret (mirrors control-api's token discipline). Console-bus `linear` row. | none (rejected before any session touch). |
 | **Webhook received but pane spawn fails** (bad agent path — the `try/catch` in `session-manager.spawn` sets `info.message`) | The existing "Could not start '<cmd>' — check the agent's path" message, surfaced as a `linear` console row. | `AgentActivity` `error` with that message → `AgentSession.state = error` (so Linear doesn't hang in `pending`). |
@@ -432,7 +432,7 @@ the human sees it *in Linear too*.
 | **Auth expiry / refresh failure** | Legible notice: "Linear token refresh failed: `<Linear error message>` — reconnect in Settings." **The real exception text is included**, the token value is not. Connector pauses, does not spin. | Best-effort `error` activity on any in-flight session, if a still-valid token remains; otherwise the session goes `stale` and the human is prompted in-app to reconnect. |
 | **Rate-limit (HTTP 400 `RATELIMITED`)** | Notice with the `Retry-After`/reason; the emitter backs off (exponential) and coalesces pending activities. Not swallowed. | Activities are delayed, not dropped; the human sees a slightly-delayed thread, never a silent gap. |
 | **Linear GraphQL error mid-session** (e.g. `issueUpdate` rejected) | Console `linear` row with the operation + the **verbatim GraphQL error** (message + code). | If the failing op *was* the status emit, retry with backoff; if it keeps failing, emit a terminal `error` activity so the session doesn't sit falsely `active`. |
-| **lfguard blocks a Linear-sourced prompt** | The existing guard path fires: `emitNotice("⛔ lfguard blocked: <reason>")` into the pane + a `guard` console row (control-api already does this for operator prompts). | `AgentActivity` `error`/`elicitation` explaining the block, so the human in Linear knows why the run stopped. |
+| **saiifeguard blocks a Linear-sourced prompt** | The existing guard path fires: `emitNotice("⛔ saiifeguard blocked: <reason>")` into the pane + a `guard` console row (control-api already does this for operator prompts). | `AgentActivity` `error`/`elicitation` explaining the block, so the human in Linear knows why the run stopped. |
 | **Ingress/tunnel down** | Startup/health check fails loudly: "Linear webhook URL `<url>` is unreachable — no issues will be picked up." Never a silent no-op. | none (inbound is dead by definition); the app makes this visible so the user knows delegation won't work. |
 
 The connector **never** catches-and-drops. Where the code already has a loud
@@ -443,7 +443,7 @@ message (spawn failure, guard block, instant-exit tail), the connector forwards
 
 ## 9. Testing strategy
 
-Testable **without a live Linear workspace**, matching localflow's existing
+Testable **without a live Linear workspace**, matching saiife's existing
 seams (pure routers, injected clocks, fixture agents):
 
 - **`status-map.ts` unit tests** — pure function; assert every
@@ -501,12 +501,12 @@ API is exercised only in manual dogfooding.
    first-mover dogfood value. Flagged, not resolved.
 3. **The build-your-own "needs-you queue" gap.** Linear has **no** out-of-the-box
    cross-issue view of "which delegated sessions are `awaitingInput`" — only the
-   per-issue activity thread + delegate-filtered views. localflow already has an
+   per-issue activity thread + delegate-filtered views. saiife already has an
    aggregate `needs-you` surface (its Overview), so for the *operator* this gap
-   is covered on the localflow side. But if the value prop is "a Linear user
+   is covered on the saiife side. But if the value prop is "a Linear user
    sees their agent queue *in Linear*", that aggregate view must be built (a
    saved filter / custom view over `AgentSession.state`, if filterable — not
-   confirmed in the fetched docs). Decide whether the queue lives in localflow
+   confirmed in the fetched docs). Decide whether the queue lives in saiife
    (MVP, free) or must also exist in Linear (phase-2 build).
 
 ---
@@ -526,7 +526,7 @@ API is exercised only in manual dogfooding.
 6. On `idle`: `response` → `complete`. Errors per §8.
 
 That slice proves the entire loop end-to-end and is dogfoodable (Jonas delegates
-a real issue and watches a localflow pane work it, reporting live in Linear).
+a real issue and watches a saiife pane work it, reporting live in Linear).
 
 ### Phased roadmap
 
@@ -552,7 +552,7 @@ a real issue and watches a localflow pane work it, reporting live in Linear).
 
 ---
 
-## Appendix — reused localflow surfaces (by path)
+## Appendix — reused saiife surfaces (by path)
 
 - `src/shared/agents.ts` — hook-adapter model + status-fidelity tiers; the
   connector inherits whatever fidelity the chosen agent reports.
@@ -568,7 +568,7 @@ a real issue and watches a localflow pane work it, reporting live in Linear).
   drive surface the connector uses in-process.
 - `src/main/operator-grant.ts` — `OperatorGrantStore.grant/revoke/
   environmentForToken`; the connector's grant.
-- `src/main/operator-guard.ts` + `guard/` (lfguard) — the prompt guard that
+- `src/main/operator-guard.ts` + `guard/` (saiifeguard) — the prompt guard that
   covers Linear-sourced prompts identically to operator prompts.
 - `src/main/hook-server.ts` — the loopback HTTP-receiver pattern the
   `linear-webhook-server` mirrors (createServer, `applyLoopbackTimeouts`,

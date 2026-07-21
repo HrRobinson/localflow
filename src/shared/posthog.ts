@@ -78,7 +78,7 @@ export interface PostHogConfig {
   host: string
   /** Poll cadence in seconds; absent ⇒ the poller default (spec §7.3). */
   pollSeconds?: number
-  /** Which localflow environment (1-9) hosts PostHog work. */
+  /** Which saiife environment (1-9) hosts PostHog work. */
   environment: number
   /** Opt-in escape hatch for a self-hosted PostHog on a LAN/localhost (spec §4.4). */
   allowInsecureLocalHost?: boolean

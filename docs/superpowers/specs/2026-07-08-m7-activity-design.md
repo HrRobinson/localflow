@@ -14,7 +14,7 @@ flow visualization are deferred.
   closed, exited, moved environment), each with a timestamp and the status
   it produced.
 - **Not persisted in v1** — the feed starts fresh each launch, and the UI
-  says so ("since localflow started"). Honest over clever; persistence is
+  says so ("since saiife started"). Honest over clever; persistence is
   a follow-up if the feed proves valuable.
 - Main also records `needsYouSince` per session (set on entering
   `needs-you`, cleared on leaving) — the stats strip's "oldest unattended"

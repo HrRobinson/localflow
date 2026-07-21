@@ -93,7 +93,7 @@ export interface SendResult {
 
 /**
  * An opaque provider position (Gmail `historyId`, Graph delta link, IMAP UID).
- * localflow never interprets it — it persists it (design §8) and echoes it back
+ * saiife never interprets it — it persists it (design §8) and echoes it back
  * to `listInbound` / `reconcile` so a restart resumes without missing mail.
  */
 export interface MailboxCursor {

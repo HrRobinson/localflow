@@ -14,7 +14,7 @@ function shSingleQuote(s: string): string {
 }
 
 /**
- * The shell command a pre-tool hook runs: invoke lfguard in exit-2 deny
+ * The shell command a pre-tool hook runs: invoke saiifeguard in exit-2 deny
  * mode with the active packs and per-pane audit tag. bin/auditLog/seenDir are
  * single-quoted because macOS userData paths contain spaces.
  */

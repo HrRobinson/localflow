@@ -4,17 +4,17 @@
 **Status:** Design (spec) — not started. Sub-project **#1 of 3** of the
 "visual-flows pilot" initiative (Integrations Hub → Flow Engine → Flow Canvas),
 brainstorm-approved 2026-07-16.
-**Feature:** A single, opt-in place in localflow where a user **enables** an
+**Feature:** A single, opt-in place in saiife where a user **enables** an
 integration, sets its **credentials** (secret fields → OS keychain; non-secret
 refs → `config.json`), and sees a live **connection status**. It owns the
 **IntegrationRegistry** — the single source of truth of `IntegrationDescriptor`s
 that sub-project 2 (Flow Engine: trigger/action dispatch) and sub-project 3
 (Flow Canvas: palette UI) read. It reuses the connectors just built as offline
 foundations (Linear `src/main/linear/*`, Email `src/main/email/*`, Cloud
-`src/main/cloud-credentials.ts` + the two lfguard packs) — it does **not**
+`src/main/cloud-credentials.ts` + the two saiifeguard packs) — it does **not**
 reinvent their loops; it configures and reports on them.
 
-Grounding: this spec is written to be built directly by localflow's agents. Every
+Grounding: this spec is written to be built directly by saiife's agents. Every
 mechanism is anchored to the *actual* codebase (paths cited inline). It reuses
 the Settings section idiom (`src/renderer/src/components/Settings.tsx`), the
 Cockpit status-pill + token-never-shown hygiene
@@ -80,7 +80,7 @@ one authority.
 - **Secret rotation/expiry UX, multi-account/multi-workspace fan-out.** The field
   and store shapes are designed to make these additive (§8, §12).
 
-localflow with **no** integration configured behaves exactly as it does today —
+saiife with **no** integration configured behaves exactly as it does today —
 the Integrations view simply shows three disabled panels. Opt-in is absolute.
 
 ---
@@ -124,7 +124,7 @@ is a first-class tab without bending the shape.
 
 ---
 
-## 4. Architecture in localflow
+## 4. Architecture in saiife
 
 A new **main-process module set** under `src/main/integrations/`, a shared types
 file, IPC wiring, and one renderer view. It is a peer of the operator/agent
@@ -132,7 +132,7 @@ subsystems, wired in `src/main/index.ts` alongside the other registries.
 
 ### 4.1 `CredentialStore` — keychain-backed, seam-injected (`src/main/integrations/credential-store.ts`)
 
-**Responsibility:** the *only* module in localflow that touches raw secret
+**Responsibility:** the *only* module in saiife that touches raw secret
 material for integrations. Get/set/clear behind Electron `safeStorage`. It never
 returns a secret across an IPC boundary, into a log, or into `config.json`.
 
@@ -275,13 +275,13 @@ A new top-level view — added to `App.tsx`'s view union
 `+ 'integrations'`, `src/renderer/src/App.tsx:94`) and reachable from the same nav
 that routes `onSettings`/`onCockpit`. One panel per integration, each reusing the
 Settings **`card`** container idiom and the Cockpit **status-dot** idiom so it
-reads as native localflow.
+reads as native saiife.
 
 Each panel renders from an `IntegrationView` (never a secret value):
 
 - **Enable toggle** — optimistic with rollback, exactly like Settings'
   `togglePack` (a rejected write rolls the switch back and shows a notice rather
-  than lying that it's on): `window.localflow.setIntegrationEnabled(id, next)`.
+  than lying that it's on): `window.saiife.setIntegrationEnabled(id, next)`.
 - **Typed config fields** — one control per `IntegrationConfigField`:
   - **non-secret** (`secret: false`): a normal text input, `defaultValue` from the
     view's field value (it came from `config.json`), saved on blur via
@@ -318,7 +318,7 @@ interface IntegrationView {
 
 ### 4.6 IPC wiring
 
-Extends the existing `window.localflow.*` bridge (`src/preload/index.ts` +
+Extends the existing `window.saiife.*` bridge (`src/preload/index.ts` +
 `src/shared/api.ts` type surface + `ipcMain.handle` in `src/main/index.ts`, same
 shape as `guard:getPacks` / `guard:setPacks`):
 
@@ -399,7 +399,7 @@ boundary; **no secrets**):
       "enabled": true,
       "workspaceId": "<linear-org-id>",     // reference, not a secret
       "teamIds": ["<team-id>"],
-      "environment": 1,                       // localflow env 1-9
+      "environment": 1,                       // saiife env 1-9
       "webhookUrl": "https://<tunnel>/linear/webhook"
       // oauthToken, webhookSecret → keychain, NOT here
     },
@@ -413,7 +413,7 @@ boundary; **no secrets**):
     },
     "cloud": {
       "enabled": false,
-      "roleArn": "arn:aws:iam::<acct>:role/localflow-agent-sandbox",
+      "roleArn": "arn:aws:iam::<acct>:role/saiife-agent-sandbox",
       "externalId": "<non-secret confused-deputy value>",
       "region": "us-east-1",
       "sandboxAccountId": "<acct>",
@@ -452,10 +452,10 @@ keychain-vs-config routing; `required` drives `needs-config`.
 | `webhookSecret` | Webhook signing secret | ✅ | ✅ | keychain |
 | `workspaceId` | Workspace / org id | ❌ | ✅ | config |
 | `teamIds` | Team ids (comma-sep) | ❌ | ❌ | config |
-| `environment` | localflow environment (1-9) | ❌ | ✅ | config |
+| `environment` | saiife environment (1-9) | ❌ | ✅ | config |
 | `webhookUrl` | Ingress webhook URL | ❌ | ❌ | config |
 
-- **triggers:** `issue.delegated` ("Issue delegated to localflow"),
+- **triggers:** `issue.delegated` ("Issue delegated to saiife"),
   `issue.prompted` ("Human replied in the issue").
 - **actions:** `activity.emit` ("Post agent activity"), `issue.updateState`
   ("Move issue to a workflow state"), `comment.create` ("Comment on the issue"),
@@ -469,7 +469,7 @@ keychain-vs-config routing; `required` drives `needs-config`.
 | `clientSecret` | OAuth client secret (if desktop client) | ✅ | ❌ | keychain |
 | `address` | Mailbox address | ❌ | ✅ | config |
 | `oauthAppRef` | OAuth client name | ❌ | ✅ | config |
-| `environment` | localflow environment (1-9) | ❌ | ✅ | config |
+| `environment` | saiife environment (1-9) | ❌ | ✅ | config |
 | `scopeQuery` | In-scope search filter | ❌ | ❌ | config |
 
 - **triggers:** `mail.received` ("New mail in scope arrives").
@@ -486,7 +486,7 @@ keychain-vs-config routing; `required` drives `needs-config`.
 | `region` | AWS region | ❌ | ✅ | config |
 | `sandboxAccountId` | Sandbox account id | ❌ | ❌ | config |
 | `durationSeconds` | Session duration (≤1800) | ❌ | ❌ | config |
-| `packs` | lfguard packs | ❌ | ❌ | config |
+| `packs` | saiifeguard packs | ❌ | ❌ | config |
 
 - **triggers:** none in MVP (cloud is action-side; `budget.threshold` is a later
   idea — §10).
@@ -546,7 +546,7 @@ payload for the known secret and fails if it appears.
 ## 10. Testing strategy (offline, seam-injected)
 
 No test needs the real OS keychain, a live workspace, or a network — everything
-runs against the `SecretBackend` seam and fixture config, matching localflow's
+runs against the `SecretBackend` seam and fixture config, matching saiife's
 existing pure-router / injected-clock / fixture-agent posture.
 
 - **`CredentialStore` unit tests** (inject a fake in-memory `SecretBackend`):
@@ -718,7 +718,7 @@ the invariant test is green.
 
 ---
 
-## Appendix — reused localflow surfaces (by path)
+## Appendix — reused saiife surfaces (by path)
 
 - `src/renderer/src/components/Settings.tsx` — `card`/`rowBtn` idiom, section
   layout, optimistic-with-rollback toggle (`togglePack`), blur-to-save inputs.

@@ -3,12 +3,13 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { removeSkillEnv, writeSkillEnv } from '../../src/main/openclaw-config'
+import { LEGACY_SKILL_KEY } from '../../src/main/legacy-names'
 
 let dir: string
 let file: string
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), 'localflow-ocfg-'))
+  dir = mkdtempSync(join(tmpdir(), 'saiife-ocfg-'))
   file = join(dir, 'openclaw.json')
 })
 
@@ -19,7 +20,7 @@ afterEach(() => {
 const read = (): Record<string, unknown> => JSON.parse(readFileSync(file, 'utf8'))
 
 describe('writeSkillEnv', () => {
-  it('writes skills.entries.localflow.env into an existing config, preserving the rest', () => {
+  it('writes skills.entries.saiife.env into an existing config, preserving the rest', () => {
     writeFileSync(
       file,
       JSON.stringify({
@@ -34,28 +35,28 @@ describe('writeSkillEnv', () => {
       skills: {
         entries: {
           other: { env: { A: '1' } },
-          localflow: {
-            env: { LOCALFLOW_ENDPOINT: 'http://127.0.0.1:5000', LOCALFLOW_TOKEN: 'tok' }
+          saiife: {
+            env: { SAIIFE_ENDPOINT: 'http://127.0.0.1:5000', SAIIFE_TOKEN: 'tok' }
           }
         }
       }
     })
   })
 
-  it('overwrites a previous grant and keeps sibling localflow keys', () => {
+  it('overwrites a previous grant and keeps sibling saiife keys', () => {
     writeFileSync(
       file,
       JSON.stringify({
-        skills: { entries: { localflow: { enabled: true, env: { LOCALFLOW_TOKEN: 'old' } } } }
+        skills: { entries: { saiife: { enabled: true, env: { SAIIFE_TOKEN: 'old' } } } }
       })
     )
     expect(writeSkillEnv(file, 'http://127.0.0.1:1', 'new').ok).toBe(true)
-    const localflow = (read() as { skills: { entries: { localflow: Record<string, unknown> } } })
-      .skills.entries.localflow
-    expect(localflow.enabled).toBe(true)
-    expect(localflow.env).toEqual({
-      LOCALFLOW_ENDPOINT: 'http://127.0.0.1:1',
-      LOCALFLOW_TOKEN: 'new'
+    const saiife = (read() as { skills: { entries: { saiife: Record<string, unknown> } } }).skills
+      .entries.saiife
+    expect(saiife.enabled).toBe(true)
+    expect(saiife.env).toEqual({
+      SAIIFE_ENDPOINT: 'http://127.0.0.1:1',
+      SAIIFE_TOKEN: 'new'
     })
   })
 
@@ -88,7 +89,7 @@ describe('removeSkillEnv', () => {
         skills: {
           entries: {
             other: { env: { A: '1' } },
-            localflow: { enabled: true, env: { LOCALFLOW_TOKEN: 'tok' } }
+            saiife: { enabled: true, env: { SAIIFE_TOKEN: 'tok' } }
           }
         }
       })
@@ -99,7 +100,7 @@ describe('removeSkillEnv', () => {
       skills: {
         entries: {
           other: { env: { A: '1' } },
-          localflow: { enabled: true }
+          saiife: { enabled: true }
         }
       }
     })
@@ -132,10 +133,16 @@ describe('legacy skill-env cleanup', () => {
     rmSync(dir, { recursive: true, force: true })
   })
 
+  // These fixtures model a real openclaw.json written to disk by a release up
+  // to and including v1.11.0 — the on-disk key is LEGACY_SKILL_KEY, which
+  // never changes with the rename (see src/main/legacy-names.ts), and is
+  // distinct from the current 'saiife' key the renamed source now writes.
   const legacyConfig = {
     skills: {
       entries: {
-        localflow: { env: { LOCALFLOW_ENDPOINT: 'http://127.0.0.1:5000', LOCALFLOW_TOKEN: 'old' } },
+        [LEGACY_SKILL_KEY]: {
+          env: { ENDPOINT: 'http://127.0.0.1:5000', TOKEN: 'old' }
+        },
         other: { env: { KEEP: 'me' } }
       }
     },
@@ -149,12 +156,12 @@ describe('legacy skill-env cleanup', () => {
     const parsed = JSON.parse(readFileSync(file, 'utf8')) as Record<string, never>
     const entries = (parsed as unknown as { skills: { entries: Record<string, unknown> } }).skills
       .entries
-    // Pre-Task-10, the current key and LEGACY_SKILL_KEY are both literally
-    // 'localflow' (the rename hasn't touched the hardcoded path yet), so the
-    // sweep-then-write leaves the key present but holding only the fresh
-    // grant — the stale legacy token must not survive as a duplicate/merge.
-    expect(entries['localflow']).toEqual({
-      env: { LOCALFLOW_ENDPOINT: 'http://127.0.0.1:6000', LOCALFLOW_TOKEN: 'new' }
+    // The legacy key and the current 'saiife' key are now distinct: the
+    // legacy block is dropped entirely and the fresh grant lands under the
+    // current key — the stale legacy token must not survive anywhere.
+    expect(entries[LEGACY_SKILL_KEY]).toBeUndefined()
+    expect(entries['saiife']).toEqual({
+      env: { SAIIFE_ENDPOINT: 'http://127.0.0.1:6000', SAIIFE_TOKEN: 'new' }
     })
     expect(entries['other']).toEqual({ env: { KEEP: 'me' } })
   })
@@ -166,7 +173,7 @@ describe('legacy skill-env cleanup', () => {
     const entries = (
       JSON.parse(readFileSync(file, 'utf8')) as { skills: { entries: Record<string, unknown> } }
     ).skills.entries
-    expect(entries['localflow']).toBeUndefined()
+    expect(entries[LEGACY_SKILL_KEY]).toBeUndefined()
     expect(entries['other']).toEqual({ env: { KEEP: 'me' } })
   })
 
@@ -174,14 +181,14 @@ describe('legacy skill-env cleanup', () => {
     writeFileSync(
       file,
       JSON.stringify({
-        skills: { entries: { localflow: { env: { LOCALFLOW_TOKEN: 't' }, notes: 'mine' } } }
+        skills: { entries: { [LEGACY_SKILL_KEY]: { env: { TOKEN: 't' }, notes: 'mine' } } }
       })
     )
     removeSkillEnv(file)
     const entries = (
       JSON.parse(readFileSync(file, 'utf8')) as { skills: { entries: Record<string, unknown> } }
     ).skills.entries
-    expect(entries['localflow']).toEqual({ notes: 'mine' })
+    expect(entries[LEGACY_SKILL_KEY]).toEqual({ notes: 'mine' })
   })
 
   it('is a silent no-op when no pre-rebrand block exists', () => {

@@ -16,7 +16,7 @@ export interface StripeConfig {
   accountId: string
   /** Stripe API version; defaults to the pinned `DEFAULT_API_VERSION`. */
   apiVersion: string
-  /** localflow environment (1-9). */
+  /** saiife environment (1-9). */
   environment: number
   /** The tunnel/relay ingress URL (§4.5); optional in MVP (manual webhooks). */
   webhookUrl?: string

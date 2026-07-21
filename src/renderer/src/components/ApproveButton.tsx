@@ -53,7 +53,7 @@ export default function ApproveButton({
 
   const approve = (): void => {
     // \r is what a terminal Enter sends through a pty.
-    window.localflow.write(sessionId, '\r')
+    window.saiife.write(sessionId, '\r')
     setPeek(null)
   }
 
@@ -62,7 +62,7 @@ export default function ApproveButton({
       <button
         className={`approve-btn ${buttonClassName}`}
         onClick={() =>
-          void window.localflow
+          void window.saiife
             .peekSession(sessionId)
             .then(setPeek)
             .catch(() => setPeek([]))

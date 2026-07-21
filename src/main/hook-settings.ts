@@ -31,7 +31,7 @@ export function buildHookSettings(
   const hooks: Record<string, unknown> = {}
   for (const event of EVENTS) {
     const payload = JSON.stringify({ paneId, event })
-    const command = `curl -s -m 3 -X POST http://127.0.0.1:${port}/event -H 'Content-Type: application/json' -H 'X-Localflow-Token: ${token}' -d '${payload}'`
+    const command = `curl -s -m 3 -X POST http://127.0.0.1:${port}/event -H 'Content-Type: application/json' -H 'X-Saiife-Token: ${token}' -d '${payload}'`
     hooks[event] = [{ hooks: [{ type: 'command', command }] }]
   }
   if (guard) {
@@ -52,7 +52,7 @@ export function writeHookSettings(
   assertSafeToken(paneId, 'paneId')
   assertSafeToken(token, 'token')
   assertValidPort(port)
-  const file = join(dir, `localflow-hooks-${paneId}.json`)
+  const file = join(dir, `saiife-hooks-${paneId}.json`)
   writeFileSync(file, JSON.stringify(buildHookSettings(paneId, port, token, guard), null, 2), {
     mode: 0o600
   })
@@ -68,7 +68,7 @@ export function writeHookSettings(
 export function removeHookSettings(dir: string, paneId: string): void {
   if (!SAFE_TOKEN_RE.test(paneId)) return
   try {
-    rmSync(join(dir, `localflow-hooks-${paneId}.json`), { force: true })
+    rmSync(join(dir, `saiife-hooks-${paneId}.json`), { force: true })
   } catch {
     /* best-effort */
   }

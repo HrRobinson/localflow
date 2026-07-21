@@ -61,7 +61,7 @@ export function Console({
   // the drawer already reflects the last session the first time it opens.
   useEffect(() => {
     let alive = true
-    void window.localflow.getConsolePrefs().then((prefs) => {
+    void window.saiife.getConsolePrefs().then((prefs) => {
       if (!alive) return
       setHeight(prefs.height)
       setSources(new Set(prefs.sources))
@@ -79,7 +79,7 @@ export function Console({
   useEffect(() => {
     if (!hydrated.current) return
     const timer = setTimeout(() => {
-      window.localflow.setConsolePrefs({
+      window.saiife.setConsolePrefs({
         height,
         open,
         sources: Array.from(sources),
@@ -95,10 +95,10 @@ export function Console({
   useEffect(() => {
     if (!open) return
     let alive = true
-    void window.localflow.listConsole().then((snap) => {
+    void window.saiife.listConsole().then((snap) => {
       if (alive) setEventRings(ringsFromSnapshot(snap))
     })
-    const off = window.localflow.onConsoleEvent((e) =>
+    const off = window.saiife.onConsoleEvent((e) =>
       setEventRings((prev) => appendConsoleEvents(prev, Array.isArray(e) ? e : [e]))
     )
     return () => {
@@ -118,7 +118,7 @@ export function Console({
     const path = row.detail.screenshotPath
     if (!path || previews.has(path)) return
     let alive = true
-    void window.localflow.readScreenshot(path).then((uri) => {
+    void window.saiife.readScreenshot(path).then((uri) => {
       if (alive && uri) setPreviews((prev) => new Map(prev).set(path, uri))
     })
     return () => {

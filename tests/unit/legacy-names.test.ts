@@ -35,7 +35,11 @@ describe('userDataDirFor', () => {
 
   it('win32: APPDATA when set', () => {
     expect(
-      userDataDirFor('saiife', { platform: 'win32', env: { APPDATA: 'C:/Users/ada/AppData/Roaming' }, home })
+      userDataDirFor('saiife', {
+        platform: 'win32',
+        env: { APPDATA: 'C:/Users/ada/AppData/Roaming' },
+        home
+      })
     ).toBe(join('C:/Users/ada/AppData/Roaming', 'saiife'))
   })
 
@@ -147,8 +151,10 @@ describe('readRenamedEnv', () => {
       )
     ).toBe('/old/lazygit')
     expect(
-      readRenamedEnv({ SAIIFE_LAZYGIT_BIN: '', LOCALFLOW_LAZYGIT_BIN: '' }, 'SAIIFE_LAZYGIT_BIN', (m) =>
-        seen.push(m)
+      readRenamedEnv(
+        { SAIIFE_LAZYGIT_BIN: '', LOCALFLOW_LAZYGIT_BIN: '' },
+        'SAIIFE_LAZYGIT_BIN',
+        (m) => seen.push(m)
       )
     ).toBeUndefined()
     expect(seen).toHaveLength(1)

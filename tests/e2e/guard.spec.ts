@@ -19,8 +19,8 @@ const here = dirname(fileURLToPath(import.meta.url))
  * dir, config.json pre-seeded with nonexistent codex/gemini paths so agent
  * detection short-circuits, fake-claude as the default terminal binary.
  *
- * lfguard itself is resolved by the running app at startup from
- * guard/target/release/lfguard when unpackaged (src/main/guard-binary.ts) —
+ * saiifeguard itself is resolved by the running app at startup from
+ * guard/target/release/saiifeguard when unpackaged (src/main/guard-binary.ts) —
  * these tests exercise the REAL binary, so `npm run build:guard` (or `npm
  * run e2e`, which chains it) must have produced that file before this spec
  * runs, or every guard-wiring assertion below fails closed (guard === null,
@@ -50,14 +50,14 @@ function launchApp(
     args: ['.'],
     env: {
       ...process.env,
-      LOCALFLOW_E2E: '1',
-      LOCALFLOW_USER_DATA: userData,
-      LOCALFLOW_CLAUDE_BIN: join(here, '../fixtures/fake-claude.sh'),
-      LOCALFLOW_OPENCLAW_CONFIG: join(userData, 'openclaw.json'),
-      LOCALFLOW_LAZYGIT_BIN: '/nonexistent/lazygit',
-      LOCALFLOW_EDITOR_BIN: '/nonexistent/code',
-      LOCALFLOW_E2E_GO: join(userData, 'e2e-go'),
-      LOCALFLOW_E2E_GUARD_GO: join(userData, 'guard-go')
+      SAIIFE_E2E: '1',
+      SAIIFE_USER_DATA: userData,
+      SAIIFE_CLAUDE_BIN: join(here, '../fixtures/fake-claude.sh'),
+      SAIIFE_OPENCLAW_CONFIG: join(userData, 'openclaw.json'),
+      SAIIFE_LAZYGIT_BIN: '/nonexistent/lazygit',
+      SAIIFE_EDITOR_BIN: '/nonexistent/code',
+      SAIIFE_E2E_GO: join(userData, 'e2e-go'),
+      SAIIFE_E2E_GUARD_GO: join(userData, 'guard-go')
     }
   })
 }
@@ -66,9 +66,9 @@ interface Info {
   id: string
 }
 
-/** Renderer-side `window.localflow` surface this spec calls through IPC. */
+/** Renderer-side `window.saiife` surface this spec calls through IPC. */
 type Api = {
-  localflow: {
+  saiife: {
     createSession(agentId: string, cwd?: string): Promise<Info | null>
     peekSession(id: string, maxLines?: number): Promise<string[]>
   }
@@ -76,14 +76,14 @@ type Api = {
 
 function createSessionIpc(win: Page, agentId: string, cwd: string): Promise<Info | null> {
   return win.evaluate(
-    (args) => (window as unknown as Api).localflow.createSession(args.agentId, args.cwd),
+    (args) => (window as unknown as Api).saiife.createSession(args.agentId, args.cwd),
     { agentId, cwd }
   )
 }
 
 function peekSessionIpc(win: Page, id: string, maxLines = 20): Promise<string[]> {
   return win.evaluate(
-    (args) => (window as unknown as Api).localflow.peekSession(args.id, args.maxLines),
+    (args) => (window as unknown as Api).saiife.peekSession(args.id, args.maxLines),
     { id, maxLines }
   )
 }
@@ -91,7 +91,7 @@ function peekSessionIpc(win: Page, id: string, maxLines = 20): Promise<string[]>
 /**
  * Runs a hook command string exactly as an agent's PreToolUse/BeforeTool
  * hook would: pipe a JSON payload on stdin via `sh -c`. Returns the exit
- * status — 0 means allow, anything else (lfguard's `--hook-exit` uses 2)
+ * status — 0 means allow, anything else (saiifeguard's `--hook-exit` uses 2)
  * means the guard blocked the command.
  */
 function runGuardHook(command: string, payload: string): number | null {
@@ -132,7 +132,7 @@ async function openConsoleDrawer(win: Page): Promise<Locator> {
 }
 
 test('claude: PreToolUse guard hook blocks rm -rf /, allows ls -la', async () => {
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   const app = await launchApp(userData)
   const win = await app.firstWindow()
   await expect(win.locator('.new-session')).toBeVisible()
@@ -147,19 +147,19 @@ test('claude: PreToolUse guard hook blocks rm -rf /, allows ls -la', async () =>
 
   // Claude's hook adapter writes a settings file with a --settings CLI flag
   // (src/main/hook-settings.ts); the guard's PreToolUse entry lives inside
-  // it once lfguard resolves (src/main/guard-binary.ts).
-  const hooksFile = join(userData, `localflow-hooks-${info!.id}.json`)
+  // it once saiifeguard resolves (src/main/guard-binary.ts).
+  const hooksFile = join(userData, `saiife-hooks-${info!.id}.json`)
   await expect.poll(() => existsSync(hooksFile)).toBe(true)
   const hooksJson = JSON.parse(readFileSync(hooksFile, 'utf8'))
   const guardCommand: string | undefined = hooksJson.hooks?.PreToolUse?.[0]?.hooks?.[0]?.command
   expect(
     guardCommand,
-    'guard was not wired into the Claude PreToolUse hook — is guard/target/release/lfguard built?'
+    'guard was not wired into the Claude PreToolUse hook — is guard/target/release/saiifeguard built?'
   ).toBeTruthy()
-  expect(guardCommand).toContain('lfguard')
+  expect(guardCommand).toContain('saiifeguard')
 
-  // Run the exact command localflow wrote, directly, with a real PreToolUse
-  // payload piped in — proving the real lfguard binary blocks/allows, not a
+  // Run the exact command saiife wrote, directly, with a real PreToolUse
+  // payload piped in — proving the real saiifeguard binary blocks/allows, not a
   // mock.
   expect(runGuardHook(guardCommand!, preToolUsePayload('rm -rf /'))).not.toBe(0)
   expect(runGuardHook(guardCommand!, preToolUsePayload('ls -la'))).toBe(0)
@@ -168,7 +168,7 @@ test('claude: PreToolUse guard hook blocks rm -rf /, allows ls -la', async () =>
 })
 
 test('codex + gemini: guard hook wired into per-agent spawn args/settings', async () => {
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   const app = await launchApp(userData, {
     codex: join(here, '../fixtures/fake-codex.sh'),
     gemini: join(here, '../fixtures/fake-gemini.sh')
@@ -197,17 +197,17 @@ test('codex + gemini: guard hook wired into per-agent spawn args/settings', asyn
   // matched to run_shell_command (src/main/gemini-hooks.ts).
   const geminiInfo = await createSessionIpc(win, 'gemini', userData)
   expect(geminiInfo).not.toBeNull()
-  const geminiHooksFile = join(userData, `localflow-gemini-hooks-${geminiInfo!.id}.json`)
+  const geminiHooksFile = join(userData, `saiife-gemini-hooks-${geminiInfo!.id}.json`)
   await expect.poll(() => existsSync(geminiHooksFile)).toBe(true)
   const geminiSettings = JSON.parse(readFileSync(geminiHooksFile, 'utf8'))
   expect(geminiSettings.hooks?.BeforeTool?.[0]?.matcher).toBe('run_shell_command')
-  expect(geminiSettings.hooks?.BeforeTool?.[0]?.hooks?.[0]?.command).toContain('lfguard')
+  expect(geminiSettings.hooks?.BeforeTool?.[0]?.hooks?.[0]?.command).toContain('saiifeguard')
 
   await app.close()
 })
 
 test('codex: self-verify badge clears on the first observed guard invocation', async () => {
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   const app = await launchApp(userData, {
     codex: join(here, '../fixtures/fake-codex.sh')
   })
@@ -223,13 +223,13 @@ test('codex: self-verify badge clears on the first observed guard invocation', a
   await expect(pane).toBeVisible()
 
   // The guard rode this Codex pane's CLI (cli-args-notify + a resolved
-  // lfguard), so it starts 'unverified' — the amber pane-header badge shows.
+  // saiifeguard), so it starts 'unverified' — the amber pane-header badge shows.
   const badge = pane.getByText('guard: not yet observed')
   await expect(badge).toBeVisible()
 
   // Release the guard invocation: fake-codex, gated on this marker file, runs
-  // the embedded `lfguard check --seen-dir --audit-tag <paneId>` with a
-  // PreToolUse payload — writing the marker localflow's watcher observes,
+  // the embedded `saiifeguard check --seen-dir --audit-tag <paneId>` with a
+  // PreToolUse payload — writing the marker saiife's watcher observes,
   // flipping guardVerification to 'observed'. Proves the full local chain
   // spawn → marker write → watcher → markGuardObserved → SessionInfo → render.
   writeFileSync(join(userData, 'guard-go'), '')
@@ -239,7 +239,7 @@ test('codex: self-verify badge clears on the first observed guard invocation', a
 })
 
 test('codex: idle pane keeps its badge (status events never satisfy it)', async () => {
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   const app = await launchApp(userData, {
     codex: join(here, '../fixtures/fake-codex.sh')
   })
@@ -273,7 +273,7 @@ test('codex: idle pane keeps its badge (status events never satisfy it)', async 
 })
 
 test('settings: guard pack toggle threads --pack into the hook, persists', async () => {
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   const app = await launchApp(userData)
   const win = await app.firstWindow()
   await expect(win.locator('.new-session')).toBeVisible()
@@ -296,7 +296,7 @@ test('settings: guard pack toggle threads --pack into the hook, persists', async
   await win.getByRole('button', { name: 'Overview', exact: true }).click()
   const onInfo = await createSessionIpc(win, 'claude', userData)
   expect(onInfo).not.toBeNull()
-  const onHooksFile = join(userData, `localflow-hooks-${onInfo!.id}.json`)
+  const onHooksFile = join(userData, `saiife-hooks-${onInfo!.id}.json`)
   await expect.poll(() => existsSync(onHooksFile)).toBe(true)
   const onCommand = JSON.parse(readFileSync(onHooksFile, 'utf8')).hooks.PreToolUse[0].hooks[0]
     .command
@@ -313,7 +313,7 @@ test('settings: guard pack toggle threads --pack into the hook, persists', async
   await win.getByRole('button', { name: 'Overview', exact: true }).click()
   const offInfo = await createSessionIpc(win, 'claude', userData)
   expect(offInfo).not.toBeNull()
-  const offHooksFile = join(userData, `localflow-hooks-${offInfo!.id}.json`)
+  const offHooksFile = join(userData, `saiife-hooks-${offInfo!.id}.json`)
   await expect.poll(() => existsSync(offHooksFile)).toBe(true)
   const offCommand = JSON.parse(readFileSync(offHooksFile, 'utf8')).hooks.PreToolUse[0].hooks[0]
     .command
@@ -323,14 +323,14 @@ test('settings: guard pack toggle threads --pack into the hook, persists', async
 })
 
 test('console: guard-blocked command appears as a guard row, expands to its reason', async () => {
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   const app = await launchApp(userData)
   const win = await app.firstWindow()
   await expect(win.locator('.new-session')).toBeVisible()
 
   const drawer = await openConsoleDrawer(win)
 
-  // Mimics a real deny record — the exact shape lfguard's --audit-log
+  // Mimics a real deny record — the exact shape saiifeguard's --audit-log
   // writes (GuardAuditRecord, src/shared/console.ts) — appended to the file
   // startGuardAuditTail polls (src/main/guard-audit-tail.ts). tag: null
   // mirrors a block with no matching live pane (falls back to environment 1

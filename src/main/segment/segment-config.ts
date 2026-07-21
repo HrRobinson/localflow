@@ -14,7 +14,7 @@ export const DEFAULT_DATA_PLANE_URL = 'https://api.segment.io'
 export const DEFAULT_WEBHOOK_PATH = '/segment/webhook'
 
 export interface SegmentConfig {
-  /** localflow environment (1-9). */
+  /** saiife environment (1-9). */
   environment: number
   /** The ingress path the tunnel/relay forwards to; defaults to `/segment/webhook`. */
   webhookPath: string

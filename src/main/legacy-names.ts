@@ -44,7 +44,8 @@ export function userDataDirFor(productName: string, input: UserDataPathInput): s
   }
   if (platform === 'win32') {
     const appData = env['APPDATA']
-    const root = appData !== undefined && appData !== '' ? appData : join(home, 'AppData', 'Roaming')
+    const root =
+      appData !== undefined && appData !== '' ? appData : join(home, 'AppData', 'Roaming')
     return join(root, productName)
   }
   const xdg = env['XDG_CONFIG_HOME']

@@ -6,7 +6,7 @@
  * a `MockShopifyApi`, so NO live GraphQL is ever performed in CI (spec §12).
  *
  * Read methods return the RAW GraphQL node; `shopify-normalize.ts` maps it to the
- * pinned context shape. Mutation methods return a small localflow-shaped result
+ * pinned context shape. Mutation methods return a small saiife-shaped result
  * that becomes the action node's context output. Failure follows the pinned
  * convention: every error path REJECTS with a legible, actionable message that
  * carries the real Shopify cause — and NEVER the admin token (spec §8, §11).
@@ -46,7 +46,7 @@ export interface RawOrderNode {
   customer?: RawCustomerNode | null
 }
 
-// ── Mutation inputs / results (localflow-shaped) ─────────────────────────────
+// ── Mutation inputs / results (saiife-shaped) ─────────────────────────────
 
 export interface RefundCreateInput {
   orderId: string
@@ -416,33 +416,33 @@ const ORDER_FIELDS = `
   customer { id email firstName lastName displayName }
 `
 
-const ORDER_QUERY = `query localflowOrder($id: ID!) { order(id: $id) { ${ORDER_FIELDS} } }`
+const ORDER_QUERY = `query saiifeOrder($id: ID!) { order(id: $id) { ${ORDER_FIELDS} } }`
 
-const ORDERS_QUERY = `query localflowOrders($query: String!) {
+const ORDERS_QUERY = `query saiifeOrders($query: String!) {
   orders(first: 25, query: $query) { nodes { ${ORDER_FIELDS} } }
 }`
 
-const CUSTOMER_QUERY = `query localflowCustomer($id: ID!) {
+const CUSTOMER_QUERY = `query saiifeCustomer($id: ID!) {
   customer(id: $id) {
     id email firstName lastName displayName numberOfOrders
     amountSpent { amount currencyCode }
   }
 }`
 
-const REFUND_CREATE_MUTATION = `mutation localflowRefund($input: RefundInput!) {
+const REFUND_CREATE_MUTATION = `mutation saiifeRefund($input: RefundInput!) {
   refundCreate(input: $input) {
     refund { id totalRefundedSet { shopMoney { amount currencyCode } } }
     userErrors { field message }
   }
 }`
 
-const ORDER_CANCEL_MUTATION = `mutation localflowCancel($orderId: ID!, $reason: OrderCancelReason!, $refund: Boolean!, $restock: Boolean!) {
+const ORDER_CANCEL_MUTATION = `mutation saiifeCancel($orderId: ID!, $reason: OrderCancelReason!, $refund: Boolean!, $restock: Boolean!) {
   orderCancel(orderId: $orderId, reason: $reason, refund: $refund, restock: $restock) {
     userErrors { field message }
   }
 }`
 
-const ORDER_UPDATE_MUTATION = `mutation localflowUpdate($input: OrderInput!) {
+const ORDER_UPDATE_MUTATION = `mutation saiifeUpdate($input: OrderInput!) {
   orderUpdate(input: $input) {
     order { id }
     userErrors { field message }

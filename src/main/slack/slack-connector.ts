@@ -46,9 +46,9 @@ export interface SlackConnectorDeps {
   defaultChannel: string
   /** The shared approval port — enables `postApproval` + interaction routing. */
   approvals?: ApprovalMechanism
-  /** The `/localflow` control bridge; a reply is delivered via `onControlReply`. */
+  /** The `/saiife` control bridge; a reply is delivered via `onControlReply`. */
   control?: SlackControlBridge
-  /** Sink for a `/localflow` ephemeral reply (response_url delivery is deferred). */
+  /** Sink for a `/saiife` ephemeral reply (response_url delivery is deferred). */
   onControlReply?: (payload: { responseUrl: string }, reply: ControlReply) => void
   log?: (message: string) => void
 }

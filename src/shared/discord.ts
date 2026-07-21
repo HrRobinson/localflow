@@ -8,7 +8,7 @@
  * NO raw Discord API shape lives here — those are isolated in
  * `src/main/discord/discord-client.ts` (the API blast radius, §4.1) and the raw
  * gateway/interaction parsing in `src/main/discord/discord-components.ts`. This
- * file holds ONLY localflow-facing vocabulary: the pinned trigger/action ids and
+ * file holds ONLY saiife-facing vocabulary: the pinned trigger/action ids and
  * the normalized message / interaction / approval-decision shapes.
  */
 
@@ -45,7 +45,7 @@ export interface DiscordMessagePayload {
   threadId?: string
 }
 
-/** `interaction` trigger payload (non-/localflow, non-approval interactions). */
+/** `interaction` trigger payload (non-/saiife, non-approval interactions). */
 export interface DiscordInteractionPayload {
   interactionId: string
   /** per-interaction token for the callback (short-lived). */

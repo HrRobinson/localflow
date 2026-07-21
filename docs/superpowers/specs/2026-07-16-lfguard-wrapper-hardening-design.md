@@ -1,19 +1,19 @@
-# lfguard — wrapper-unwrapping hardening (design)
+# saiifeguard — wrapper-unwrapping hardening (design)
 
 Status: **Approved 2026-07-16.**
-Scope: the first slice of the "lfguard pack expansion" track — closing the
+Scope: the first slice of the "saiifeguard pack expansion" track — closing the
 transparent-wrapper bypass gap the tokenizer documents but does not yet cover.
-Grounded against: `guard/crates/lfguard/src/{wrappers,engine,payload,subst,lexer,normalize}.rs`,
+Grounded against: `guard/crates/saiifeguard/src/{wrappers,engine,payload,subst,lexer,normalize}.rs`,
 `tests/corpus_sudo_and_substitution.rs`, `packs/*.toml`,
-`docs/superpowers/specs/2026-07-14-lfguard-design.md` (G1), and the scope report
-`scratchpad/scope-lfguard-packs.md` (§3). Baseline `cargo test -p lfguard` is
+`docs/superpowers/specs/2026-07-14-saiifeguard-design.md` (G1), and the scope report
+`scratchpad/scope-saiifeguard-packs.md` (§3). Baseline `cargo test -p saiifeguard` is
 green as of this draft.
 
 ---
 
 ## 1. Problem statement — and why now
 
-lfguard peels a fixed set of *transparent* wrapper commands off the front of
+saiifeguard peels a fixed set of *transparent* wrapper commands off the front of
 each segment before matching, so packs judge the **effective** command rather
 than the wrapper. Today that set is
 (`wrappers.rs:31-32`):
@@ -37,8 +37,8 @@ a destructive command wrapped in one **bypasses every pack, silently**:
 | `watch -n5 rm -rf /` | watch |
 | `find / -print0 \| xargs -0 rm -rf` | xargs |
 
-**Why now:** lfguard now actually ships (release CI was just fixed, and the G2
-localflow integration wires it into every session's PreToolUse hook). A guard
+**Why now:** saiifeguard now actually ships (release CI was just fixed, and the G2
+saiife integration wires it into every session's PreToolUse hook). A guard
 that is *installed and trusted* but silently ALLOWs `timeout 300 rm -rf /` is
 worse than one that isn't installed — the operator believes they are covered.
 This is a single, pipeline-wide, engine-level fix: there is exactly one call
@@ -49,7 +49,7 @@ It is the highest-value / lowest-risk item in the whole expansion track
 
 ### The hard constraint
 
-lfguard's absolute requirement is **zero false positives** (`core.filesystem.toml:3-7`;
+saiifeguard's absolute requirement is **zero false positives** (`core.filesystem.toml:3-7`;
 G1 "precision-over-coverage… fail open on the long tail rather than risk false
 positives that would get the guard disabled"). These seven wrappers are **not**
 uniformly transparent like `sudo`/`env`/`nice`. Each has its own argument
@@ -209,7 +209,7 @@ that precedes the wrapped command.
   (block).** In `chroot /mnt/root rm -rf /`, the `/` is the *chroot's* root, not
   the host's. Blocking it may surprise a user deliberately resetting a container
   rootfs. We **still block** — a recursive wipe of *any* filesystem root is the
-  catastrophe class lfguard exists to stop, and the wrapper's presence does not
+  catastrophe class saiifeguard exists to stop, and the wrapper's presence does not
   make the intent safe. The nuance is documented in the limitations note so it
   is a conscious choice, not an accident.
 - **Shape:** option-skip + one positional. **New positional-skip sub-case**
@@ -449,8 +449,8 @@ Sized as one spec → plan → build cycle. Each task is independently testable.
 9. **Docs:** update `wrappers.rs` module doc (move the six out of the gap list;
    keep `xargs` + `flock -c` listed as remaining gaps) and add a
    "Known limitations" note to the G1 design doc.
-10. **Adversarial review pass** + full `cargo test -p lfguard` green; sanity-run
-    a handful of the deny/benign lines through the `lfguard test` CLI.
+10. **Adversarial review pass** + full `cargo test -p saiifeguard` green; sanity-run
+    a handful of the deny/benign lines through the `saiifeguard test` CLI.
 
 ---
 
@@ -475,7 +475,7 @@ Sized as one spec → plan → build cycle. Each task is independently testable.
    scanned after the positional skip).
 5. **`chroot`: block `rm -rf /` even though `/` is the chroot's root? —
    RESOLVED: YES (block).** A recursive root wipe is the catastrophe class
-   lfguard exists for; the wrapper doesn't make it safe. Documented the nuance so
+   saiifeguard exists for; the wrapper doesn't make it safe. Documented the nuance so
    it's a conscious choice.
 6. **`timeout` duration-shape guard** (only skip the positional if it matches
    `^\d+(\.\d+)?[smhd]?$`)? — **RESOLVED: YES.** Closes the sole theoretical FP

@@ -96,10 +96,10 @@ describe('HubSpotApiClient — writes map to HubSpot property names + associatio
 
   it('createNote → POST notes with hs_note_body + a HUBSPOT_DEFINED contact association', async () => {
     const t = new MockTransport([ok({ id: 'n1', properties: {} })])
-    await client(t).createNote({ note: 'Qualified by localflow', contactId: '501' })
+    await client(t).createNote({ note: 'Qualified by saiife', contactId: '501' })
     const body = JSON.parse(t.requests[0].body ?? '{}')
     expect(t.requests[0].url).toContain('/crm/v3/objects/notes')
-    expect(body.properties.hs_note_body).toBe('Qualified by localflow')
+    expect(body.properties.hs_note_body).toBe('Qualified by saiife')
     expect(body.associations[0]).toMatchObject({
       to: { id: '501' },
       types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 202 }]

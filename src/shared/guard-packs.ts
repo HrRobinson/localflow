@@ -1,7 +1,7 @@
 //! Guard-pack catalog and default-on resolution (the TS mirror of the Rust
 //! `profile::select_active`).
 //
-// lfguard packs come in two flavours:
+// saiifeguard packs come in two flavours:
 //
 //   - **default-on** (`core.*`): the catastrophic-only filesystem/git guards.
 //     They enforce for every pane WITHOUT being listed in config — the guard
@@ -13,7 +13,7 @@
 //
 // This module is the single source of truth in the TS layer for which packs are
 // which. It MUST stay in sync with the registration list in
-// `guard/crates/lfguard/src/builtins.rs`; the `default_on` flag here mirrors the
+// `guard/crates/saiifeguard/src/builtins.rs`; the `default_on` flag here mirrors the
 // `default_on` field in each pack's TOML. Keeping the mapping in one place means
 // the resolution logic (`resolveOptInPackArgs`) can strip default-on ids the
 // binary already applies and drop unknown/typo ids, rather than forwarding

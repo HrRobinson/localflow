@@ -10,7 +10,7 @@ import {
 } from './slack-blocks'
 
 /**
- * THE HEADLINE (spec §3, §7): localflow's FIRST real `ApprovalPort`, replacing
+ * THE HEADLINE (spec §3, §7): saiife's FIRST real `ApprovalPort`, replacing
  * the always-`false` stub in `index.ts`. It is CONNECTOR-AGNOSTIC — it knows only
  * `ApprovalRequest`, never which connector's action sits past the gate — so
  * wiring it once makes EVERY gate in EVERY flow (an email send, a `cloud apply`,
@@ -47,7 +47,7 @@ export const DEFAULT_APPROVAL_TIMEOUT_MS = 3_600_000
 /**
  * Cap on the `settled` double-tap tombstone set. It only needs to outlive the
  * window between a gate resolving and Slack's last redelivery of that same tap;
- * a long-running localflow would otherwise accumulate one entry per gate forever
+ * a long-running saiife would otherwise accumulate one entry per gate forever
  * (an unbounded leak). Oldest entries are evicted FIFO past this cap — a
  * redelivery older than the last `SETTLED_CAP` resolutions simply degrades to the
  * legible "no longer active" card instead of a silent no-op, which is harmless.
@@ -154,14 +154,14 @@ export class SlackApprovalPort implements ApprovalPort {
     const entry = this.pending.get(key)
     if (!entry) {
       if (this.settled.has(key)) return // double-tap / redelivery → no-op (§7.2).
-      // Unknown/stale: run already ended, or localflow restarted losing the map.
+      // Unknown/stale: run already ended, or saiife restarted losing the map.
       const ref = messageRefFromInteraction(raw)
       if (ref) {
         this.api
           .updateMessage({
             channel: ref.channel,
             ts: ref.ts,
-            text: 'This approval is no longer active (the run has ended or localflow restarted).',
+            text: 'This approval is no longer active (the run has ended or saiife restarted).',
             blocks: []
           })
           .catch((err: unknown) =>

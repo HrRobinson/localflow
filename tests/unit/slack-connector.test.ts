@@ -89,7 +89,7 @@ describe('SlackConnector — inbound routing', () => {
     ])
   })
 
-  it('a non-/localflow slash fires slash.command; /localflow goes to the control bridge', () => {
+  it('a non-/saiife slash fires slash.command; /saiife goes to the control bridge', () => {
     const controlReplies: unknown[] = []
     const control = { handle: vi.fn().mockReturnValue({ text: 'ok', ephemeral: true }) }
     const c = new SlackConnector({
@@ -116,7 +116,7 @@ describe('SlackConnector — inbound routing', () => {
     c.handleInbound({
       type: 'slash_commands',
       payload: {
-        command: '/localflow',
+        command: '/saiife',
         text: 'status',
         channel_id: 'C1',
         user_id: 'U1',
@@ -125,7 +125,7 @@ describe('SlackConnector — inbound routing', () => {
     })
     expect(control.handle).toHaveBeenCalled()
     expect(controlReplies).toEqual([{ text: 'ok', ephemeral: true }])
-    expect(slashSeen).toHaveLength(1) // /localflow is NOT a slash.command trigger
+    expect(slashSeen).toHaveLength(1) // /saiife is NOT a slash.command trigger
   })
 
   it('onApprovalDecision fans out to the approval.responded trigger', () => {

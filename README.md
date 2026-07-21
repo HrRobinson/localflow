@@ -1,8 +1,8 @@
-<img src="assets/logo.svg" width="88" alt="localflow logo" />
+<img src="assets/logo.svg" width="88" alt="saiife logo" />
 
-# localflow
+# saiife
 
-localflow is mission control for your Claude Code sessions. It puts a grid of
+saiife is mission control for your Claude Code sessions. It puts a grid of
 real terminal panes — each one an actual `claude` CLI process — in a single
 Electron window, so you can run several agents side by side and tell at a
 glance which ones need you. Status colors make that glanceable: blue means a
@@ -14,7 +14,7 @@ finished, and gray means the process has exited.
 - Each pane is a real `claude` CLI process running in a PTY — no wrapping,
   no scripting of the terminal, just a normal session you can type into.
 - Status comes from Claude Code's own hooks (`UserPromptSubmit`,
-  `Notification`, `Stop`) POSTing events to a listener that localflow starts
+  `Notification`, `Stop`) POSTing events to a listener that saiife starts
   on a random local port, guarded by a secret token and bound to
   `127.0.0.1` only.
 - No telemetry. Nothing leaves your machine.
@@ -52,7 +52,7 @@ Or build from source:
 
 ```bash
 git clone https://github.com/HrRobinson/localflow.git
-cd localflow
+cd saiife
 npm install
 npm run dev
 ```
@@ -62,7 +62,7 @@ installed.
 
 ## Usage
 
-Click **New session** and pick a folder — localflow starts `claude` there
+Click **New session** and pick a folder — saiife starts `claude` there
 and adds a pane to the grid. Double-click a pane's header to enlarge it;
 press `cmd+escape` to shrink it back (bare Escape always goes to the agent).
 If a session has exited, its pane offers **Resume conversation** (relaunching
@@ -99,7 +99,7 @@ page has focus.
 The Overview page is intentionally minimal: your latest sessions plus a
 single "New session" control. Agent detection, configured paths, and
 keybindings/themes live on the **Settings** page, reachable from the
-sidebar. localflow remembers the last agent you launched and preselects it
+sidebar. saiife remembers the last agent you launched and preselects it
 the next time you open Overview.
 
 Sessions are durable: once created, they stay listed (named, with their
@@ -205,7 +205,7 @@ Open **Settings** from the sidebar.
 - **Agents** — set the **default agent** for the New session launcher, and give
   any agent **extra CLI args** and **env overrides** (`KEY=VALUE` per line).
   Env overrides are the local-LLM enabler: point an agent at Ollama or a
-  compatible base URL without localflow storing any credentials. Overrides live
+  compatible base URL without saiife storing any credentials. Overrides live
   under `config.json`'s `agents` key.
 - **Themes** — app and terminal colors are JSON token files in
   `userData/themes/<name>.json`; pick one in Settings, or click **Open themes
@@ -213,7 +213,7 @@ Open **Settings** from the sidebar.
   the built-in dark default with a visible notice. Shipped presets: dark
   (default), light, solarized-dark, nord.
 
-localflow never stores provider secrets — every supported agent authenticates
+saiife never stores provider secrets — every supported agent authenticates
 in its own service.
 
 ## Activity & Overview stats
@@ -225,7 +225,7 @@ events that drive the status colors. A persistent header line ("⏳ waiting for
 your approval for 12m") keeps it glanceable, and the terminal is one click away
 via **open terminal**. Browser panes list lifecycle events only (they have no
 status feed). The feed is in-memory and honest about it: it starts fresh each
-launch ("since localflow started"), keeping the last 200 events per session.
+launch ("since saiife started"), keeping the last 200 events per session.
 
 The **Overview** carries a compact stats strip above Latest sessions — counts
 by status ("2 working · 1 needs you · 3 done · 1 off") and the oldest unattended
@@ -257,15 +257,15 @@ given direction), so they work regardless of grid layout.
 | Move pane to environment | `ctrl+1` … `ctrl+9`                                           | sends the active pane to that environment; focus stays behind                                                                                                   |
 
 Bare `Escape`, `Enter`, arrow keys, and every unmodified keystroke always
-reach the active terminal untouched — localflow only intercepts the exact
+reach the active terminal untouched — saiife only intercepts the exact
 modified combos above, so the agent inside a pane never loses a keypress.
 
 ### Remapping
 
-Bindings are stored in `keybindings.json` in localflow's userData directory,
+Bindings are stored in `keybindings.json` in saiife's userData directory,
 created with the defaults above on first run:
 
-- macOS: `~/Library/Application Support/localflow/keybindings.json`
+- macOS: `~/Library/Application Support/saiife/keybindings.json`
 
 The file is a flat JSON object mapping action name to binding string:
 
@@ -319,7 +319,7 @@ A binding is `[cmd+][ctrl+][alt+][shift+]<key>`, where `<key>` is a single
 character or one of `enter`, `escape`, `tab`, `space`, `arrow-left`,
 `arrow-right`, `arrow-up`, `arrow-down`. Unknown actions and malformed
 bindings in the file are ignored (that action keeps its default), so a typo
-never breaks the app. **Restart localflow after editing the file** for
+never breaks the app. **Restart saiife after editing the file** for
 changes to take effect — there's no live reload yet.
 
 ## Development

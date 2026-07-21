@@ -17,7 +17,7 @@ function assertValidPort(port: number): void {
 
 function curlCommand(paneId: string, port: number, token: string, event: HookEventName): string {
   const payload = JSON.stringify({ paneId, event })
-  return `curl -s -m 3 -X POST http://127.0.0.1:${port}/event -H 'Content-Type: application/json' -H 'X-Localflow-Token: ${token}' -d '${payload}'`
+  return `curl -s -m 3 -X POST http://127.0.0.1:${port}/event -H 'Content-Type: application/json' -H 'X-Saiife-Token: ${token}' -d '${payload}'`
 }
 
 /**

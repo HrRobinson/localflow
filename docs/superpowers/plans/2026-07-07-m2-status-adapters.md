@@ -28,7 +28,7 @@ existing three canonical `HookEventName`s — `hook-server.ts`,
 why not the optimistic `cli-args-full`) and `gemini` to
 `hookAdapter: 'env-settings-file'`. E2E coverage adds two fixture scripts
 (`tests/fixtures/fake-codex.sh`, `fake-gemini.sh`) that simulate each CLI's
-own hook-firing behavior by executing whatever command localflow injected,
+own hook-firing behavior by executing whatever command saiife injected,
 proving the wiring works independent of whether the real CLIs' injection
 mechanisms match research assumptions — that residual risk is closed by a
 documented manual-verification checklist for a developer with the real
@@ -123,7 +123,7 @@ Semantics (mirrors `hook-settings.ts`'s validation exactly):
 - Every embedded command follows the exact curl invocation shape already
   used in `hook-settings.ts` (`curl -s -m 3 -X POST
   http://127.0.0.1:<port>/event -H 'Content-Type: application/json' -H
-  'X-Localflow-Token: <token>' -d '<json>'`), so the receiving side
+  'X-Saiife-Token: <token>' -d '<json>'`), so the receiving side
   (`hook-server.ts`) needs zero changes.
 
 - [ ] **Step 1: Write the failing tests.**
@@ -142,7 +142,7 @@ Semantics (mirrors `hook-settings.ts`'s validation exactly):
       const args = buildCodexHookArgs('p1', 4242, 'tok', 'notify')
       const joined = args.join(' ')
       expect(joined).toContain('http://127.0.0.1:4242/event')
-      expect(joined).toContain('X-Localflow-Token: tok')
+      expect(joined).toContain('X-Saiife-Token: tok')
       expect(joined).toContain('"paneId":"p1"')
       expect(joined).toContain('"event":"Stop"')
       expect(joined).not.toContain('"event":"UserPromptSubmit"')
@@ -196,7 +196,7 @@ Semantics (mirrors `hook-settings.ts`'s validation exactly):
 
   function curlCommand(paneId: string, port: number, token: string, event: HookEventName): string {
     const payload = JSON.stringify({ paneId, event })
-    return `curl -s -m 3 -X POST http://127.0.0.1:${port}/event -H 'Content-Type: application/json' -H 'X-Localflow-Token: ${token}' -d '${payload}'`
+    return `curl -s -m 3 -X POST http://127.0.0.1:${port}/event -H 'Content-Type: application/json' -H 'X-Saiife-Token: ${token}' -d '${payload}'`
   }
 
   /**
@@ -256,7 +256,7 @@ export function writeGeminiHookSettings(
 
 Semantics (mirrors `hook-settings.ts`'s `buildHookSettings`/
 `writeHookSettings` exactly, including the same throw conditions, same
-0600 permission, same `localflow-hooks-<paneId>.json`-style naming under
+0600 permission, same `saiife-hooks-<paneId>.json`-style naming under
 a distinct prefix to avoid collisions with Claude's file for the same
 paneId in a hypothetical mixed setup):
 
@@ -272,7 +272,7 @@ paneId in a hypothetical mixed setup):
   event-name-dependent; see spec for the documented "silent partial
   degradation" this implies if Gemini's real field name/casing differs.
 - `writeGeminiHookSettings` writes to
-  `join(dir, 'localflow-gemini-hooks-<paneId>.json')` with mode `0o600`,
+  `join(dir, 'saiife-gemini-hooks-<paneId>.json')` with mode `0o600`,
   returning the path (this is what becomes
   `GEMINI_CLI_SYSTEM_SETTINGS_PATH`'s value in Task 3).
 
@@ -322,16 +322,16 @@ paneId in a hypothetical mixed setup):
 
   describe('writeGeminiHookSettings', () => {
     it('writes valid JSON with 0600 permissions and returns the path', () => {
-      const dir = mkdtempSync(join(tmpdir(), 'localflow-test-'))
+      const dir = mkdtempSync(join(tmpdir(), 'saiife-test-'))
       const file = writeGeminiHookSettings(dir, 'p2', 1234, 'tok2')
-      expect(file).toBe(join(dir, 'localflow-gemini-hooks-p2.json'))
+      expect(file).toBe(join(dir, 'saiife-gemini-hooks-p2.json'))
       const parsed = JSON.parse(readFileSync(file, 'utf8'))
       expect(parsed.hooks.AfterAgent).toBeDefined()
       expect(statSync(file).mode & 0o777).toBe(0o600)
     })
 
     it('throws when paneId attempts path traversal', () => {
-      const dir = mkdtempSync(join(tmpdir(), 'localflow-test-'))
+      const dir = mkdtempSync(join(tmpdir(), 'saiife-test-'))
       expect(() => writeGeminiHookSettings(dir, '../escape', 1234, 'tok2')).toThrow()
     })
   })
@@ -361,7 +361,7 @@ paneId in a hypothetical mixed setup):
 
   function curlCommand(paneId: string, port: number, token: string, event: HookEventName): string {
     const payload = JSON.stringify({ paneId, event })
-    return `curl -s -m 3 -X POST http://127.0.0.1:${port}/event -H 'Content-Type: application/json' -H 'X-Localflow-Token: ${token}' -d '${payload}'`
+    return `curl -s -m 3 -X POST http://127.0.0.1:${port}/event -H 'Content-Type: application/json' -H 'X-Saiife-Token: ${token}' -d '${payload}'`
   }
 
   /**
@@ -372,7 +372,7 @@ paneId in a hypothetical mixed setup):
    */
   function notificationCommand(paneId: string, port: number, token: string): string {
     const payload = JSON.stringify({ paneId, event: 'Notification' as HookEventName })
-    const curl = `curl -s -m 3 -X POST http://127.0.0.1:${port}/event -H "Content-Type: application/json" -H "X-Localflow-Token: ${token}" -d '${payload}'`
+    const curl = `curl -s -m 3 -X POST http://127.0.0.1:${port}/event -H "Content-Type: application/json" -H "X-Saiife-Token: ${token}" -d '${payload}'`
     return `sh -c 'body=$(cat); case "$body" in *"\\"type\\":\\"ToolPermission\\""*|*"\\"type\\": \\"ToolPermission\\""*) ${curl} ;; esac'`
   }
 
@@ -402,7 +402,7 @@ paneId in a hypothetical mixed setup):
     assertSafeToken(paneId, 'paneId')
     assertSafeToken(token, 'token')
     assertValidPort(port)
-    const file = join(dir, `localflow-gemini-hooks-${paneId}.json`)
+    const file = join(dir, `saiife-gemini-hooks-${paneId}.json`)
     writeFileSync(file, JSON.stringify(buildGeminiHookSettings(paneId, port, token), null, 2), {
       mode: 0o600
     })
@@ -492,7 +492,7 @@ hookAdapter(agentId: AgentId): HookAdapterKind // replaces useHooks(agentId): bo
 
   describe('buildHookInjection', () => {
     it("'settings-file' writes a Claude settings file and returns --settings args", () => {
-      const dir = mkdtempSync(join(tmpdir(), 'localflow-hi-'))
+      const dir = mkdtempSync(join(tmpdir(), 'saiife-hi-'))
       const { args, env } = buildHookInjection('settings-file', dir, 'p1', 4242, 'tok')
       expect(args[0]).toBe('--settings')
       expect(existsSync(args[1])).toBe(true)
@@ -500,14 +500,14 @@ hookAdapter(agentId: AgentId): HookAdapterKind // replaces useHooks(agentId): bo
     })
 
     it("'env-settings-file' writes a Gemini settings file and returns the env var, no args", () => {
-      const dir = mkdtempSync(join(tmpdir(), 'localflow-hi-'))
+      const dir = mkdtempSync(join(tmpdir(), 'saiife-hi-'))
       const { args, env } = buildHookInjection('env-settings-file', dir, 'p1', 4242, 'tok')
       expect(args).toEqual([])
       expect(existsSync(env['GEMINI_CLI_SYSTEM_SETTINGS_PATH'])).toBe(true)
     })
 
     it("'cli-args-full' and 'cli-args-notify' return Codex -c args, no env, no file", () => {
-      const dir = mkdtempSync(join(tmpdir(), 'localflow-hi-'))
+      const dir = mkdtempSync(join(tmpdir(), 'saiife-hi-'))
       const full = buildHookInjection('cli-args-full', dir, 'p1', 4242, 'tok')
       expect(full.env).toEqual({})
       expect(full.args.join(' ')).toContain('"event":"UserPromptSubmit"')
@@ -517,7 +517,7 @@ hookAdapter(agentId: AgentId): HookAdapterKind // replaces useHooks(agentId): bo
     })
 
     it("'none' returns no args and no env", () => {
-      const dir = mkdtempSync(join(tmpdir(), 'localflow-hi-'))
+      const dir = mkdtempSync(join(tmpdir(), 'saiife-hi-'))
       expect(buildHookInjection('none', dir, 'p1', 4242, 'tok')).toEqual({ args: [], env: {} })
     })
   })
@@ -612,7 +612,7 @@ hookAdapter(agentId: AgentId): HookAdapterKind // replaces useHooks(agentId): bo
     bin: string
     resumeArgs: string[]
     /**
-     * Which hook-injection mechanism/tier localflow uses for this agent's
+     * Which hook-injection mechanism/tier saiife uses for this agent's
      * status feed. 'cli-args-notify' (not the optimistic 'cli-args-full')
      * is Codex's shipped default — see
      * docs/superpowers/specs/2026-07-07-m2-status-adapters-design.md for
@@ -778,12 +778,12 @@ hookAdapter(agentId: AgentId): HookAdapterKind // replaces useHooks(agentId): bo
 
 **Fixture design (per spec's "Testing strategy"):** these scripts do not
 attempt to parse Codex's/Gemini's real argv/config grammar — they trust
-that *whatever string localflow's generator embedded* is a directly
+that *whatever string saiife's generator embedded* is a directly
 executable shell command (true by construction: every adapter's embedded
 command is a `curl ...`/`sh -c '...'` string, never a value that needs a
 real CLI's own parser to become executable). Each fixture executes that
 command at a scripted moment to simulate the corresponding lifecycle
-event, proving the localflow-side wiring end-to-end. This is explicitly
+event, proving the saiife-side wiring end-to-end. This is explicitly
 **not** proof that the real CLI would invoke the command the same way —
 that gap is closed by the manual checklist below, not by these fixtures.
 
@@ -794,7 +794,7 @@ that gap is closed by the manual checklist below, not by these fixtures.
   ```sh
   #!/bin/sh
   # Stands in for the codex CLI in e2e. Scans argv for -c overrides
-  # embedding localflow's hook commands (see src/main/codex-hooks.ts) and
+  # embedding saiife's hook commands (see src/main/codex-hooks.ts) and
   # executes them, simulating whichever Codex lifecycle events this
   # invocation's tier wired up. Does NOT validate that a real `codex`
   # binary accepts this exact -c grammar — see the manual verification
@@ -826,7 +826,7 @@ that gap is closed by the manual checklist below, not by these fixtures.
   ```sh
   #!/bin/sh
   # Stands in for the gemini CLI in e2e. Reads the settings file
-  # localflow pointed at via GEMINI_CLI_SYSTEM_SETTINGS_PATH (see
+  # saiife pointed at via GEMINI_CLI_SYSTEM_SETTINGS_PATH (see
   # src/main/gemini-hooks.ts) and runs each hook's command, simulating
   # BeforeAgent/Notification(ToolPermission)/AfterAgent. Does NOT validate
   # that a real `gemini` binary uses this settings shape or this
@@ -982,7 +982,7 @@ verification can happen later without blocking anything.
   verification, tracked here so they aren't lost, matching the spec's
   stance that shipped defaults are the safe tiers until confirmed.
 - The e2e fixtures (`tests/fixtures/fake-codex.sh`,
-  `tests/fixtures/fake-gemini.sh`) prove localflow's own wiring — that the
+  `tests/fixtures/fake-gemini.sh`) prove saiife's own wiring — that the
   generated `-c` args / settings-file env var actually reach a spawned
   child process and, once executed, correctly reach `hook-server.ts` — but
   they are not a substitute for either check above, since both fixtures

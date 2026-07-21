@@ -129,7 +129,7 @@ export function normalizeCompany(raw: unknown): HubSpotCompanyContext {
 
 // ── Subscription batch → trigger payloads (§5.6) ─────────────────────────────
 
-/** One normalized subscription event: the localflow trigger it fires + its
+/** One normalized subscription event: the saiife trigger it fires + its
  *  `{ eventId, payload }` SeedEvent ingredients. */
 export interface HubSpotWebhookEvent {
   eventId: string
@@ -137,7 +137,7 @@ export interface HubSpotWebhookEvent {
   payload: HubSpotTriggerPayload
 }
 
-/** Map one raw HubSpot subscription event → a localflow trigger id, or null when
+/** Map one raw HubSpot subscription event → a saiife trigger id, or null when
  *  it is unsupported OR a `deal.propertyChange` that is NOT a `dealstage` move
  *  (filtered connector-side so no wasted run is seeded — §9.3). */
 function triggerFor(subscriptionType: string, propertyName: string): HubSpotTriggerId | null {

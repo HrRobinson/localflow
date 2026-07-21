@@ -1,4 +1,4 @@
-# Contributing to localflow
+# Contributing to saiife
 
 Thanks for wanting to help! A few hard rules keep this repo pleasant.
 
@@ -24,4 +24,4 @@ Thanks for wanting to help! A few hard rules keep this repo pleasant.
 ## Dev setup
 
 Node ≥ 20. `npm install`, then `npm run dev`. To run the app without a real
-Claude session: `LOCALFLOW_CLAUDE_BIN="$PWD/tests/fixtures/fake-claude.sh" npm run dev`.
+Claude session: `SAIIFE_CLAUDE_BIN="$PWD/tests/fixtures/fake-claude.sh" npm run dev`.

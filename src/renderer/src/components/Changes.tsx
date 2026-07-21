@@ -63,7 +63,7 @@ export default function Changes({
       return
     }
     try {
-      const s = await window.localflow.gitStatus(id)
+      const s = await window.saiife.gitStatus(id)
       if (statusReq.current === req) {
         setStatus(s)
         setStatusError(false)
@@ -93,12 +93,12 @@ export default function Changes({
         // Staged layer first (git's own ordering), then the worktree layer —
         // which also produces the untracked full-addition via main's fallback.
         if (entry.staged) {
-          const d = await window.localflow.gitDiff(id, entry.path, true)
+          const d = await window.saiife.gitDiff(id, entry.path, true)
           if (d.text) parts.push(d.text)
           truncated = truncated || d.truncated
         }
         if (entry.unstaged || entry.untracked) {
-          const d = await window.localflow.gitDiff(id, entry.path, false)
+          const d = await window.saiife.gitDiff(id, entry.path, false)
           if (d.text) parts.push(d.text)
           truncated = truncated || d.truncated
         }
@@ -130,7 +130,7 @@ export default function Changes({
     // repopulate `diff` with the stale file's content under the new label.
     diffReq.current++
     void loadStatus(sessionId)
-    void window.localflow.getCapabilities().then(setCaps)
+    void window.saiife.getCapabilities().then(setCaps)
   }, [sessionId, loadStatus])
 
   // Cheap poll while visible: refresh the file LIST only (never the open diff —
@@ -193,7 +193,7 @@ export default function Changes({
         sessionId,
         files.find((f) => f.path === selectedPath)
       )
-    void window.localflow.getCapabilities().then(setCaps)
+    void window.saiife.getCapabilities().then(setCaps)
   }
 
   const empty =
@@ -260,7 +260,7 @@ export default function Changes({
               ? caps.editor.hint
               : `Open in ${caps?.editor.command ?? 'editor'}`
           }
-          onClick={() => sessionId && void window.localflow.openEditor(sessionId)}
+          onClick={() => sessionId && void window.saiife.openEditor(sessionId)}
           onMouseDown={(e) => e.preventDefault()}
         >
           Open in editor

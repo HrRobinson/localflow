@@ -37,7 +37,7 @@ describe('startHookServer', () => {
 
     const ok = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Localflow-Token': endpoint.token },
+      headers: { 'Content-Type': 'application/json', 'X-Saiife-Token': endpoint.token },
       body
     })
     expect(ok.status).toBe(204)
@@ -45,14 +45,14 @@ describe('startHookServer', () => {
 
     const badToken = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Localflow-Token': 'wrong' },
+      headers: { 'Content-Type': 'application/json', 'X-Saiife-Token': 'wrong' },
       body
     })
     expect(badToken.status).toBe(403)
 
     const badBody = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Localflow-Token': endpoint.token },
+      headers: { 'Content-Type': 'application/json', 'X-Saiife-Token': endpoint.token },
       body: 'nope'
     })
     expect(badBody.status).toBe(400)
@@ -71,7 +71,7 @@ describe('startHookServer', () => {
 
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Localflow-Token': endpoint.token },
+      headers: { 'Content-Type': 'application/json', 'X-Saiife-Token': endpoint.token },
       body: oversized
     })
     expect(res.status).toBe(400)
@@ -93,7 +93,7 @@ describe('startHookServer', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Localflow-Token': endpoint.token,
+          'X-Saiife-Token': endpoint.token,
           'Content-Length': '100'
         }
       })
@@ -110,7 +110,7 @@ describe('startHookServer', () => {
     const url = `http://127.0.0.1:${endpoint.port}/event`
     const ok = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Localflow-Token': endpoint.token },
+      headers: { 'Content-Type': 'application/json', 'X-Saiife-Token': endpoint.token },
       body: JSON.stringify({ paneId: 'p2', event: 'Notification' })
     })
     expect(ok.status).toBe(204)

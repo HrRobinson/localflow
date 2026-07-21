@@ -7,7 +7,7 @@ export interface GuardSeenWatchOptions {
 }
 
 /**
- * Watches `dir` for per-pane invocation markers written by `lfguard check
+ * Watches `dir` for per-pane invocation markers written by `saiifeguard check
  * --seen-dir`. Fires `onSeen(<paneId>)` on each write/rename. Best-effort:
  * observability, not enforcement — all failures are swallowed and can never
  * crash the main process. Returns a stop function.

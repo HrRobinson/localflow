@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import type { LocalflowApi } from '../shared/api'
+import type { SaiifeApi } from '../shared/api'
 import type {
   ActivityEntry,
   AddPaneRequest,
@@ -14,7 +14,7 @@ import type { ConsoleEvent, ConsolePrefs } from '../shared/console'
 import type { IntegrationId } from '../shared/integrations'
 import type { FlowGraph } from '../shared/flows'
 
-const api: LocalflowApi = {
+const api: SaiifeApi = {
   createSession: (agentId: AgentId, cwd?: string, customCommand?: string, environment?: number) =>
     ipcRenderer.invoke('session:create', agentId, cwd, customCommand, environment),
   restartSession: (id: string, fresh?: boolean) => ipcRenderer.invoke('session:restart', id, fresh),
@@ -173,4 +173,4 @@ const api: LocalflowApi = {
   }
 }
 
-contextBridge.exposeInMainWorld('localflow', api)
+contextBridge.exposeInMainWorld('saiife', api)

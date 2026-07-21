@@ -3,7 +3,7 @@
 Scope decided with Jonas 2026-07-08: **keybindings editor + agent management
 + themes**. Provider tokens are **dropped from the roadmap entirely** — every
 supported agent can authenticate in-service with its own subscription or
-credit account, so localflow never stores provider secrets (the safeStorage
+credit account, so saiife never stores provider secrets (the safeStorage
 design in the roadmap's § M4 is void). Local-LLM support arrives implicitly
 through agent management's env/args overrides; recipe docs are deferred.
 
@@ -43,7 +43,7 @@ Extends the existing Settings agent cards:
   overrides** (KEY=VALUE rows) — stored under `config.json`'s `agents`
   key, composed into `SpawnSpec` at spawn time. This is the local-LLM
   enabler (base-URL env vars against Ollama etc.) without any special
-  casing; no cloud account required to use localflow.
+  casing; no cloud account required to use saiife.
 - Path override cards stay as shipped (picker + resolution status).
 
 ## 3. Themes

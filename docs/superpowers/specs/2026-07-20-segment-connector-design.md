@@ -13,7 +13,7 @@ SDKs (Node / Python / Go / …), and Segment's cloud sources (Stripe billing,
 mobile-attribution, other SaaS) — with **zero per-source code**. A single
 `track` / `identify` webhook fires the pinned `event.tracked` trigger through the
 shared webhook receiver, verified with Segment's **X-Signature SHA1 HMAC**, and
-the flow does the localflow judgment behind whatever gates the author drew.
+the flow does the saiife judgment behind whatever gates the author drew.
 
 This connector satisfies the **pinned** `IntegrationDescriptor` / `LiveConnector`
 / `registerConnector` contract in `src/shared/integrations.ts` and copies the
@@ -49,7 +49,7 @@ Where a sibling owns a shape, this spec **names the dependency and stops**.
 
 ## 1. Goal + MVP scope
 
-**Goal (one sentence):** Let a localflow user, on the canvas, wake a flow when a
+**Goal (one sentence):** Let a saiife user, on the canvas, wake a flow when a
 specific, **hard-filtered** Segment event (`event.tracked` — a `track` or
 `identify` from ANY upstream source Segment collects) arrives — verified with
 Segment's X-Signature SHA1 HMAC through the shared receiver — so that **one
@@ -88,7 +88,7 @@ flooding an 8 GB machine.
   ever rendered.
 - **Authority = the flow's gates.** Every write is an `action` node the author
   gates; the connector never emits outside the graph the author drew (§9).
-- **Single Segment workspace / source, single localflow environment.**
+- **Single Segment workspace / source, single saiife environment.**
 
 ### Out of scope (MVP) — explicitly deferred
 
@@ -124,7 +124,7 @@ Shopify, Stripe reaches Stripe. **Segment reaches everything already piped into
 Segment.** A customer-data platform's whole job is to collect `track`/`identify`
 events from every source a company runs — the website, the iOS and Android apps,
 the backend services, and dozens of cloud SaaS sources — and fan them out to
-destinations. If localflow is **a destination**, then one connector inherits the
+destinations. If saiife is **a destination**, then one connector inherits the
 entire upstream: a `Subscription Downgraded` event fired from Stripe billing, from
 an in-app button, or from a mobile screen all arrive through the *same* webhook,
 in the *same* shape. **One connector, every product surface.** That is the
@@ -169,7 +169,7 @@ Grounded in the current Segment docs (verified 2026-07-20):
 ### 2.3 Constraints (why YELLOW, not GREEN)
 
 1. **Cloud ingress is mandatory** (trigger only). Segment POSTs from the cloud;
-   localflow is a Finder-launched Electron app on an 8 GB Mac behind NAT with no
+   saiife is a Finder-launched Electron app on an 8 GB Mac behind NAT with no
    public HTTPS endpoint. MVP uses a **user-run tunnel** ("for me"); a hosted
    relay is the product fork (§4.4). Identical in shape to Shopify/HTTP §4.4 —
    a known, solved pattern, not a blocker.
@@ -200,16 +200,16 @@ surface is optional and flagged (§13.2).
 
 ## 3. The core loop → Segment primitives
 
-localflow's loop is `trigger → read → route → act (gated)`. For Segment the
+saiife's loop is `trigger → read → route → act (gated)`. For Segment the
 "read" is already in the event envelope (Segment delivers the properties/traits),
 so the loop is `trigger (hard-filtered) → route → act (gated, optional)`:
 
-| Stage | Segment primitive | localflow / flow-engine mechanism |
+| Stage | Segment primitive | saiife / flow-engine mechanism |
 |---|---|---|
 | **trigger** | A Webhook/Function destination POSTs a `track`/`identify` event; **destination filters keep the firehose in the cloud**. | `webhook-receiver` verifies X-Signature (SHA1 HMAC over raw body) → `segment-normalize` maps it to a `SegmentEventContext` → **the connector applies the node's hard filter** → only a match becomes a `SeedEvent` → `subscribe(triggerId, handler, config)` hands it to the engine, which `startRun`s the flow (`trigger-subscriber.ts`). |
 | **read** | *(none — the event carries its own `properties`/`traits`)* | The event payload is written to the trigger node's context slot; no follow-up API call needed. Downstream conditions read `event.properties.*` / `event.traits.*` by dotted path (`context.ts`). |
-| **route** | *(none — pure localflow)* | `selectEdges` evaluates edge conditions over the event context — e.g. `field: 'trigger.event.name', op: 'eq', value: 'Subscription Downgraded'`. **No LLM decides routing** — deterministic value compares. |
-| **gate** | *(none — pure localflow)* | A `gate` node the author placed pauses the run `needs-you`; the human approves in the cockpit before any emit. |
+| **route** | *(none — pure saiife)* | `selectEdges` evaluates edge conditions over the event context — e.g. `field: 'trigger.event.name', op: 'eq', value: 'Subscription Downgraded'`. **No LLM decides routing** — deterministic value compares. |
+| **gate** | *(none — pure saiife)* | A `gate` node the author placed pauses the run `needs-you`; the human approves in the cockpit before any emit. |
 | **act (optional)** | `POST /v1/track` / `POST /v1/identify` (HTTP Tracking API, write-key Basic auth). | The gated `track`/`identify` action → `invokeAction('segment', …)` → `segment-client`. **Failure = a rejected promise** (the pinned convention); the action-runner forwards the real Segment error. An emit **fans out to every downstream destination** — hence gated. |
 
 **The authority is the graph the author drew, not the connector.** The connector
@@ -220,7 +220,7 @@ invokes it.
 
 ---
 
-## 4. Architecture in localflow
+## 4. Architecture in saiife
 
 ### 4.1 Where it sits
 
@@ -230,7 +230,7 @@ A new **main-process module set** under `src/main/segment/`, mirroring
 `*-normalize`). It is **opt-in**: with no `segment` config entry and no stored
 secret the descriptor's `status()` reports `needs-config`, `subscribeTriggers`
 starts no subscription, and the engine refuses any `segment` node before any
-network call (`action-runner.ts`) — localflow's "works with no integration"
+network call (`action-runner.ts`) — saiife's "works with no integration"
 guarantee is unchanged.
 
 Architecturally the connector is a **live implementation behind the registry's
@@ -295,7 +295,7 @@ is met and a slow flow never causes a redelivery storm. A forged / oversized /
 malformed / unverified delivery is dropped (4xx/401) and **never** reaches the
 filter, let alone seeds a run.
 
-### 4.5 Reused localflow surfaces
+### 4.5 Reused saiife surfaces
 
 - `src/shared/integrations.ts` — the pinned `IntegrationDescriptor` /
   `LiveConnector` / `registerConnector` contract; `IntegrationId` (edited, §6.0);
@@ -332,7 +332,7 @@ boundary):
 |---|---|---|---|---|---|
 | `sharedSecret` | Webhook shared secret | **yes** | yes | string | Verifies `X-Signature` (SHA1 HMAC). Keychain only. Set on the Segment Webhook destination. |
 | `writeKey` | Source write key | **yes** | **no** | string | Authorizes the HTTP Tracking API (Basic-auth username). Keychain only. **Only required when a `track`/`identify` action is used** — a trigger-only connector is valid without it (§13.2). Placeholder masked. |
-| `environment` | localflow environment (1-9) | no | yes | number | Which env hosts Segment work (same field/validation as Shopify's). |
+| `environment` | saiife environment (1-9) | no | yes | number | Which env hosts Segment work (same field/validation as Shopify's). |
 | `webhookPath` | Ingress webhook path | no | no | string | Default `/segment/webhook`; the path the tunnel/relay forwards to. Non-secret ref. |
 | `webhookUrl` | Ingress webhook URL | no | no | string | The tunnel/relay base + path — the destination's delivery URL. Placeholder `https://<tunnel>/segment/webhook`. |
 | `dataPlaneUrl` | Tracking API region base | no | no | string | Defaults to `https://api.segment.io`; EU workspaces set `https://events.eu1.segmentapis.com`. Write side only. |
@@ -479,10 +479,10 @@ Segment Webhook destination's **Destination Filters** (or an early `return` in a
 Segment **Function**) so only the events a flow actually wants are ever forwarded.
 Filtering at Segment means the bulk of the firehose is dropped **in Segment's
 infrastructure** and never touches the tunnel or the 8 GB box at all. This is not
-localflow code — it is a documented connect-time step (§14 onboarding), and it is
+saiife code — it is a documented connect-time step (§14 onboarding), and it is
 where the heaviest reduction happens. The connector's UI/onboarding copy makes it
 explicit: *"Add a Destination Filter in Segment for the event(s) this flow needs —
-localflow filters again locally, but keeping the firehose in the cloud is what
+saiife filters again locally, but keeping the firehose in the cloud is what
 keeps your machine healthy."*
 
 ### 7.2 Layer 2 — pre-seed filter in the connector (the deterministic floor)
@@ -501,7 +501,7 @@ Segment filters can be mis-set, and a Function can be bypassed, so the connector
 
 A drop is silent and cheap — it starts **no run**, spawns **no session**, allocates
 **nothing** beyond the parse. Only a full match becomes a `SeedEvent`. This is the
-deterministic floor under Layer 1 — the lfguard posture (a deterministic guard, no
+deterministic floor under Layer 1 — the saiifeguard posture (a deterministic guard, no
 model in the loop) applied to event volume. It composes with, and runs *before*,
 the engine's generic post-seed `matchesFilter` (`trigger-subscriber.ts:44-50`):
 the connector filter keeps a run from *starting*; `matchesFilter` is a second,
@@ -594,7 +594,7 @@ seeds a run on a hard-filter match.
 **The hard filter is a deterministic floor (§7.2).** Beyond authoring authority,
 the pre-seed filter is a resource-safety floor: even a mis-authored flow cannot
 spawn unbounded runs, because a track trigger *must* name its event (§7.3) and the
-connector drops every non-match before allocating a run. This is the lfguard
+connector drops every non-match before allocating a run. This is the saiifeguard
 posture applied to volume — a deterministic guard, no model in the loop.
 
 **Emit fans out — treat it as amplified.** A `track`/`identify` into Segment
@@ -623,7 +623,7 @@ so the types are stable at condition-eval time. The dependency is one-directiona
 
 ## 11. Error handling
 
-localflow's principle (error-message-style memory; `credential-store.ts`,
+saiife's principle (error-message-style memory; `credential-store.ts`,
 `action-runner.ts`): **every failure is human-readable, actionable, and carries
 the real underlying cause. No silent catch. No bare "failed" / "not found".** An
 action signals failure by **rejecting**; the action-runner prefixes it with the
@@ -650,7 +650,7 @@ contains the shared secret, the write key, or the raw signed body.
 
 ## 12. Testing strategy (offline / mockable — no live calls in CI)
 
-Testable **without a live Segment workspace**, matching localflow's seams (pure
+Testable **without a live Segment workspace**, matching saiife's seams (pure
 modules, injected transport, fixture deliveries):
 
 - **`segment-normalize.ts` unit tests (the correctness + filter boundary — guarded
@@ -779,7 +779,7 @@ and is dogfoodable against a Segment workspace + a dev source.
 
 ---
 
-## Appendix — reused localflow surfaces (by path)
+## Appendix — reused saiife surfaces (by path)
 
 - `src/shared/integrations.ts` — the pinned `IntegrationDescriptor` /
   `LiveConnector` / `registerConnector` contract; `IntegrationId` (edited, §6.0);
@@ -803,5 +803,5 @@ and is dogfoodable against a Segment workspace + a dev source.
   receiver; its existing `algo:'sha1'` HMAC path is the X-Signature verifier (§4.2).
 - **`src/main/hosted/webhook-bindings.ts`** (sibling-owned) — the hosted binding
   the phase-5 relay consumes (§4.4).
-- `guard/` (lfguard) — the deterministic-guard *posture* the two-layer hard filter
+- `guard/` (saiifeguard) — the deterministic-guard *posture* the two-layer hard filter
   borrows (a resource floor under the author's authoring, no model in the loop).

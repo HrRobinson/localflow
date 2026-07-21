@@ -1,7 +1,7 @@
 # Flow Engine — Design
 
 **Date:** 2026-07-16
-**Status:** Design (spec) — not started. Sub-project **#2 of 3** in localflow's
+**Status:** Design (spec) — not started. Sub-project **#2 of 3** in saiife's
 visual-flow product direction (Integrations Hub → **Flow Engine** → Flow Canvas).
 Brainstorm-approved 2026-07-16.
 **Feature:** A **headless, hybrid** execution engine that runs user-authored
@@ -9,7 +9,7 @@ visual flows (Shopify-Flow style). The engine owns the **routing between systems
 and the **gating** — both deterministic/boolean — while agent panes do the
 **content/judgment inside nodes** and humans approve at **gates**. **No LLM decides
 routing.** It reuses the pane model, the hook-driven status feed, the operator
-control API + grant, `peek`/`ApproveButton`, and lfguard — it does **not** reinvent
+control API + grant, `peek`/`ApproveButton`, and saiifeguard — it does **not** reinvent
 any of them, and it invents no new external-integration code (that is sub-project
 #1's Integrations Hub).
 
@@ -48,7 +48,7 @@ routes on that fact. This is the whole point of the hybrid split.
 - A new **main-process module set** under `src/main/flow/` (peer of the operator
   subsystem, wired in `src/main/index.ts` next to `startControlServer` /
   `startHookServer`). **Opt-in**: absent flow config, the engine never starts and
-  localflow's "works with no integration/flow configured" guarantee is untouched
+  saiife's "works with no integration/flow configured" guarantee is untouched
   — exactly the posture the Linear connector and OpenClaw operator launch took.
 - The **`FlowGraph` persistence model** (§7): flows stored as **config-as-code**
   JSON, **validated at the boundary** (the `parseOperatorRevokeOnExit` /
@@ -94,7 +94,7 @@ routes on that fact. This is the whole point of the hybrid split.
 
 ---
 
-## 2. Architecture in localflow
+## 2. Architecture in saiife
 
 ### 2.1 Where it sits
 
@@ -102,7 +102,7 @@ routes on that fact. This is the whole point of the hybrid split.
 it is **an in-process operator client**: it does **not** reach into
 `SessionManager` privately to spawn/drive panes — it goes through the **same
 control-API surface** OpenClaw and Linear use (`src/main/control-api.ts`), so the
-capability boundary (`OPERATOR_TERMINAL_AGENTS`), the prompt **guard** (lfguard
+capability boundary (`OPERATOR_TERMINAL_AGENTS`), the prompt **guard** (saiifeguard
 via `operatorGuard`), and per-environment isolation all apply to flow-driven work
 identically. It obtains a grant via the existing `OperatorGrantStore.grant(env)`
 and calls the router in-process (`handleRequest` is documented as pure over its
@@ -179,7 +179,7 @@ event); trigger/action/router resolve promptly.
   `pane-driver` grants the environment, `POST /panes` (`kind: terminal`,
   `agentId: node.ref`, `groupId`), then `POST /panes/:handle/prompt` with the
   template rendered against run context (`applyTemplate`). The prompt is **guarded
-  by lfguard** exactly like any operator prompt (`control-api.ts:227-241`).
+  by saiifeguard** exactly like any operator prompt (`control-api.ts:227-241`).
 - **Completion = pane `idle`** (a `Stop` hook → `state-machine.ts` `Stop→idle`).
   The engine watches `onPaneStatus` for that pane id and resolves the node `done`.
 - **`needs-you` inside an agent node** (the agent asking a question, not a routing
@@ -275,7 +275,7 @@ Walk (each ► names the engine mechanism):
    payload to context. Node `done`.
 2. **`A` triage (claude)** — ► `pane-driver` grants env, `POST /panes` (terminal,
    claude) + `POST /panes/:h/prompt` with the templated triage instruction
-   (guarded by lfguard). Pane goes `working` (`UserPromptSubmit→working`) then
+   (guarded by saiifeguard). Pane goes `working` (`UserPromptSubmit→working`) then
    `idle` (`Stop→idle`). ► engine peeks a `FLOW_RESULT:{"category":...}` sentinel
    into context. Node `done`.
 3. **`R` route(category)** — ► `router-runner` evaluates each out-edge condition
@@ -393,7 +393,7 @@ honored; garbage disables the feature" discipline).
 {
   "flows": {
     "enabled": true,
-    "environment": 1,          // default localflow env (1-9) hosting flow-driven panes
+    "environment": 1,          // default saiife env (1-9) hosting flow-driven panes
     "maxConcurrentPanes": 2    // RAM-safe cap (dev-machine memory constraint)
   }
 }
@@ -477,7 +477,7 @@ The engine drives panes through `handleRequest(deps, method, url, token, body)`
 
 ## 9. Error handling
 
-localflow's principle (`error-message-style`; demonstrated in `session-manager.ts`
+saiife's principle (`error-message-style`; demonstrated in `session-manager.ts`
 — instant-exit surfaces the *real tail*, the guard *emits a visible notice*,
 `control-api` logs *route + reason*, never token material): **every failure is
 human-readable, actionable, and carries the real underlying exception. No silent
@@ -492,7 +492,7 @@ that message** rather than minting a vaguer one.
 | **A gate is rejected** | Route to reject edge; if none, run → **`rejected`** (a clean human "no", **not** `failed`). No auto-proceed, ever. | Run-activity: "Flow ‘<name>’ stopped at gate ‘<id>’ — rejected by <who>." Distinct wording from a failure. |
 | **A trigger fires with no matching flow** | **No run starts** — this is the opt-in default (works with no flow configured), *not* an error. | Debug-level notice only ("email:inbound — no enabled flow subscribes"); never a loud error, never a crash. |
 | **An action targets a not-connected integration** (`descriptor.status()!=='connected'`) | Node → `failed` **before** any call. | "Flow ‘<name>’ needs <label> connected — action ‘<ref>’ can't run. Connect it in Settings." (Actionable, names the fix.) |
-| **lfguard blocks a flow-sourced prompt** at an agent node | The existing guard path fires unchanged (`control-api.ts` `emitNotice("⛔ …")` + a `guard` console row). Node → `failed`. | The canonical `guardDenyMessage(pack, reason)` (one string, names the pack + next step) + a run-activity noting the block. |
+| **saiifeguard blocks a flow-sourced prompt** at an agent node | The existing guard path fires unchanged (`control-api.ts` `emitNotice("⛔ …")` + a `guard` console row). Node → `failed`. | The canonical `guardDenyMessage(pack, reason)` (one string, names the pack + next step) + a run-activity noting the block. |
 | **Invalid `FlowGraph` at load** | `parseFlowGraph` returns null → that flow **disabled**, others load. | "Flow ‘<id>’ disabled — `<specific reason: e.g. edge e3 → unknown node n9>`. Fix flows.json." Loud, specific, non-fatal. |
 | **Control-API rejects the drive** (e.g. `POST /panes` 400 unknown group, 409 pane exited, 403 no grant) | Node → `failed`, carrying the router's own `{error}` body + status. | "Flow ‘<name>’ couldn't drive a pane: `<status> <error>`." Uses the router's exact message (single contract). |
 
@@ -595,7 +595,7 @@ with zero external dependencies — the hybrid backbone.
 
 ---
 
-## Appendix — reused localflow surfaces (by path)
+## Appendix — reused saiife surfaces (by path)
 
 - `src/main/control-api.ts` — `handleRequest` (pure over inputs — the in-process
   drive seam); `POST /panes` / `POST /panes/:handle/prompt`;

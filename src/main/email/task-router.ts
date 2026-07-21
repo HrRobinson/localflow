@@ -1,5 +1,5 @@
 /**
- * Maps an inbound message/thread onto a localflow pane (design §4.4), keyed by
+ * Maps an inbound message/thread onto a saiife pane (design §4.4), keyed by
  * provider thread id. MVP strategy: pane-per-thread, 1:1 — the pane's lifecycle
  * IS the task's lifecycle, so the `working → needs-you → done` status feed (§4.5)
  * maps cleanly.
@@ -32,7 +32,7 @@ export interface EmailTask {
 }
 
 export interface TaskRouterDeps {
-  /** Which localflow environment hosts this mailbox's panes (§8). */
+  /** Which saiife environment hosts this mailbox's panes (§8). */
   readonly environment: number
   /** Create (or resurrect) an agent pane for a thread; returns its handle. */
   readonly createPane: (request: EmailPaneRequest) => string

@@ -54,7 +54,7 @@ export default function TerminalPane({
     term.loadAddon(fit)
     term.open(hostRef.current)
     fit.fit()
-    window.localflow.resize(session.id, term.cols, term.rows)
+    window.saiife.resize(session.id, term.cols, term.rows)
     // Switching views unmounts the grid (App.tsx), so returning creates a
     // FRESH xterm whose onData only sees NEW pty bytes — the pane would be
     // blank until a keystroke provokes a redraw. Replay the pane's current
@@ -65,21 +65,21 @@ export default function TerminalPane({
     // stale replay would overwrite them and garble the pane — skip the
     // replay write once real data has started flowing.
     let liveData = false
-    void window.localflow.snapshotSession(session.id).then((lines) => {
+    void window.saiife.snapshotSession(session.id).then((lines) => {
       if (cancelled || termRef.current !== term || liveData) return
       if (lines.length > 0) term.write(lines.join('\r\n'))
       term.refresh(0, term.rows - 1)
     })
-    const offData = window.localflow.onData((id, data) => {
+    const offData = window.saiife.onData((id, data) => {
       if (id === session.id) {
         liveData = true
         term.write(data)
       }
     })
-    const onInput = term.onData((d) => window.localflow.write(session.id, d))
+    const onInput = term.onData((d) => window.saiife.write(session.id, d))
     const ro = new ResizeObserver(() => {
       fit.fit()
-      window.localflow.resize(session.id, term.cols, term.rows)
+      window.saiife.resize(session.id, term.cols, term.rows)
     })
     ro.observe(hostRef.current)
     return () => {
@@ -101,7 +101,7 @@ export default function TerminalPane({
     term.options.fontFamily = terminalTheme.fontFamily
     term.options.fontSize = terminalTheme.fontSize
     fitRef.current?.fit()
-    window.localflow.resize(session.id, term.cols, term.rows)
+    window.saiife.resize(session.id, term.cols, term.rows)
   }, [terminalTheme, session.id])
 
   // Keep DOM focus on the active pane's terminal — after activation changes,
@@ -156,7 +156,7 @@ export default function TerminalPane({
         {session.guardVerification === 'unverified' && (
           <span
             className="rounded border border-amber-400/40 bg-amber-400/10 px-1.5 py-px font-mono text-[10px] text-amber-300"
-            title="lfguard is configured for this Codex pane, but no enforcement has been observed yet — it is armed but unproven. The badge clears the first time a command actually reaches the guard this session. It does not mean the guard is broken."
+            title="saiifeguard is configured for this Codex pane, but no enforcement has been observed yet — it is armed but unproven. The badge clears the first time a command actually reaches the guard this session. It does not mean the guard is broken."
           >
             guard: not yet observed
           </span>

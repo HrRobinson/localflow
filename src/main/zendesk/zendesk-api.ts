@@ -6,7 +6,7 @@
  * Zendesk call is ever performed in CI (spec §12).
  *
  * Read methods return the RAW Zendesk object; `zendesk-normalize.ts` maps it to
- * the pinned context shape (§6.3). Mutation methods return a small localflow-shaped
+ * the pinned context shape (§6.3). Mutation methods return a small saiife-shaped
  * result that becomes the action node's context output. Every request sends HTTP
  * Basic `{agentEmail}/token:{apiToken}` (or `Authorization: Bearer` in the OAuth
  * fork) against `https://{subdomain}.zendesk.com/api/v2/`; a `429` backs off
@@ -53,7 +53,7 @@ export interface RawUser {
   created_at?: string | null
 }
 
-// ── Mutation inputs / results (localflow-shaped) ─────────────────────────────
+// ── Mutation inputs / results (saiife-shaped) ─────────────────────────────
 
 /**
  * Zendesk folds reply + status + assignment into ONE `PUT /tickets/{id}.json`.

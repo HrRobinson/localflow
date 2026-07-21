@@ -3,8 +3,8 @@
 **Date:** 2026-07-18
 **Status:** Design (spec) — not started. Design-approval gate for the **flagship
 actuator** of the integration program. Where the ecom connectors (Shopify,
-WooCommerce) point localflow at a commerce host, GitHub points it at a **git
-host** — and that is native to localflow's coding-agent DNA. The connector
+WooCommerce) point saiife at a commerce host, GitHub points it at a **git
+host** — and that is native to saiife's coding-agent DNA. The connector
 exists to close *the* loop the whole product is shaped around: **a coding-agent
 authors a fix PR, a human merges it.**
 **Feature:** A **GitHub connector** that plugs into the merged flow-builder
@@ -40,10 +40,10 @@ predecessors — the plumbing they invented is now a dependency it consumes.
 
 ## 1. Goal + MVP scope
 
-**Goal (one sentence):** Let a localflow user assemble, on the canvas, a
+**Goal (one sentence):** Let a saiife user assemble, on the canvas, a
 dev-incident worker that wakes on a GitHub event (a failing check or a new
 issue), reads the relevant PR/issue/check facts through the GitHub API, drives a
-localflow coding-agent pane to author a branch + fix, and — behind an
+saiife coding-agent pane to author a branch + fix, and — behind an
 author-placed gate — opens a PR that **a human merges** — with the App private
 key / PAT in the OS keychain, **never** rendered.
 
@@ -75,7 +75,7 @@ key / PAT in the OS keychain, **never** rendered.
 - **The flagship fix-PR loop** (§7): a `check.failed` / `issue.opened` trigger →
   a builtin **`agent` node** that drives a coding-agent pane (via the operator
   `control-api` `POST /panes` + `/panes/:handle/prompt` under a grant, keeping
-  the lfguard / `OPERATOR_TERMINAL_AGENTS` boundary) → the agent authors a branch
+  the saiifeguard / `OPERATOR_TERMINAL_AGENTS` boundary) → the agent authors a branch
   + fix and reports it via the `FLOW_RESULT` sentinel → a gated `openPR` action →
   **the human merges.** The connector does not own this loop; it is authored in
   the flow (§7, §13.3).
@@ -84,7 +84,7 @@ key / PAT in the OS keychain, **never** rendered.
   and every other mutation NEVER auto-run** — they run only because the graph
   reached them behind whatever gate the author drew (§9). This literally encodes
   the user's "I merge PRs myself" preference as a contract.
-- **Single account/org, single localflow environment.** Config-as-code `github`
+- **Single account/org, single saiife environment.** Config-as-code `github`
   block in `config.json` (non-secret refs only); PAT / App private key + webhook
   secret in the keychain.
 
@@ -127,9 +127,9 @@ that gate produced; it does not re-derive it.
 The ecom connectors are **read→act**: read an order, refund it. GitHub is
 **read→author→act**: read a failing check, **drive a coding agent to write a
 fix**, open a PR. That middle stage is not a connector capability at all — it is
-localflow's *core* capability (a coding-agent pane), which every other part of
+saiife's *core* capability (a coding-agent pane), which every other part of
 the product already exists to run. GitHub is therefore the connector that points
-localflow's own DNA — "an agent works a coding task, a human approves" — at a git
+saiife's own DNA — "an agent works a coding task, a human approves" — at a git
 host. It is the actuator the product was implicitly built for.
 
 ### 2.2 The GitHub API for trigger → read → author → act
@@ -157,7 +157,7 @@ Grounded in the completed feasibility gate:
     per-installation **installation access token** (1-hour TTL, minted on demand,
     cached in-memory only — never persisted), and calls the API as the **App's
     own bot identity**. This mirrors the codebase's app-identity posture (Linear's
-    `actor=app` bot; localflow acting as *itself*, not impersonating a human).
+    `actor=app` bot; saiife acting as *itself*, not impersonating a human).
   - **Fine-grained PAT (MVP "for me").** A single long-lived token, sent as
     `Authorization: Bearer <pat>`. Simplest to a dogfoodable loop; no JWT dance.
   - **OAuth (user-token).** An OAuth app mints a user-scoped token. Useful for a
@@ -184,7 +184,7 @@ Grounded in the completed feasibility gate:
 ### 2.3 Constraints (honest caveats — not blockers)
 
 1. **The fix is authored by a coding agent, not the connector.** The connector
-   cannot "produce a fix." The **`agent` node** (a localflow builtin) drives a
+   cannot "produce a fix." The **`agent` node** (a saiife builtin) drives a
    coding-agent pane to do that; the connector supplies the *trigger* that starts
    the run and the *write* (`openPR`) that publishes the result. This is a
    division-of-labor design choice (§7, §13.3), not a gap — and it is what keeps
@@ -194,7 +194,7 @@ Grounded in the completed feasibility gate:
    URL — a dev tunnel in MVP, a hosted relay in the product fork (§4.4). Read +
    write work over plain outbound HTTPS with no ingress; only *triggers* need it.
 3. **A merge is irreversible and is the human's prerogative.** `mergePR` is the
-   sharpest expression of localflow's safety posture — even more than an ecom
+   sharpest expression of saiife's safety posture — even more than an ecom
    refund. It **never** auto-runs; it sits behind an author-placed gate by
    contract (§9). This is a *safety* posture the flow engine's gates already
    provide, not a feasibility concern.
@@ -213,29 +213,29 @@ safety posture the engine already enforces.
 
 ## 3. The core loop → GitHub primitives
 
-localflow's dev-incident loop is `trigger → read → author (coding-agent) → act
+saiife's dev-incident loop is `trigger → read → author (coding-agent) → act
 (gated)`. Each stage maps to a concrete GitHub primitive and the concrete
 flow-engine mechanism that runs it:
 
-| Stage | GitHub primitive | localflow / flow-engine mechanism |
+| Stage | GitHub primitive | saiife / flow-engine mechanism |
 |---|---|---|
 | **trigger** | A verified webhook: `check_run` (failed), `issues` (opened), `pull_request` (opened), `workflow_run` (failed). | The shared `webhook-receiver` verifies the `X-Hub-Signature-256` HMAC → hands the connector a verified delivery → the connector normalizes it to a `SeedEvent` → its `subscribe(triggerId, handler)` hands it to the engine, which `startRun`s the flow with the payload in trigger-node context (`trigger-subscriber.ts`, `flow-engine.ts`). |
 | **read** | REST `GET issues/{n}` / `pulls/{n}` / `check-runs/{id}`; `GET /search/issues`. | An `action` node (`getIssue` / `getPR` / `getCheckRun` / `searchIssues`) → `registry.invokeAction('github', ref, params)` → `GitHubConnector` calls `github-api.ts` → **resolves** the normalized result, which the action-runner writes to context under the node id (`action-runner.ts`). |
-| **author** | *(none — this is localflow's own coding-agent capability)* | A builtin **`agent` node** (`agent-runner.ts`): `driver.createTerminal(env, agentId, groupId)` → `POST /panes` under the grant; `driver.prompt(env, handle, text)` → `POST /panes/:handle/prompt` (lfguard-guarded). The agent works in the group's real git working tree, creates a branch + fix, and reports via `FLOW_RESULT: {...}` which the engine reduces to a typed fact (`parseFlowResult`, `agent-runner.ts:96`). |
-| **route** | *(none — pure localflow)* | `selectEdges` evaluates edge conditions over the context the read/agent wrote (`context.ts`). Today `field === equals`; soon the richer `FlowEdgeCondition` operators (§10) over e.g. `pr.mergeable`. No LLM decides routing — deterministic value compares. |
-| **gate** | *(none — pure localflow)* | A `gate` node the author placed pauses the run as `needs-you` (`ApprovalPort`, `types.ts:33`); the human approves in the cockpit. A `mergePR` node sits **downstream of the gate the author drew** — by contract (§9). |
+| **author** | *(none — this is saiife's own coding-agent capability)* | A builtin **`agent` node** (`agent-runner.ts`): `driver.createTerminal(env, agentId, groupId)` → `POST /panes` under the grant; `driver.prompt(env, handle, text)` → `POST /panes/:handle/prompt` (saiifeguard-guarded). The agent works in the group's real git working tree, creates a branch + fix, and reports via `FLOW_RESULT: {...}` which the engine reduces to a typed fact (`parseFlowResult`, `agent-runner.ts:96`). |
+| **route** | *(none — pure saiife)* | `selectEdges` evaluates edge conditions over the context the read/agent wrote (`context.ts`). Today `field === equals`; soon the richer `FlowEdgeCondition` operators (§10) over e.g. `pr.mergeable`. No LLM decides routing — deterministic value compares. |
+| **gate** | *(none — pure saiife)* | A `gate` node the author placed pauses the run as `needs-you` (`ApprovalPort`, `types.ts:33`); the human approves in the cockpit. A `mergePR` node sits **downstream of the gate the author drew** — by contract (§9). |
 | **act** | REST write: `comments`, `labels`, `issues` (create/close), `pulls` (open), `actions/…/dispatches`, `pulls/{n}/merge`. | The gated `action` node (`commentIssue` / … / `openPR` / `mergePR`) → `invokeAction` → `github-api.ts` write. **Failure = a rejected promise** (the pinned convention); the action-runner forwards the *real* GitHub/GraphQL error verbatim (`action-runner.ts`, error-message-style). |
 
 **The authority is the graph the author drew, not the connector.** The connector
 exposes *capabilities* (triggers, read actions, write actions); the *flow* decides
 which run, in what order, behind which gates. The coding-agent pane that actually
 authors the fix is a **builtin node**, driven through the **same guarded operator
-control-API** OpenClaw and the Linear connector use — so the lfguard prompt guard
+control-API** OpenClaw and the Linear connector use — so the saiifeguard prompt guard
 and per-environment isolation apply to GitHub-triggered work identically.
 
 ---
 
-## 4. Architecture in localflow
+## 4. Architecture in saiife
 
 ### 4.1 Where it sits
 
@@ -243,7 +243,7 @@ A new **main-process module set** under `src/main/github/`, mirroring
 `src/main/shopify/` (the first-built connector). It is **opt-in**: with no
 `github` config entry (and no stored credential) the descriptor's `status()`
 returns `needs-config` and the engine refuses any GitHub node before any network
-call (`action-runner.ts` not-connected guard) — localflow's "works with no
+call (`action-runner.ts` not-connected guard) — saiife's "works with no
 integration" guarantee is unchanged.
 
 The connector is the live implementation behind the registry's pinned
@@ -356,15 +356,15 @@ exported `handleRequest` router (`src/main/control-api.ts`) under an
   the group's members (never caller-supplied — `pane-driver.ts:34`), so
   `groupId` must name a group whose member has the repo's working tree as its cwd.
 - `PaneDriver.prompt(env, handle, text)` → `POST /panes/:handle/prompt`, which is
-  **lfguard-guarded** exactly like any operator prompt; a guard block returns 403
+  **saiifeguard-guarded** exactly like any operator prompt; a guard block returns 403
   with the canonical deny message, surfaced verbatim (`pane-driver.ts:53-68`).
 
 This keeps the GitHub-triggered coding work **inside the operator boundary**: the
-capability gate (`OPERATOR_TERMINAL_AGENTS`), the lfguard prompt guard, and
+capability gate (`OPERATOR_TERMINAL_AGENTS`), the saiifeguard prompt guard, and
 per-environment isolation all apply to it identically. The connector's job is
 only to *start the run* (via a trigger) and *publish the result* (via `openPR`).
 
-### 4.7 Reused localflow surfaces
+### 4.7 Reused saiife surfaces
 
 - `src/shared/integrations.ts` — the pinned `IntegrationDescriptor` /
   `IntegrationRegistry` / `LiveConnector` this connector satisfies; `IntegrationId`
@@ -414,7 +414,7 @@ boundary):
 | `baseUrl` | API base URL (GHES) | no | no | string | Defaults to `https://api.github.com`; GHES `https://<host>/api/v3`. SSRF-guarded (§4.5). |
 | `owner` | Default repo owner/org | no | yes | string | e.g. `acme`. Non-secret ref. |
 | `repo` | Default repo | no | no | string | e.g. `web`. Optional; actions may override per-node. |
-| `environment` | localflow environment (1-9) | no | yes | number | Which env hosts GitHub work (same field/validation as the siblings). |
+| `environment` | saiife environment (1-9) | no | yes | number | Which env hosts GitHub work (same field/validation as the siblings). |
 | `webhookUrl` | Ingress webhook URL | no | no | string | The tunnel/relay delivery address (§4.4). Placeholder `https://<tunnel>/github/webhook`. |
 
 *The `pat` / App-triple requirements are **conditional on `authMode`** — the
@@ -588,7 +588,7 @@ fix-authoring lives in a builtin `agent` node, and the merge lives with the huma
         │     new branch off {{pr.pr.headRef}}, run the check locally, and end with
         │     FLOW_RESULT: {\"branch\":\"<name>\",\"summary\":\"<what you changed>\"}."
         │  → PaneDriver.createTerminal → POST /panes (OPERATOR_TERMINAL_AGENTS, grant)
-        │  → PaneDriver.prompt → POST /panes/:h/prompt (lfguard-guarded)
+        │  → PaneDriver.prompt → POST /panes/:h/prompt (saiifeguard-guarded)
         │  → waitForTerminal(handle): 'idle' (Stop hook) = done | 'exited' = fail
         │  → parseFlowResult(peek) → context['fix'] = { branch, summary }
         ▼
@@ -655,7 +655,7 @@ recommended default.
   persisted, never rendered), refreshes it before expiry, and returns
   `Authorization: Bearer <installation-token>` at call time. The connector acts as
   the **App's own bot identity** — mirroring the codebase's app-identity posture
-  (Linear's `actor=app`; localflow acting as itself, not impersonating a human).
+  (Linear's `actor=app`; saiife acting as itself, not impersonating a human).
   This is the recommended default because it is per-installation scoped, tokens
   are short-lived, and it is the multi-tenant-ready shape for the product fork.
 - **Fine-grained PAT (MVP "for me").** The user pastes a PAT into the masked
@@ -714,7 +714,7 @@ preference as a **structural contract**, not a convention:
   track require a `gate` node immediately upstream of it (a lint the flow
   validator can enforce — flagged in §13). A `mergePR` reachable without a gate is
   a mis-authored flow the validator rejects.
-- **Optional deterministic backstop (phased, §14).** In the spirit of **lfguard**
+- **Optional deterministic backstop (phased, §14).** In the spirit of **saiifeguard**
   (`guard/`), a small declarative `github.limits` policy enforced **inside the
   connector before any mutation** — e.g. `mergeAlwaysRequiresGate: true` (default
   on), `allowMergeToBranches: ['!main']`, `maxOpenPRsPerRun: 1`. A `mergePR` that
@@ -748,7 +748,7 @@ routing, just less expressively.
 
 ## 11. Error handling
 
-localflow's principle (error-message-style memory; demonstrated in
+saiife's principle (error-message-style memory; demonstrated in
 `credential-store.ts`, `action-runner.ts`, `control-api.ts`): **every failure is
 human-readable, actionable, and carries the real underlying exception. No silent
 catch. No bare "failed" / 404-vibe.** A write signals failure by **rejecting** its
@@ -769,7 +769,7 @@ surfaces it on the run.
 | **Rate-limit (403 `X-RateLimit-Remaining: 0` / `Retry-After`)** | the reset time from the headers | `github-api` retries with **capped backoff** honoring the header; only after exhausting retries does it reject with "GitHub rate limit hit; resets in ~Ns." Not swallowed. |
 | **SSRF-blocked GHES host** | the resolved private/loopback IP | Rejects **before** the call: "API base URL '<host>' resolves to a private/loopback address (<ip>) — refusing to call it." (§4.5) |
 | **Agent pane instant-exit** (fix-loop) | the pane's REAL exit tail | The `agent` node fails forwarding `info.message` verbatim (`agent-runner.ts:86-93`) — never a vaguer wrapper. |
-| **lfguard blocks the agent prompt** | the canonical deny message | `PaneDriver.prompt` returns 403; the agent node surfaces the guard's own message verbatim (`pane-driver.ts:53-68`). |
+| **saiifeguard blocks the agent prompt** | the canonical deny message | `PaneDriver.prompt` returns 403; the agent node surfaces the guard's own message verbatim (`pane-driver.ts:53-68`). |
 | **Ingress/tunnel down** | the unreachable `webhookUrl` | Startup/health check fails loudly: "GitHub webhook URL '<url>' is unreachable — no repo events will arrive." Never a silent dead trigger. |
 | **Backstop policy block** (§9) | the policy + the attempted action | Rejects before the call: "merge is gate-required by policy — place a gate before this node or change `github.limits`." |
 
@@ -781,7 +781,7 @@ only prefixes it with the node/action.
 
 ## 12. Testing strategy (offline / mockable — no live calls in CI)
 
-Testable **without a live GitHub account**, matching localflow's existing seams
+Testable **without a live GitHub account**, matching saiife's existing seams
 (pure modules, injected backends, fixture events):
 
 - **`GitHubApi` interface + `MockGitHubApi` seam.** `github-api.ts` is written
@@ -863,7 +863,7 @@ in manual dogfooding against a scratch repo.
    stays a pure actuator (trigger + read + gated write); the fix-authoring is a
    builtin `agent` node the author places, driven through the guarded operator
    control-API. This keeps authority in the graph, keeps the coding-agent inside
-   the lfguard/`OPERATOR_TERMINAL_AGENTS` boundary, and lets the author reshape the
+   the saiifeguard/`OPERATOR_TERMINAL_AGENTS` boundary, and lets the author reshape the
    loop (triage-only, comment-only, dispatch-a-re-run) without connector changes.
    The alternative — a connector-owned "fix this" action that internally spawns a
    pane — would move the pane-drive out of the flow and blur the authority
@@ -921,7 +921,7 @@ a gate — opens a PR the human merges) and is dogfoodable against a scratch rep
   gate + the §9 backstop — `mergePR`. Programmatic webhook-subscription
   management (§13.5).
 - **Phase 3 — deterministic merge/write backstop:** the `github.limits` policy
-  (§9), lfguard-style, with the `mergeAlwaysRequiresGate` default decided (§13.4);
+  (§9), saiifeguard-style, with the `mergeAlwaysRequiresGate` default decided (§13.4);
   the flow-validator lint for un-gated `mergePR`.
 - **Phase 4 — richer conditions consumption:** once the conditions track lands
   `FlowEdgeCondition` (§10), verify the pinned fields drive
@@ -937,7 +937,7 @@ a gate — opens a PR the human merges) and is dogfoodable against a scratch rep
 
 ---
 
-## Appendix — reused / satisfied localflow surfaces (by path)
+## Appendix — reused / satisfied saiife surfaces (by path)
 
 - `src/shared/integrations.ts` — the pinned `IntegrationDescriptor` /
   `IntegrationRegistry` / `LiveConnector` this connector satisfies; `IntegrationId`
@@ -965,7 +965,7 @@ a gate — opens a PR the human merges) and is dogfoodable against a scratch rep
 - `src/main/flow/pane-driver.ts` — `PaneDriver.createTerminal`/`prompt` → the
   guarded operator control-API (`POST /panes`, `/panes/:handle/prompt`).
 - `src/main/control-api.ts` — `handleRequest`, `OPERATOR_TERMINAL_AGENTS`
-  (`{claude, codex, gemini}`), the lfguard prompt guard on `/prompt`.
+  (`{claude, codex, gemini}`), the saiifeguard prompt guard on `/prompt`.
 - `src/main/flow/trigger-subscriber.ts` — how `subscribe` seeds runs;
   `coerceEvent` / `matchesFilter` the webhook `SeedEvent` flows through.
 - `src/main/flow/context.ts` — `resolveField` / `applyTemplate` / `selectEdges`;
@@ -973,7 +973,7 @@ a gate — opens a PR the human merges) and is dogfoodable against a scratch rep
   through).
 - `src/main/flow/types.ts` — `NodeOutcome` (`done`/`failed`/`rejected` — the
   human-"no"-is-not-a-failure gate contract) and the `ApprovalPort` gate seam.
-- `guard/` (lfguard) — the deterministic-guard *posture* the optional §9 merge
+- `guard/` (saiifeguard) — the deterministic-guard *posture* the optional §9 merge
   backstop borrows (a policy floor under the author's gates, no model in the loop).
 - `docs/superpowers/specs/2026-07-17-shopify-connector-design.md` — the built
   sibling whose module shape, vocabulary-pinning, error-table, and offline-testing

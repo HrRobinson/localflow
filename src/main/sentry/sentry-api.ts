@@ -9,7 +9,7 @@ import type { SentryStatusDetails } from '../../shared/sentry'
  * `MockSentryApi`, so NO live Sentry call is ever performed in CI (spec §12).
  *
  * Read methods return the RAW Sentry node; `sentry-normalize.ts` maps it to the
- * pinned context shape. Mutations resolve a small localflow-shaped result.
+ * pinned context shape. Mutations resolve a small saiife-shaped result.
  * Failure follows the pinned convention: every error path REJECTS with a legible,
  * actionable message that carries the real Sentry cause — and NEVER the bearer
  * token or Client Secret (spec §5, §11).
@@ -84,7 +84,7 @@ export interface RawSentryEvent {
   entries?: RawSentryEntry[] | null
 }
 
-// ── Mutation inputs / results (localflow-shaped) ─────────────────────────────
+// ── Mutation inputs / results (saiife-shaped) ─────────────────────────────
 
 export interface ResolveIssueInput {
   id: string

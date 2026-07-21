@@ -122,14 +122,14 @@ describe('offline PagerDuty on-call loop (§7)', () => {
       integration: 'pagerduty',
       ref: 'addNote',
       config: {
-        params: { id: '{{inc.incident.id}}', note: 'localflow triaged: likely a null guard.' }
+        params: { id: '{{inc.incident.id}}', note: 'saiife triaged: likely a null guard.' }
       },
       position: { x: 0, y: 0 }
     }
     const noted = await runAction({ registry }, addNoteNode, context)
     expect(noted.status).toBe('done')
     expect(api.calls.addNote).toEqual([
-      { id: 'PABC123', note: 'localflow triaged: likely a null guard.' }
+      { id: 'PABC123', note: 'saiife triaged: likely a null guard.' }
     ])
 
     // 5. The CLOSE: a gated resolveIncident node closes the page.

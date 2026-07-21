@@ -44,17 +44,17 @@ function launchApp(
     args: ['.'],
     env: {
       ...process.env,
-      LOCALFLOW_E2E: '1',
-      LOCALFLOW_USER_DATA: userData,
-      LOCALFLOW_CLAUDE_BIN: join(here, '../fixtures/fake-claude.sh'),
+      SAIIFE_E2E: '1',
+      SAIIFE_USER_DATA: userData,
+      SAIIFE_CLAUDE_BIN: join(here, '../fixtures/fake-claude.sh'),
       // Keep the skill-env auto-writer away from any real ~/.openclaw config;
       // this path never exists, so the writer no-ops.
-      LOCALFLOW_OPENCLAW_CONFIG: join(userData, 'openclaw.json'),
+      SAIIFE_OPENCLAW_CONFIG: join(userData, 'openclaw.json'),
       // Escape-hatch tools resolve to "unavailable" without a login-shell spawn
       // (the M6 hatches are gated by capabilities; real binaries aren't needed
       // headless — unit tests cover the gating logic).
-      LOCALFLOW_LAZYGIT_BIN: '/nonexistent/lazygit',
-      LOCALFLOW_EDITOR_BIN: '/nonexistent/code',
+      SAIIFE_LAZYGIT_BIN: '/nonexistent/lazygit',
+      SAIIFE_EDITOR_BIN: '/nonexistent/code',
       // Marker file the codex/gemini fixtures poll for before firing their
       // hook commands (SessionManager.spawn passes the app's env through to
       // every pty): a test creates it via goMarker() only once everything
@@ -62,13 +62,13 @@ function launchApp(
       // the status order deterministic by construction instead of
       // sleep-raced. Fixtures that never fire hooks (fake-claude.sh)
       // simply ignore it.
-      LOCALFLOW_E2E_GO: join(userData, 'e2e-go'),
+      SAIIFE_E2E_GO: join(userData, 'e2e-go'),
       ...extraEnv
     }
   })
 }
 
-/** Release a launched app's hook-firing fixtures (see LOCALFLOW_E2E_GO). */
+/** Release a launched app's hook-firing fixtures (see SAIIFE_E2E_GO). */
 function goMarker(userData: string): void {
   writeFileSync(join(userData, 'e2e-go'), '')
 }
@@ -83,7 +83,7 @@ function readSavedSessions(userData: string): Array<Record<string, unknown>> {
 }
 
 test('panes render and hook events change status colors', async () => {
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   const app = await launchApp(userData)
   const win = await app.firstWindow()
   await expect(win.locator('.new-session')).toBeVisible()
@@ -92,9 +92,9 @@ test('panes render and hook events change status colors', async () => {
     (cwd) =>
       (
         window as unknown as {
-          localflow: { createSession(a: string, c: string): Promise<{ id: string }> }
+          saiife: { createSession(a: string, c: string): Promise<{ id: string }> }
         }
-      ).localflow.createSession('claude', cwd),
+      ).saiife.createSession('claude', cwd),
     userData
   )
   // The app opens on the home overview: the created session appears as a
@@ -111,7 +111,7 @@ test('panes render and hook events change status colors', async () => {
   const post = (event: string): Promise<Response> =>
     fetch(`http://127.0.0.1:${port}/event`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Localflow-Token': token },
+      headers: { 'Content-Type': 'application/json', 'X-Saiife-Token': token },
       body: JSON.stringify({ paneId: info!.id, event })
     })
 
@@ -127,12 +127,12 @@ test('panes render and hook events change status colors', async () => {
 
 test('codex pane (notify tier): fixture-executed Stop hook reaches idle', async () => {
   // fake-codex.sh doesn't parse Codex's real -c grammar — it extracts and
-  // runs the exact curl command localflow's cli-args-notify adapter
-  // embedded (see src/main/codex-hooks.ts), proving localflow's own wiring
+  // runs the exact curl command saiife's cli-args-notify adapter
+  // embedded (see src/main/codex-hooks.ts), proving saiife's own wiring
   // end-to-end. It is not proof the real `codex` binary invokes -c the
   // same way — see the manual verification checklist in
   // docs/superpowers/plans/2026-07-07-m2-status-adapters.md.
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   const app = await launchApp(userData, { codex: join(here, '../fixtures/fake-codex.sh') })
   const win = await app.firstWindow()
   await expect(win.locator('.new-session')).toBeVisible()
@@ -141,9 +141,9 @@ test('codex pane (notify tier): fixture-executed Stop hook reaches idle', async 
     (cwd) =>
       (
         window as unknown as {
-          localflow: { createSession(a: string, c: string): Promise<{ id: string }> }
+          saiife: { createSession(a: string, c: string): Promise<{ id: string }> }
         }
-      ).localflow.createSession('codex', cwd),
+      ).saiife.createSession('codex', cwd),
     userData
   )
   const row = win.locator(`[data-session-id="${info!.id}"]`)
@@ -163,7 +163,7 @@ test('codex pane (notify tier): fixture-executed Stop hook reaches idle', async 
   const { port, token } = JSON.parse(readFileSync(join(userData, 'endpoint.json'), 'utf8'))
   await fetch(`http://127.0.0.1:${port}/event`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Localflow-Token': token },
+    headers: { 'Content-Type': 'application/json', 'X-Saiife-Token': token },
     body: JSON.stringify({ paneId: info!.id, event: 'UserPromptSubmit' })
   })
   await expect(pane).toHaveAttribute('data-status', 'working')
@@ -172,7 +172,7 @@ test('codex pane (notify tier): fixture-executed Stop hook reaches idle', async 
   // Only now release the fixture: it has been polling for the go-marker
   // since spawn, so its Stop-mapped hook cannot have fired before the
   // 'working' assertion above — the idle below is guaranteed to be the
-  // fixture's own executed curl, proving localflow's -c injection reaches
+  // fixture's own executed curl, proving saiife's -c injection reaches
   // a real child process and executes, with no sleep-length race.
   goMarker(userData)
   await expect(pane).toHaveAttribute('data-status', 'idle')
@@ -183,14 +183,14 @@ test('codex pane (notify tier): fixture-executed Stop hook reaches idle', async 
 
 test('gemini pane (env tier): fixture cycles working -> needs-you -> idle', async () => {
   // fake-gemini.sh doesn't parse Gemini's real settings consumption — it
-  // reads the file localflow pointed GEMINI_CLI_SYSTEM_SETTINGS_PATH at
+  // reads the file saiife pointed GEMINI_CLI_SYSTEM_SETTINGS_PATH at
   // (see src/main/gemini-hooks.ts) and runs each hook's command itself,
   // including piping a fake {"type":"ToolPermission"} payload into the
   // Notification hook to exercise the payload-gated branch. Not proof the
   // real `gemini` binary uses this settings shape or payload field name —
   // see the manual verification checklist in
   // docs/superpowers/plans/2026-07-07-m2-status-adapters.md.
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   const app = await launchApp(userData, { gemini: join(here, '../fixtures/fake-gemini.sh') })
   const win = await app.firstWindow()
   await expect(win.locator('.new-session')).toBeVisible()
@@ -199,9 +199,9 @@ test('gemini pane (env tier): fixture cycles working -> needs-you -> idle', asyn
     (cwd) =>
       (
         window as unknown as {
-          localflow: { createSession(a: string, c: string): Promise<{ id: string }> }
+          saiife: { createSession(a: string, c: string): Promise<{ id: string }> }
         }
-      ).localflow.createSession('gemini', cwd),
+      ).saiife.createSession('gemini', cwd),
     userData
   )
   const row = win.locator(`[data-session-id="${info!.id}"]`)
@@ -216,7 +216,7 @@ test('gemini pane (env tier): fixture cycles working -> needs-you -> idle', asyn
   // nothing fired before the initial-idle assertion above), then observe
   // BeforeAgent -> Notification(ToolPermission) -> AfterAgent, self-paced
   // 1s apart by the fixture — the three assertions below are driven purely
-  // by the fixture actually executing localflow's injected commands, no
+  // by the fixture actually executing saiife's injected commands, no
   // manual fetch() POSTs involved.
   goMarker(userData)
   await expect(pane).toHaveAttribute('data-status', 'working')
@@ -227,7 +227,7 @@ test('gemini pane (env tier): fixture cycles working -> needs-you -> idle', asyn
 })
 
 test('keyboard nav: focus moves, enlarge toggle, bare keys fall through', async () => {
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   const app = await launchApp(userData)
   const win = await app.firstWindow()
   // Two panes must land side by side (auto-fit columns, min 460px) for
@@ -241,9 +241,9 @@ test('keyboard nav: focus moves, enlarge toggle, bare keys fall through', async 
       (dir) =>
         (
           window as unknown as {
-            localflow: { createSession(a: string, c: string): Promise<{ id: string } | null> }
+            saiife: { createSession(a: string, c: string): Promise<{ id: string } | null> }
           }
-        ).localflow.createSession('claude', dir),
+        ).saiife.createSession('claude', dir),
       cwd
     )
 
@@ -298,7 +298,7 @@ test('keyboard nav: focus moves, enlarge toggle, bare keys fall through', async 
 })
 
 test('Settings nav, unresolved-agent disabling, lastAgent persists restart', async () => {
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
 
   const app = await launchApp(userData)
   const win = await app.firstWindow()
@@ -337,11 +337,11 @@ test('Settings nav, unresolved-agent disabling, lastAgent persists restart', asy
     (cwd) =>
       (
         window as unknown as {
-          localflow: {
+          saiife: {
             createSession(a: string, c: string, cmd: string): Promise<{ id: string } | null>
           }
         }
-      ).localflow.createSession('custom', cwd, 'cat'),
+      ).saiife.createSession('custom', cwd, 'cat'),
     userData
   )
   expect(created).not.toBeNull()
@@ -356,9 +356,9 @@ test('Settings nav, unresolved-agent disabling, lastAgent persists restart', asy
   const lastAgent = await win2.evaluate(() =>
     (
       window as unknown as {
-        localflow: { getLastAgent(): Promise<{ agentId: string; customCommand?: string } | null> }
+        saiife: { getLastAgent(): Promise<{ agentId: string; customCommand?: string } | null> }
       }
-    ).localflow.getLastAgent()
+    ).saiife.getLastAgent()
   )
   expect(lastAgent).toEqual({ agentId: 'custom', customCommand: 'cat' })
 
@@ -375,7 +375,7 @@ test('Settings nav, unresolved-agent disabling, lastAgent persists restart', asy
 })
 
 test('closing a terminal keeps the session listed; delete is confirm-gated', async () => {
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   const app = await launchApp(userData)
   const win = await app.firstWindow()
   await expect(win.locator('.new-session')).toBeVisible()
@@ -384,9 +384,9 @@ test('closing a terminal keeps the session listed; delete is confirm-gated', asy
     (cwd) =>
       (
         window as unknown as {
-          localflow: { createSession(a: string, c: string): Promise<{ id: string }> }
+          saiife: { createSession(a: string, c: string): Promise<{ id: string }> }
         }
-      ).localflow.createSession('claude', cwd),
+      ).saiife.createSession('claude', cwd),
     userData
   )
   const row = win.locator(`[data-session-id="${info!.id}"]`)
@@ -414,9 +414,9 @@ test('closing a terminal keeps the session listed; delete is confirm-gated', asy
     (cwd) =>
       (
         window as unknown as {
-          localflow: { createSession(a: string, c: string): Promise<{ id: string }> }
+          saiife: { createSession(a: string, c: string): Promise<{ id: string }> }
         }
-      ).localflow.createSession('claude', cwd),
+      ).saiife.createSession('claude', cwd),
     userData
   )
   const secondPane = win.locator(`[data-pane-id="${second!.id}"]`)
@@ -458,7 +458,7 @@ test('closing a terminal keeps the session listed; delete is confirm-gated', asy
 })
 
 test('rename via the pencil icon persists across a relaunch', async () => {
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   const app = await launchApp(userData)
   const win = await app.firstWindow()
   await expect(win.locator('.new-session')).toBeVisible()
@@ -467,9 +467,9 @@ test('rename via the pencil icon persists across a relaunch', async () => {
     (cwd) =>
       (
         window as unknown as {
-          localflow: { createSession(a: string, c: string): Promise<{ id: string }> }
+          saiife: { createSession(a: string, c: string): Promise<{ id: string }> }
         }
-      ).localflow.createSession('claude', cwd),
+      ).saiife.createSession('claude', cwd),
     userData
   )
   const row = win.locator(`[data-session-id="${info!.id}"]`)
@@ -512,7 +512,7 @@ test('rename via the pencil icon persists across a relaunch', async () => {
 })
 
 test('approve: peek-gated Enter from overview row and pane header', async () => {
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   const app = await launchApp(userData)
   const win = await app.firstWindow()
   await expect(win.locator('.new-session')).toBeVisible()
@@ -521,9 +521,9 @@ test('approve: peek-gated Enter from overview row and pane header', async () => 
     (cwd) =>
       (
         window as unknown as {
-          localflow: { createSession(a: string, c: string): Promise<{ id: string }> }
+          saiife: { createSession(a: string, c: string): Promise<{ id: string }> }
         }
-      ).localflow.createSession('claude', cwd),
+      ).saiife.createSession('claude', cwd),
     userData
   )
   const row = win.locator(`[data-session-id="${info!.id}"]`)
@@ -533,7 +533,7 @@ test('approve: peek-gated Enter from overview row and pane header', async () => 
   const post = (event: string): Promise<Response> =>
     fetch(`http://127.0.0.1:${port}/event`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Localflow-Token': token },
+      headers: { 'Content-Type': 'application/json', 'X-Saiife-Token': token },
       body: JSON.stringify({ paneId: info!.id, event })
     })
 
@@ -584,7 +584,7 @@ test('approve: peek-gated Enter from overview row and pane header', async () => 
 })
 
 test('cmd+u enters the environment view on a waiting pane and cycles', async () => {
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   const app = await launchApp(userData)
   const win = await app.firstWindow()
   await win.setViewportSize({ width: 1400, height: 900 })
@@ -595,9 +595,9 @@ test('cmd+u enters the environment view on a waiting pane and cycles', async () 
       (dir) =>
         (
           window as unknown as {
-            localflow: { createSession(a: string, c: string): Promise<{ id: string } | null> }
+            saiife: { createSession(a: string, c: string): Promise<{ id: string } | null> }
           }
-        ).localflow.createSession('claude', dir),
+        ).saiife.createSession('claude', dir),
       cwd
     )
 
@@ -610,7 +610,7 @@ test('cmd+u enters the environment view on a waiting pane and cycles', async () 
   const post = (paneId: string, event: string): Promise<Response> =>
     fetch(`http://127.0.0.1:${port}/event`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Localflow-Token': token },
+      headers: { 'Content-Type': 'application/json', 'X-Saiife-Token': token },
       body: JSON.stringify({ paneId, event })
     })
 
@@ -651,7 +651,7 @@ test('cmd+u enters the environment view on a waiting pane and cycles', async () 
 })
 
 test('environments: switch, move, rollup dot, persistence', async () => {
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   const app = await launchApp(userData)
   const win = await app.firstWindow()
   await win.setViewportSize({ width: 1400, height: 900 })
@@ -662,9 +662,9 @@ test('environments: switch, move, rollup dot, persistence', async () => {
       (dir) =>
         (
           window as unknown as {
-            localflow: { createSession(a: string, c: string): Promise<{ id: string } | null> }
+            saiife: { createSession(a: string, c: string): Promise<{ id: string } | null> }
           }
-        ).localflow.createSession('claude', dir),
+        ).saiife.createSession('claude', dir),
       cwd
     )
 
@@ -690,7 +690,7 @@ test('environments: switch, move, rollup dot, persistence', async () => {
   // end-to-end: the new pane must render immediately in environment 2's grid
   // (no switch needed) and must not appear once we're back on environment 1.
   // NOTE on coverage: driving this through the Landing's actual ".new-session"
-  // button isn't headless-safe — under LOCALFLOW_E2E the folder-picker bypass
+  // button isn't headless-safe — under SAIIFE_E2E the folder-picker bypass
   // only triggers when an explicit cwd is passed, and the UI button doesn't
   // pass one, so clicking it would pop a real OS dialog and hang. So this
   // test cannot exercise the App-wrapper's pass-through of the visible
@@ -700,7 +700,7 @@ test('environments: switch, move, rollup dot, persistence', async () => {
     (args) =>
       (
         window as unknown as {
-          localflow: {
+          saiife: {
             createSession(
               a: string,
               c: string,
@@ -709,7 +709,7 @@ test('environments: switch, move, rollup dot, persistence', async () => {
             ): Promise<{ id: string } | null>
           }
         }
-      ).localflow.createSession('claude', args.dir, undefined, args.env),
+      ).saiife.createSession('claude', args.dir, undefined, args.env),
     { dir: userData, env: 2 }
   )
   const paneC = win.locator(`[data-pane-id="${c!.id}"]`)
@@ -735,7 +735,7 @@ test('environments: switch, move, rollup dot, persistence', async () => {
   const { port, token } = JSON.parse(readFileSync(join(userData, 'endpoint.json'), 'utf8'))
   await fetch(`http://127.0.0.1:${port}/event`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Localflow-Token': token },
+    headers: { 'Content-Type': 'application/json', 'X-Saiife-Token': token },
     body: JSON.stringify({ paneId: a!.id, event: 'Notification' })
   })
   await expect(env3.locator('.dot')).toHaveAttribute('data-status', 'needs-you')
@@ -792,7 +792,7 @@ test('browser pane: UI creation, chrome, close/reopen, persistence', async () =>
   const pageUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`
   const secondPageUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/second`
 
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   const app = await launchApp(userData)
   const win = await app.firstWindow()
   await win.setViewportSize({ width: 1400, height: 900 })
@@ -907,13 +907,13 @@ test('browser pane: UI creation, chrome, close/reopen, persistence', async () =>
 })
 
 test('open in editor: pane button and cmd+e launch the editor with cwd', async () => {
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   // Point the editor override at a real fixture so it resolves: the button
   // enables, and each launch appends its argv to userData/editor-marker.
   const app = await launchApp(
     userData,
     {},
-    { LOCALFLOW_EDITOR_BIN: join(here, '../fixtures/fake-editor.sh') }
+    { SAIIFE_EDITOR_BIN: join(here, '../fixtures/fake-editor.sh') }
   )
   const win = await app.firstWindow()
   await expect(win.locator('.new-session')).toBeVisible()
@@ -922,9 +922,9 @@ test('open in editor: pane button and cmd+e launch the editor with cwd', async (
     (cwd) =>
       (
         window as unknown as {
-          localflow: { createSession(a: string, c: string): Promise<{ id: string }> }
+          saiife: { createSession(a: string, c: string): Promise<{ id: string }> }
         }
-      ).localflow.createSession('claude', cwd),
+      ).saiife.createSession('claude', cwd),
     userData
   )
   const row = win.locator(`[data-session-id="${info!.id}"]`)
@@ -953,12 +953,12 @@ test('open in editor: pane button and cmd+e launch the editor with cwd', async (
 test('changes: file list, badges, diff coloring, j/k nav, non-repo empty', async () => {
   // A real git repo fixture: one committed file modified (unstaged), a second
   // file staged, and an untracked file — the three badge states in one repo.
-  const repo = mkdtempSync(join(tmpdir(), 'localflow-repo-'))
+  const repo = mkdtempSync(join(tmpdir(), 'saiife-repo-'))
   const git = (args: string[]): void => {
     execFileSync('git', args, { cwd: repo })
   }
   git(['init', '-q'])
-  git(['config', 'user.email', 'e2e@localflow.test'])
+  git(['config', 'user.email', 'e2e@saiife.test'])
   git(['config', 'user.name', 'e2e'])
   writeFileSync(join(repo, 'tracked.txt'), 'one\ntwo\nthree\n')
   git(['add', 'tracked.txt'])
@@ -968,9 +968,9 @@ test('changes: file list, badges, diff coloring, j/k nav, non-repo empty', async
   git(['add', 'staged.txt']) // staged add
   writeFileSync(join(repo, 'untracked.txt'), 'i am untracked\n') // untracked
 
-  const nonRepo = mkdtempSync(join(tmpdir(), 'localflow-plain-'))
+  const nonRepo = mkdtempSync(join(tmpdir(), 'saiife-plain-'))
 
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   const app = await launchApp(userData)
   const win = await app.firstWindow()
   await win.setViewportSize({ width: 1400, height: 900 })
@@ -981,9 +981,9 @@ test('changes: file list, badges, diff coloring, j/k nav, non-repo empty', async
       (dir) =>
         (
           window as unknown as {
-            localflow: { createSession(a: string, c: string): Promise<{ id: string } | null> }
+            saiife: { createSession(a: string, c: string): Promise<{ id: string } | null> }
           }
-        ).localflow.createSession('claude', dir),
+        ).saiife.createSession('claude', dir),
       cwd
     )
 
@@ -1033,7 +1033,7 @@ test('changes: file list, badges, diff coloring, j/k nav, non-repo empty', async
 })
 
 test('settings: live rebind, default agent preselect, live theme', async () => {
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   // Point gemini at the real fake-claude fixture so it RESOLVES — that makes
   // "default agent" observable: without a default, the launcher would
   // preselect claude (first resolved); setting gemini as default must win.
@@ -1122,7 +1122,7 @@ test('settings: live rebind, default agent preselect, live theme', async () => {
 })
 
 test('activity feed + overview stats: lines in order, waiting jump', async () => {
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   const app = await launchApp(userData)
   const win = await app.firstWindow()
   await win.setViewportSize({ width: 1400, height: 900 })
@@ -1133,9 +1133,9 @@ test('activity feed + overview stats: lines in order, waiting jump', async () =>
       (dir) =>
         (
           window as unknown as {
-            localflow: { createSession(a: string, c: string): Promise<{ id: string } | null> }
+            saiife: { createSession(a: string, c: string): Promise<{ id: string } | null> }
           }
-        ).localflow.createSession('claude', dir),
+        ).saiife.createSession('claude', dir),
       cwd
     )
 
@@ -1147,7 +1147,7 @@ test('activity feed + overview stats: lines in order, waiting jump', async () =>
   const post = (paneId: string, event: string): Promise<Response> =>
     fetch(`http://127.0.0.1:${port}/event`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Localflow-Token': token },
+      headers: { 'Content-Type': 'application/json', 'X-Saiife-Token': token },
       body: JSON.stringify({ paneId, event })
     })
 

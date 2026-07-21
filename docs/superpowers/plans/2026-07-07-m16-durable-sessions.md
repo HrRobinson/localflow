@@ -132,12 +132,12 @@ Semantics:
   In `tests/unit/persistence.test.ts`, add:
   ```ts
   it('round-trips an optional name', () => {
-    const file = join(mkdtempSync(join(tmpdir(), 'localflow-p-')), 'sessions.json')
+    const file = join(mkdtempSync(join(tmpdir(), 'saiife-p-')), 'sessions.json')
     saveSessions(file, [{ id: 'a', cwd: '/x', name: 'my project' }])
     expect(loadSavedSessions(file)).toEqual([{ id: 'a', cwd: '/x', name: 'my project' }])
   })
   it('tolerates a saved session with no name key at all', () => {
-    const file = join(mkdtempSync(join(tmpdir(), 'localflow-p-')), 'sessions.json')
+    const file = join(mkdtempSync(join(tmpdir(), 'saiife-p-')), 'sessions.json')
     writeFileSync(file, JSON.stringify([{ id: 'a', cwd: '/x' }]))
     expect(loadSavedSessions(file)).toEqual([{ id: 'a', cwd: '/x' }])
   })
@@ -343,9 +343,9 @@ Semantics:
 **Interfaces:**
 - Consumes: `SessionManager.closeTerminal`/`deleteSession`/`rename`
   (Task 1), `SavedSession.name` (Task 1).
-- Produces: `window.localflow.closeTerminal(id)`,
-  `window.localflow.deleteSession(id)`,
-  `window.localflow.renameSession(id, name)` — consumed by Task 3.
+- Produces: `window.saiife.closeTerminal(id)`,
+  `window.saiife.deleteSession(id)`,
+  `window.saiife.renameSession(id, name)` — consumed by Task 3.
 
 - [ ] **Step 1:** `src/shared/api.ts` — replace `killSession` with:
   ```ts
@@ -408,7 +408,7 @@ Semantics:
   `src/renderer/src/components/Sidebar.tsx`
 
 **Interfaces:**
-- Consumes: `window.localflow.closeTerminal`/`deleteSession`/
+- Consumes: `window.saiife.closeTerminal`/`deleteSession`/
   `renameSession` (Task 2).
 - `Landing`'s `Props.onRemove` becomes `onDelete: (id: string) => void`
   plus new `onRename: (id: string, name: string) => void`. `Sidebar`'s
@@ -423,15 +423,15 @@ Semantics:
   three handlers plus a shared cleanup helper:
   ```ts
   const closeTerminal = async (id: string): Promise<void> => {
-    await window.localflow.closeTerminal(id)
+    await window.saiife.closeTerminal(id)
     await afterPaneGone(id)
   }
   const deleteSession = async (id: string): Promise<void> => {
-    await window.localflow.deleteSession(id)
+    await window.saiife.deleteSession(id)
     await afterPaneGone(id)
   }
   const renameSession = async (id: string, name: string): Promise<void> => {
-    const updated = await window.localflow.renameSession(id, name)
+    const updated = await window.saiife.renameSession(id, name)
     if (updated) setSessions((prev) => prev.map((s) => (s.id === id ? updated : s)))
   }
   // Shared post-action cleanup: whether the pane vanished entirely
@@ -695,7 +695,7 @@ Semantics:
   - Double-click the row's name, type a new value, press Enter; assert
     the row now shows the new name, and the sidebar's matching
     `[data-nav-session="<id>"]` entry shows it too.
-  - `app.close()`, relaunch against the **same** `LOCALFLOW_USER_DATA`
+  - `app.close()`, relaunch against the **same** `SAIIFE_USER_DATA`
     dir (mirrors the existing `lastAgent` restart test's `launch()`
     helper), and assert the relaunched Overview's row for that session id
     still shows the renamed value (proves the write landed in

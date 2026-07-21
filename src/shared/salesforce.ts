@@ -97,6 +97,6 @@ export interface SalesforceConfig {
   defaultObject?: string
   /** Poll cadence in seconds; absent ⇒ the poller default (spec §7.1, §2.2). */
   pollSeconds?: number
-  /** Which localflow environment (1-9) hosts Salesforce work. */
+  /** Which saiife environment (1-9) hosts Salesforce work. */
   environment: number
 }

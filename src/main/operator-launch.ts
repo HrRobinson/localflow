@@ -1,13 +1,13 @@
 /**
  * Helpers for launching OpenClaw as an operator agent: flatten a grant to the
- * env the shipped skill reads, and track launched sessions so localflow revokes
+ * env the shipped skill reads, and track launched sessions so saiife revokes
  * a grant when the last launched OpenClaw session in an environment is gone —
  * but only if the launch created the grant (never one granted manually).
  */
 
 /** v1 single-environment credential → the env vars the shipped CLI reads. */
 export function credentialEnv(endpoint: string, token: string): Record<string, string> {
-  return { LOCALFLOW_ENDPOINT: endpoint, LOCALFLOW_TOKEN: token }
+  return { SAIIFE_ENDPOINT: endpoint, SAIIFE_TOKEN: token }
 }
 
 export class OperatorLaunchTracker {

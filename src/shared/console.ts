@@ -2,7 +2,7 @@ import type { ActivityEntry, ActivityEventKind, SessionStatus } from './types'
 import type { ActivityEntry as OperatorActivityEntry, Capture } from './operator'
 import type { ConsoleScope } from './console-filter'
 
-// 'guard' = lfguard deny (audit-log tail); 'network' = browser-pane CDP (Console v2).
+// 'guard' = saiifeguard deny (audit-log tail); 'network' = browser-pane CDP (Console v2).
 export type ConsoleSource = 'status' | 'operator' | 'capture' | 'guard' | 'network'
 
 /** Per-source ring caps shared by the main-process bus and the renderer's

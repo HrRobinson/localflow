@@ -14,7 +14,7 @@ export type GuardRunner = (
 ) => Promise<{ code: number | null; stderr: string; timedOut: boolean }>
 
 export interface OperatorGuardOptions {
-  /** Resolved lfguard binary path, or null when none is bundled. */
+  /** Resolved saiifeguard binary path, or null when none is bundled. */
   resolveBinary: () => string | null
   /** Currently-enabled opt-in pack ids (core.* are always active in the binary). */
   getPacks: () => string[]
@@ -48,16 +48,16 @@ const defaultRunner: GuardRunner = (bin, args, opts) =>
   })
 
 function parseDeny(stderr: string): { allowed: false; reason: string; pack: string } {
-  // Format: `lfguard: BLOCKED by <pack>: <reason>` — pack warnings may share stderr,
+  // Format: `saiifeguard: BLOCKED by <pack>: <reason>` — pack warnings may share stderr,
   // so match the BLOCKED line specifically. `.` stops at newline, so <reason> is one line.
-  const m = /lfguard: BLOCKED by (.+?): (.+)/.exec(stderr)
+  const m = /saiifeguard: BLOCKED by (.+?): (.+)/.exec(stderr)
   if (m) return { allowed: false, pack: m[1], reason: m[2].trim() }
   // The deny verdict itself (exit 1) is trusted regardless — only the pack/reason
-  // labeling falls back to a generic string here. Log the raw stderr so a lfguard
+  // labeling falls back to a generic string here. Log the raw stderr so a saiifeguard
   // release that changed its output format (or produced localized/garbled text)
   // is visible instead of silently mislabeled as "unknown".
   console.warn(
-    `lfguard: exit 1 (deny) but stderr didn't match the expected "BLOCKED by <pack>: <reason>" format — using a generic label. stderr: ${stderr.slice(0, 200)}`
+    `saiifeguard: exit 1 (deny) but stderr didn't match the expected "BLOCKED by <pack>: <reason>" format — using a generic label. stderr: ${stderr.slice(0, 200)}`
   )
   return { allowed: false, reason: 'blocked by command guard', pack: 'unknown' }
 }
@@ -80,16 +80,16 @@ export function makeOperatorGuard(opts: OperatorGuardOptions): OperatorGuard {
         // ENOENT/EACCES cases `defaultRunner` already normalizes to
         // `code: null` — must not vanish with zero trace. Log the
         // malfunction; the verdict stays `allowed: true` either way.
-        console.error('lfguard: guard runner threw unexpectedly — failing open (allow)', err)
+        console.error('saiifeguard: guard runner threw unexpectedly — failing open (allow)', err)
         return { allowed: true } // runner threw → fail open
       }
       if (res.timedOut || res.code === null || res.code === 0) return { allowed: true }
       if (res.code === 1) return parseDeny(res.stderr)
       // An exit code outside the documented 0/1 contract (e.g. a clap parse
-      // error, or a broken lfguard install) could otherwise mask a persistent
+      // error, or a broken saiifeguard install) could otherwise mask a persistent
       // guard malfunction as "no policy violations found" forever.
       console.warn(
-        `lfguard: exited ${res.code} (expected 0 or 1) — failing open (allow). stderr: ${res.stderr.slice(0, 500)}`
+        `saiifeguard: exited ${res.code} (expected 0 or 1) — failing open (allow). stderr: ${res.stderr.slice(0, 500)}`
       )
       return { allowed: true } // any other exit code → fail open
     }

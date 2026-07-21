@@ -64,7 +64,7 @@ export default function Sidebar({
   const [envNames, setEnvNames] = useState<Record<string, string>>({})
   useEffect(() => {
     let cancelled = false
-    void window.localflow.getEnvironmentNames().then((names) => {
+    void window.saiife.getEnvironmentNames().then((names) => {
       if (!cancelled) setEnvNames(names)
     })
     return () => {
@@ -111,7 +111,7 @@ export default function Sidebar({
       <div className="flex items-center gap-[9px] px-4 pt-4 pb-2.5">
         <Brand />
         <span className="font-mono text-[13px] font-semibold tracking-[0.02em] text-gray-200">
-          localflow
+          saiife
         </span>
       </div>
       <nav className="flex flex-col gap-0.5 p-2">

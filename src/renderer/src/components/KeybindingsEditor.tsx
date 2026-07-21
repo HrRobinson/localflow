@@ -111,10 +111,10 @@ export default function KeybindingsEditor(): React.JSX.Element {
 
   useEffect(() => {
     let cancelled = false
-    void window.localflow.getKeybindings().then((b) => {
+    void window.saiife.getKeybindings().then((b) => {
       if (!cancelled) setBindings(b)
     })
-    const off = window.localflow.onKeybindingsChanged((b) => setBindings(b))
+    const off = window.saiife.onKeybindingsChanged((b) => setBindings(b))
     return () => {
       cancelled = true
       off()
@@ -159,7 +159,7 @@ export default function KeybindingsEditor(): React.JSX.Element {
       // (keybindings.json must never end up with a manual write that
       // collides), so the attempted combo is submitted directly rather than
       // pre-checked here.
-      void window.localflow.setKeybinding(action, combo).then((result) => {
+      void window.saiife.setKeybinding(action, combo).then((result) => {
         if (result.ok) {
           setBindings(result.bindings)
           setPendingIssue((cur) => (cur?.action === action ? null : cur))
@@ -190,12 +190,12 @@ export default function KeybindingsEditor(): React.JSX.Element {
   const resetAll = (): void => {
     setCapturing(null)
     setPendingIssue(null)
-    void window.localflow.resetAllKeybindings().then(setBindings)
+    void window.saiife.resetAllKeybindings().then(setBindings)
   }
   const resetOne = (action: KeyAction): void => {
     setCapturing(null)
     setPendingIssue((cur) => (cur?.action === action ? null : cur))
-    void window.localflow.resetKeybinding(action).then(setBindings)
+    void window.saiife.resetKeybinding(action).then(setBindings)
   }
 
   return (

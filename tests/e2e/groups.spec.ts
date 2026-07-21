@@ -18,7 +18,7 @@ const here = dirname(fileURLToPath(import.meta.url))
  * Same launch shape as smoke.spec.ts's launchApp, plus two optional
  * additions this spec needs: `sessionTemplates` (written into config.json's
  * own key, read fresh by main's loadSessionTemplates — see
- * src/main/index.ts) and `resumeDeadArg` (LOCALFLOW_E2E_RESUME_DEAD_ARG,
+ * src/main/index.ts) and `resumeDeadArg` (SAIIFE_E2E_RESUME_DEAD_ARG,
  * consumed by fake-claude.sh's resume dead-end branch, see that fixture's
  * comment). Neither is set by default, so tests that don't need them get
  * byte-identical behavior to smoke.spec.ts's launchApp.
@@ -46,13 +46,13 @@ function launchApp(
     args: ['.'],
     env: {
       ...process.env,
-      LOCALFLOW_E2E: '1',
-      LOCALFLOW_USER_DATA: userData,
-      LOCALFLOW_CLAUDE_BIN: join(here, '../fixtures/fake-claude.sh'),
-      LOCALFLOW_LAZYGIT_BIN: '/nonexistent/lazygit',
-      LOCALFLOW_EDITOR_BIN: '/nonexistent/code',
-      LOCALFLOW_E2E_GO: join(userData, 'e2e-go'),
-      ...(opts.resumeDeadArg ? { LOCALFLOW_E2E_RESUME_DEAD_ARG: opts.resumeDeadArg } : {})
+      SAIIFE_E2E: '1',
+      SAIIFE_USER_DATA: userData,
+      SAIIFE_CLAUDE_BIN: join(here, '../fixtures/fake-claude.sh'),
+      SAIIFE_LAZYGIT_BIN: '/nonexistent/lazygit',
+      SAIIFE_EDITOR_BIN: '/nonexistent/code',
+      SAIIFE_E2E_GO: join(userData, 'e2e-go'),
+      ...(opts.resumeDeadArg ? { SAIIFE_E2E_RESUME_DEAD_ARG: opts.resumeDeadArg } : {})
     }
   })
 }
@@ -81,11 +81,11 @@ interface Group {
 }
 type AddPaneReq = { kind: 'terminal'; agentId: string } | { kind: 'browser'; url: string }
 
-/** Renderer-side shape this spec calls through `window.localflow` — a
- *  narrowed view of LocalflowApi (src/shared/api.ts), typed locally so this
+/** Renderer-side shape this spec calls through `window.saiife` — a
+ *  narrowed view of SaiifeApi (src/shared/api.ts), typed locally so this
  *  file has no import-time dependency on the renderer bundle. */
 type Api = {
-  localflow: {
+  saiife: {
     createSession(
       agentId: string,
       cwd?: string,
@@ -105,7 +105,7 @@ type Api = {
   }
 }
 
-// --- IPC-direct helpers (window.localflow.*), mirroring the inline-evaluate
+// --- IPC-direct helpers (window.saiife.*), mirroring the inline-evaluate
 //     pattern every existing e2e spec uses (smoke.spec.ts:707,
 //     operator.spec.ts, operator-launch.spec.ts) — just factored out since
 //     this file calls several of them repeatedly across six tests. ---
@@ -118,7 +118,7 @@ function createSessionIpc(
 ): Promise<Session | null> {
   return win.evaluate(
     (args) =>
-      (window as unknown as Api).localflow.createSession(
+      (window as unknown as Api).saiife.createSession(
         args.agentId,
         args.cwd,
         undefined,
@@ -136,31 +136,31 @@ function createTemplateIpc(
 ): Promise<Session[] | null> {
   return win.evaluate(
     (args) =>
-      (window as unknown as Api).localflow.createTemplate(args.name, args.cwd, args.environment),
+      (window as unknown as Api).saiife.createTemplate(args.name, args.cwd, args.environment),
     { name, cwd, environment }
   )
 }
 
 function addPaneIpc(win: Page, sourceId: string, req: AddPaneReq): Promise<Session | null> {
   return win.evaluate(
-    (args) => (window as unknown as Api).localflow.addPane(args.sourceId, args.req),
+    (args) => (window as unknown as Api).saiife.addPane(args.sourceId, args.req),
     { sourceId, req }
   )
 }
 
 function listGroupsIpc(win: Page): Promise<Group[]> {
-  return win.evaluate(() => (window as unknown as Api).localflow.listGroups())
+  return win.evaluate(() => (window as unknown as Api).saiife.listGroups())
 }
 
 function grantOperatorIpc(
   win: Page,
   environment: number
 ): Promise<{ endpoint: string; token: string }> {
-  return win.evaluate((env) => (window as unknown as Api).localflow.grantOperator(env), environment)
+  return win.evaluate((env) => (window as unknown as Api).saiife.grantOperator(env), environment)
 }
 
 test('template create: happy path, missing-binary skip, zero-pane rollback', async () => {
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   const app = await launchApp(userData, {
     sessionTemplates: [
       // Happy path: two claude panes, both launchable (fake-claude.sh resolves).
@@ -243,7 +243,7 @@ test('template create: happy path, missing-binary skip, zero-pane rollback', asy
 })
 
 test('add-pane: cmd+t on a solo pane forms a group; GroupBox + also adds', async () => {
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   const app = await launchApp(userData)
   const win = await app.firstWindow()
   await win.setViewportSize({ width: 1400, height: 900 })
@@ -280,7 +280,7 @@ test('add-pane: cmd+t on a solo pane forms a group; GroupBox + also adds', async
     const groupIdAttr = await groupBox.locator('.group-header').getAttribute('data-group-id')
     const members = await win.evaluate(
       (groupId) =>
-        (window as unknown as Api).localflow
+        (window as unknown as Api).saiife
           .listSessions()
           .then((all) => all.filter((s) => s.groupId === groupId)),
       groupIdAttr
@@ -292,7 +292,7 @@ test('add-pane: cmd+t on a solo pane forms a group; GroupBox + also adds', async
       .poll(
         async () => {
           const lines = await win.evaluate(
-            (id) => (window as unknown as Api).localflow.peekSession(id, 5),
+            (id) => (window as unknown as Api).saiife.peekSession(id, 5),
             companion.id
           )
           return lines.join('\n')
@@ -314,7 +314,7 @@ test('add-pane: cmd+t on a solo pane forms a group; GroupBox + also adds', async
 })
 
 test('close-pane on a grouped pane moves focus to its sibling', async () => {
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   const app = await launchApp(userData)
   const win = await app.firstWindow()
   await win.setViewportSize({ width: 1400, height: 900 })
@@ -354,7 +354,7 @@ test('close-pane on a grouped pane moves focus to its sibling', async () => {
 })
 
 test('enlarge staircase: pane -> session -> pane -> grid', async () => {
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   const app = await launchApp(userData)
   const win = await app.firstWindow()
   await win.setViewportSize({ width: 1400, height: 900 })
@@ -420,7 +420,7 @@ test('enlarge staircase: pane -> session -> pane -> grid', async () => {
 })
 
 test('operator POST /panes: browser+groupId joins the group; foreign env is rejected', async () => {
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   let server: ReturnType<typeof createServer> | undefined
   const app = await launchApp(userData)
   const win = await app.firstWindow()
@@ -493,7 +493,7 @@ test('operator POST /panes: browser+groupId joins the group; foreign env is reje
 })
 
 test('resume dead-end: instant-exit resume shows Start fresh as primary', async () => {
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   const app = await launchApp(userData, { resumeDeadArg: '--continue' })
   const win = await app.firstWindow()
   await win.setViewportSize({ width: 1400, height: 900 })
@@ -513,7 +513,7 @@ test('resume dead-end: instant-exit resume shows Start fresh as primary', async 
     await expect(pane.getByRole('button', { name: 'Start fresh' })).toBeVisible()
 
     // Resume: fake-claude.sh sees --continue (claude's resumeArgs) plus
-    // LOCALFLOW_E2E_RESUME_DEAD_ARG and exits immediately — instant enough
+    // SAIIFE_E2E_RESUME_DEAD_ARG and exits immediately — instant enough
     // to land inside SessionManager's INSTANT_EXIT_MS window, flipping
     // resumeFailed.
     await pane.getByRole('button', { name: 'Resume conversation' }).click()

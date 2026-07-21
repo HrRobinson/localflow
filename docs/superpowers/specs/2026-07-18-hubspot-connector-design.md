@@ -42,7 +42,7 @@ verifier contract**, and stops (§5.4).
 
 ## 1. Goal + MVP scope
 
-**Goal (one sentence):** Let a localflow user assemble, on the canvas, a sales
+**Goal (one sentence):** Let a saiife user assemble, on the canvas, a sales
 worker that wakes on a HubSpot lead event (new contact / deal stage change / form
 submission), reads the relevant contact / deal / company facts through the CRM v3
 API, lets an agent node form a judgment on them, routes on that judgment via edge
@@ -80,7 +80,7 @@ rendered.
   (`flow-engine.ts` gate handling, `node-runners/agent-runner.ts`,
   `node-runners/action-runner.ts`). No write ever runs un-gated by construction
   of the flow the author drew.
-- **Single portal, single localflow environment.** Config-as-code `hubspot` block
+- **Single portal, single saiife environment.** Config-as-code `hubspot` block
   in `config.json` (non-secret refs only); private-app token + webhook client
   secret in the keychain.
 
@@ -102,7 +102,7 @@ rendered.
   normalized property set (§3.3) and writes single objects/engagements.
 - **Flow templates / the "starter sales worker" graph.** Owned by the templates
   track, which consumes §3 verbatim.
-- **A HubSpot-specific deterministic backstop** (per-action limits à la lfguard).
+- **A HubSpot-specific deterministic backstop** (per-action limits à la saiifeguard).
   Named as a phased item (§7 note, §10 Phase 3); the author's gate is the MVP
   control.
 
@@ -511,7 +511,7 @@ below, and the author could draw it a dozen other ways.
    │   [action: createTask]             follow-up task assigned to an owner
    │        │  invokeAction('hubspot','createTask',{ ... }) → resolves { taskId } → context
    │        ▼
-   │   [action: logActivity]            note: "Qualified by localflow worker: <reason>"
+   │   [action: logActivity]            note: "Qualified by saiife worker: <reason>"
    │        ▼   (done)
    │
    └── edge condition: (else — not qualified, or too small)
@@ -556,13 +556,13 @@ supplies judgment; the author supplies authority.**
 
 ---
 
-## 7. Architecture in localflow
+## 7. Architecture in saiife
 
 A new **main-process module set** under `src/main/hubspot/`, mirroring
 `src/main/shopify/` and `src/main/woocommerce/`. It is **opt-in**: with no
 `hubspot` config entry (and no stored token) the descriptor's `status()` returns
 `needs-config` and the engine refuses any HubSpot node before any network call
-(`action-runner.ts`) — localflow's "works with no integration" guarantee is
+(`action-runner.ts`) — saiife's "works with no integration" guarantee is
 unchanged. The connector is the **live implementation behind the registry's pinned
 `invokeAction` / `subscribe`**, registered via `registerConnector('hubspot',
 connector)` (`integration-registry.ts:54`) at startup in `src/main/index.ts`.
@@ -580,7 +580,7 @@ connector)` (`integration-registry.ts:54`) at startup in `src/main/index.ts`.
 | `src/main/hubspot/hubspot-normalize.ts` | **Pure** mapping: a raw v3 object (`properties` bag) → the pinned **context-field shape** (§3.3); and a raw subscription payload (batched array) → one `SeedEvent` per event. Unit-testable in isolation. This is where string→number, property-flattening, and enum lowercasing happen — **once**, so conditions + the agent read a stable shape. |
 | `src/shared/hubspot.ts` | Shared types (`HubSpotContactContext`, `HubSpotDealContext`, `HubSpotCompanyContext`, the action param shapes, the trigger payload shapes) needed by both main and any renderer palette surface. |
 
-### 7.2 Reused localflow surfaces
+### 7.2 Reused saiife surfaces
 
 - `src/shared/integrations.ts` — the pinned `IntegrationDescriptor` /
   `IntegrationRegistry` / `LiveConnector` this connector satisfies; `IntegrationId`
@@ -611,7 +611,7 @@ connector)` (`integration-registry.ts:54`) at startup in `src/main/index.ts`.
   handling, the `INTEGRATION_IDS` allow-list (edited, §3.0), `VALID_CONDITION_OPS`.
 - `src/main/server-timeouts.ts` — `applyLoopbackTimeouts`, reused by the shared
   receiver.
-- `guard/` (lfguard) — the deterministic-guard *posture* a future HubSpot backstop
+- `guard/` (saiifeguard) — the deterministic-guard *posture* a future HubSpot backstop
   (§10 Phase 3) would borrow.
 
 ### 7.3 Authority & safety (note)
@@ -625,7 +625,7 @@ run `rejected` (not a failure), and a write with no path to it never runs. **The
 connector never auto-writes outside the graph the author drew.** An optional
 **deterministic HubSpot backstop** (e.g. `hubspot.limits`: cap tasks/run, forbid
 `updateDeal` to `closedwon` without a gate) is a phased item (§10 Phase 3),
-lfguard-style — flagged, not built in MVP.
+saiifeguard-style — flagged, not built in MVP.
 
 ---
 
@@ -645,7 +645,7 @@ boundary):
 | `webhookClientSecret` | Webhook app client secret | **yes** | yes | string | Signs `X-HubSpot-Signature-v3`. The **app's** client secret, not the token (§5.5). Keychain only. |
 | `portalId` | HubSpot portal (hub) id | no | no | string | Non-secret ref; disambiguates the account. |
 | `apiBase` | CRM API base | no | no | string | Defaults to a pinned base in `hubspot-api.ts`. |
-| `environment` | localflow environment (1-9) | no | yes | number | Which env hosts HubSpot work (same field/validation as the others). |
+| `environment` | saiife environment (1-9) | no | yes | number | Which env hosts HubSpot work (same field/validation as the others). |
 | `webhookUrl` | Ingress webhook URL | no | no | string | The tunnel/relay public URL (§5.3, §5.6). Placeholder `https://<tunnel>/hubspot/webhook`. Required for the trigger path; the verifier composes the signed URI from it. |
 
 `status('hubspot')` reports `needs-config` until `privateAppToken`,
@@ -687,7 +687,7 @@ non-`connected` HubSpot node before any network call.
    Shopify's ecom backstop, whether a shipped sales worker ships with a
    conservative default (cap tasks/run; forbid ungated `updateDeal` to a
    closed-won stage) is a product-safety call for the backstop phase (§10 Phase 3).
-   Whatever the default, it is **deterministic** (lfguard-style), never
+   Whatever the default, it is **deterministic** (saiifeguard-style), never
    model-mediated.
 6. **Webhook subscription management — manual vs programmatic.** MVP can have the
    user create the app's subscriptions in HubSpot (pointing at their tunnel), or
@@ -698,7 +698,7 @@ non-`connected` HubSpot node before any network call.
 
 ## 10. Testing strategy (offline / mockable — no live calls in CI)
 
-Testable **without a live HubSpot portal**, matching localflow's existing seams
+Testable **without a live HubSpot portal**, matching saiife's existing seams
 (pure modules, injected backends, fixture events):
 
 - **`HubSpotApi` interface + `MockHubSpotApi` seam.** `hubspot-api.ts` is written
@@ -788,7 +788,7 @@ is dogfoodable against a HubSpot developer test account.
   `form.submitted` triggers; programmatic webhook-subscription management (§9.6);
   the email-trigger composition wired by the templates track.
 - **Phase 3 — deterministic HubSpot backstop:** the `hubspot.limits` policy (§7.3),
-  lfguard-style, with the default decided (§9.5).
+  saiifeguard-style, with the default decided (§9.5).
 - **Phase 4 — richer conditions consumption:** verify the pinned fields drive
   `gt`/`gte`/`contains`/`truthy`/`exists` end-to-end over `deal.amount`,
   `company.numEmployees`, `lifecycleStage`; ship the "qualify + assign" template.
@@ -803,7 +803,7 @@ is dogfoodable against a HubSpot developer test account.
 
 ---
 
-## Appendix — reused localflow surfaces (by path)
+## Appendix — reused saiife surfaces (by path)
 
 - `src/shared/integrations.ts` — pinned `IntegrationDescriptor` /
   `IntegrationRegistry` / `LiveConnector`; `IntegrationId` (edited, §3.0);
@@ -832,5 +832,5 @@ is dogfoodable against a HubSpot developer test account.
 - `src/main/shopify/*`, `src/main/woocommerce/*` — the merged sibling connectors
   whose `*-connector` / `*-api` / `*-normalize` / descriptor / token-store shape
   this connector copies.
-- `guard/` (lfguard) — the deterministic-guard posture a future HubSpot backstop
+- `guard/` (saiifeguard) — the deterministic-guard posture a future HubSpot backstop
   (§10 Phase 3) would borrow.

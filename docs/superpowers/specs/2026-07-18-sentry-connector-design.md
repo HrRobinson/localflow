@@ -6,7 +6,7 @@ incident worker** product direction. Anchor **sensor** connector for "an
 error → fix-PR → resolve worker assembled on the drag-drop canvas."
 **Feature:** A **Sentry connector** that plugs into the merged flow-builder
 (integration registry + hybrid flow engine + drag-drop canvas) as an
-`IntegrationDescriptor`. It makes localflow **wake on a production error**: a new
+`IntegrationDescriptor`. It makes saiife **wake on a production error**: a new
 Sentry issue (or a triggered alert) **triggers** a run, the flow **reads** the
 issue and its latest event — including the **stack-trace `file:line` / culprit**
 context a fix worker needs — and, behind gates the author places, **acts**
@@ -35,7 +35,7 @@ Where a neighbour owns a shape, this spec **names the dependency and stops**.
 
 ## 1. Goal + MVP scope
 
-**Goal (one sentence):** Let a localflow user assemble, on the canvas, an
+**Goal (one sentence):** Let a saiife user assemble, on the canvas, an
 incident worker that wakes on a new Sentry error, reads the issue's latest event
 to pull the **failing `file:line` + culprit + in-app stack frames**, hands that
 context to a downstream **GitHub node that opens a fix PR**, and — when the PR
@@ -70,7 +70,7 @@ keychain, **never** rendered.
   `assignIssue`, `ignoreIssue`, `commentIssue`) is an `action` node the author
   gates. The engine already enforces this — no mutation runs un-gated by
   construction of the graph the author drew (§9).
-- **Single org / single project, single localflow environment.** Config-as-code
+- **Single org / single project, single saiife environment.** Config-as-code
   `sentry` block in `config.json` (non-secret refs only); token + Client Secret
   in the keychain.
 - **Offline `MockSentryApi` seam** so the whole connector is testable with **no
@@ -209,16 +209,16 @@ gates already provide. Nothing in the loop is blocked or preview-gated.
 
 ## 3. The core loop → Sentry primitives
 
-localflow's incident loop is `trigger → read (stack) → route → act (gated)`, and
+saiife's incident loop is `trigger → read (stack) → route → act (gated)`, and
 its flagship shape **composes with GitHub** (§7). Each stage maps to a concrete
 Sentry primitive and the flow-engine mechanism that runs it:
 
-| Stage | Sentry primitive | localflow / flow-engine mechanism |
+| Stage | Sentry primitive | saiife / flow-engine mechanism |
 |---|---|---|
 | **trigger** | A verified webhook: `issue` action `created`, `issue` action `unresolved` + `substatus:'regressed'`, or an `event_alert` (issue-alert rule fired, event + stack trace inline). | The shared `webhook-receiver` runs the Sentry `WebhookVerifier` (HMAC-SHA256 hex) → the connector normalizes to a `SeedEvent` → `subscribe(id, triggerId, handler)` hands it to the engine, which `startRun`s the flow with the payload in trigger-node context. |
 | **read** | REST `issues/{id}/` (issue) and `issues/{id}/events/latest/` (the stack trace). | An `action` node (`getIssue` / `getEvent` / `searchIssues`) → `registry.invokeAction('sentry', ref, params)` → the connector calls `sentry-api.ts` → **resolves** the normalized result, which the action-runner writes to context under the node id. |
-| **route** | *(none — pure localflow)* | `selectEdges` evaluates edge conditions over the context the read wrote — e.g. `getEvent.topInAppFrame.filename contains 'checkout'`, `getIssue.issue.level eq 'error'`. Deterministic, no LLM. |
-| **gate** | *(none — pure localflow)* | A `gate` node the author placed pauses the run as `needs-you`; the human approves in the cockpit. A mutation node sits **downstream of the gate the author drew**. |
+| **route** | *(none — pure saiife)* | `selectEdges` evaluates edge conditions over the context the read wrote — e.g. `getEvent.topInAppFrame.filename contains 'checkout'`, `getIssue.issue.level eq 'error'`. Deterministic, no LLM. |
+| **gate** | *(none — pure saiife)* | A `gate` node the author placed pauses the run as `needs-you`; the human approves in the cockpit. A mutation node sits **downstream of the gate the author drew**. |
 | **act** | REST `PUT issues` (`resolve`/`ignore`/`assign`), `POST issues/{id}/comments/`. | The gated `action` node (`resolveIssue` / `assignIssue` / `ignoreIssue` / `commentIssue`) → `invokeAction` → `sentry-api.ts`. **Failure = a rejected promise** (the pinned convention); the action-runner forwards the *real* Sentry error. |
 
 **The authority is the graph the author drew, not the connector.** The connector
@@ -228,7 +228,7 @@ decides which run, in what order, behind which gates. Sentry supplies the
 
 ---
 
-## 4. Architecture in localflow
+## 4. Architecture in saiife
 
 ### 4.1 Where it sits
 
@@ -236,7 +236,7 @@ A new **main-process module set** under `src/main/sentry/`, mirroring
 `src/main/shopify/` and the connector-spec module pattern (`*-connector` /
 `*-api` client / `*-normalize` / token store / config). It is **opt-in**: with no
 `sentry` config entry (and no stored token) the descriptor's `status()` returns
-`needs-config` and the engine refuses any Sentry node — localflow's "works with
+`needs-config` and the engine refuses any Sentry node — saiife's "works with
 no integration" guarantee is unchanged.
 
 The connector is, architecturally, **a live implementation behind the registry's
@@ -310,7 +310,7 @@ route+reason logging that never prints the body or secret). Sentry supplies a
 A bad / oversized / forged / duplicate delivery is dropped (4xx or 200-dedup) and
 **never** seeds a run.
 
-### 4.5 Reused localflow surfaces
+### 4.5 Reused saiife surfaces
 
 - `src/shared/integrations.ts` — the pinned `IntegrationDescriptor` /
   `IntegrationRegistry` / `LiveConnector` this connector satisfies;
@@ -453,7 +453,7 @@ for conditions):**
 | `resolveIssue` | Resolve the issue | `PUT issues {status:'resolved', statusDetails?}` | The **flagship close** — normally downstream of a merged fix PR; supports `inCommit`/`inRelease` (§2.2, §7). |
 | `assignIssue` | Assign the issue | `PUT issues {assignedTo:'user:…'|'team:…'}` | Route an incident to an owner / the fix worker's identity. |
 | `ignoreIssue` | Ignore / archive the issue | `PUT issues {status:'ignored', statusDetails?}` | Mute noise; optional duration/count. |
-| `commentIssue` | Comment on the issue | `POST issues/{id}/comments/ {text}` | Leave an audit note (e.g. "fix PR #123 opened by localflow"). |
+| `commentIssue` | Comment on the issue | `POST issues/{id}/comments/ {text}` | Leave an audit note (e.g. "fix PR #123 opened by saiife"). |
 
 **Failure convention (pinned):** a mutation that fails **rejects** its promise
 with the real Sentry error text; a resolved promise (any value) is success and its
@@ -602,7 +602,7 @@ Sentry issue in the fixing commit."*
         │     { id:"{{merged.issueRef}}", statusDetails:{ inCommit:{ commit:"{{merged.mergeCommitSha}}" } } })
         │  → PUT (project-scoped, §2.2) → issue resolves IN the fixing commit
         ▼
-[action: sentry.commentIssue]  text="Resolved by PR #{{merged.prNumber}} (localflow)"   (audit)
+[action: sentry.commentIssue]  text="Resolved by PR #{{merged.prNumber}} (saiife)"   (audit)
         ▼ (done)
 ```
 
@@ -650,7 +650,7 @@ boundary):
 | `orgSlug` | Organization slug | no | yes | string | e.g. `my-org`. Non-secret ref. |
 | `projectSlug` | Project slug | no | no | string | Scopes reads/searches and the project-scoped resolve (§2.2). Recommended. |
 | `baseUrl` | Sentry base URL (self-host) | no | no | string | Default `https://sentry.io`; SSRF-guarded (§5.2). Placeholder `https://sentry.io`. |
-| `environment` | localflow environment (1-9) | no | yes | number | Which env hosts Sentry work (same field/validation as Shopify's). |
+| `environment` | saiife environment (1-9) | no | yes | number | Which env hosts Sentry work (same field/validation as Shopify's). |
 | `webhookUrl` | Ingress webhook URL | no | no | string | The tunnel/relay URL registered in the internal integration. Placeholder `https://<tunnel>/sentry/webhook`. |
 
 `status('sentry')` reports `needs-config` until `authToken`, `webhookSecret`,
@@ -679,7 +679,7 @@ similarly a "mute" the author should place deliberately. `commentIssue` and
 `assignIssue` are low-risk and safe to leave un-gated if the author chooses.
 
 **Optional deterministic backstop (phased — §14 Phase 3).** In the spirit of
-**lfguard** and the Shopify ecom backstop: a small declarative `sentry.limits`
+**saiifeguard** and the Shopify ecom backstop: a small declarative `sentry.limits`
 block (non-secret), e.g. `{ resolveRequiresMergeContext: true }` — the connector
 **rejects** a `resolveIssue` that carries no `statusDetails.inCommit`/`inRelease`
 unless explicitly allowed, so a mis-authored flow can't blanket-resolve. Defense
@@ -719,7 +719,7 @@ that the GitHub node reads; it does not design GitHub's auth, PR flow, or its
 
 ## 11. Error handling
 
-localflow's principle (error-message-style memory; `credential-store.ts` /
+saiife's principle (error-message-style memory; `credential-store.ts` /
 `action-runner.ts`): **every failure is human-readable, actionable, and carries
 the real underlying exception. No silent catch. No bare "failed" / "not found".**
 A mutation signals failure by **rejecting** its promise with that message; the
@@ -748,7 +748,7 @@ the connector forwards *that* rather than minting a vaguer one.
 
 ## 12. Testing strategy (offline / mockable — no live calls in CI)
 
-Testable **without a live Sentry org**, matching localflow's existing seams (pure
+Testable **without a live Sentry org**, matching saiife's existing seams (pure
 modules, injected backends, fixture events):
 
 - **`SentryApi` interface + `MockSentryApi` seam.** `sentry-api.ts` is written
@@ -826,7 +826,7 @@ in manual dogfooding against a dev org (SaaS) and, once, a self-host instance.
    deterministic backstop (`resolveRequiresMergeContext`) **on by default**, so a
    mis-authored flow can't blanket-resolve live errors? Or off, trusting the
    author's gate + the starter template's wiring? A product-safety call; whatever
-   the default, it is deterministic (lfguard-style), never model-mediated.
+   the default, it is deterministic (saiifeguard-style), never model-mediated.
 5. **Webhook subscription management — manual vs programmatic.** MVP can have the
    user configure the internal integration's Webhook URL + resources in the Sentry
    UI (pointing at their tunnel), or the connector can register them via API on
@@ -876,7 +876,7 @@ org + a test repo.
   (`event_alert`, inline-event) and `issue.regressed` (derived `substatus`)
   triggers; programmatic webhook-subscription management (§13.5).
 - **Phase 3 — deterministic resolve backstop:** the `sentry.limits` policy (§9),
-  lfguard-style, default decided (§13.4).
+  saiifeguard-style, default decided (§13.4).
 - **Phase 4 — self-host hardening:** validate the SSRF guard against a real
   self-host instance; document the `baseUrl` + tunnel story for on-prem Sentry.
 - **Phase 5 — product fork:** public integration OAuth, hosted webhook relay,
@@ -888,7 +888,7 @@ org + a test repo.
 
 ---
 
-## Appendix — reused localflow surfaces (by path)
+## Appendix — reused saiife surfaces (by path)
 
 - `src/shared/integrations.ts` — the pinned `IntegrationDescriptor` /
   `IntegrationRegistry` / `LiveConnector` this connector satisfies; `IntegrationId`
@@ -918,5 +918,5 @@ org + a test repo.
 - `src/main/net/ssrf-guard.ts` (shared) — the self-host `baseUrl` guard
   (generalization of `woocommerce/wc-ssrf.ts`): `checkBaseUrl` + post-DNS
   `blockedIpRange`.
-- `guard/` (lfguard) — the deterministic-guard *posture* the optional resolve
+- `guard/` (saiifeguard) — the deterministic-guard *posture* the optional resolve
   backstop (§9) borrows (a policy floor under the author's gates, no model).

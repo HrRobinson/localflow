@@ -37,7 +37,7 @@ import type {
 import type { FlowGraph, FlowSummary } from './flows'
 import type { FlowTemplate } from './flow-templates'
 
-export interface LocalflowApi {
+export interface SaiifeApi {
   /**
    * Start a session for an agent. `cwd` is honored whenever it's a
    * non-empty absolute (or `~`-prefixed) path — Landing always supplies one
@@ -84,7 +84,7 @@ export interface LocalflowApi {
   /**
    * Creates a new group ("session") from a named template: one pane per
    * template entry, skipping any whose agent binary isn't found. `cwd` is
-   * honored only under LOCALFLOW_E2E=1 — production always opens the folder
+   * honored only under SAIIFE_E2E=1 — production always opens the folder
    * picker (same posture as createSession). Null for an unknown template, a
    * canceled picker, or a template where every pane's agent is missing.
    */
@@ -100,7 +100,7 @@ export interface LocalflowApi {
   listSessions(): Promise<SessionInfo[]>
   /**
    * A human-readable notice if `sessions.json` existed at startup but
-   * couldn't be read/parsed (the corrupt file is backed up and localflow
+   * couldn't be read/parsed (the corrupt file is backed up and saiife
    * started with an empty saved layout instead). Null on a normal start —
    * including a genuine first run with no saved file yet.
    */
@@ -135,7 +135,7 @@ export interface LocalflowApi {
   setDefaultAgent(agentId: AgentId): Promise<AgentInfo[] | null>
   /**
    * Sets per-agent extra args + env overrides. Ok carries the refreshed
-   * list; env keys owned by localflow's hook injection are rejected with
+   * list; env keys owned by saiife's hook injection are rejected with
    * the offending names (writing them would kill the status feed). Null
    * only for a malformed call (unknown agent / non-object override).
    */
@@ -197,7 +197,7 @@ export interface LocalflowApi {
   getConsolePrefs(): Promise<ConsolePrefs>
   /** Persists drawer prefs (fire-and-forget; debounced by the caller). */
   setConsolePrefs(prefs: ConsolePrefs): void
-  /** Enabled opt-in lfguard pack ids (core.filesystem/core.git are always on, not included). */
+  /** Enabled opt-in saiifeguard pack ids (core.filesystem/core.git are always on, not included). */
   getGuardPacks(): Promise<string[]>
   /**
    * Persists the enabled opt-in pack ids; applies to newly-launched panes.

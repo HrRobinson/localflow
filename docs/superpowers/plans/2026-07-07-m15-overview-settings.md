@@ -165,11 +165,11 @@ Semantics:
 **Interfaces:**
 - Consumes: `LastAgent` (Task 1), `AgentRegistry.getLastAgent`/
   `recordLastAgent` (Task 1).
-- Produces: `window.localflow.getLastAgent(): Promise<LastAgent | null>`,
+- Produces: `window.saiife.getLastAgent(): Promise<LastAgent | null>`,
   consumed by Task 4 (Overview) and Task 3 (Settings' "last used" badge).
 
 - [ ] **Step 1:** `src/shared/api.ts` — import `LastAgent`, add to
-  `LocalflowApi`:
+  `SaiifeApi`:
 
   ```ts
   getLastAgent(): Promise<LastAgent | null>
@@ -242,10 +242,10 @@ Semantics:
 
     useEffect(() => {
       let cancelled = false
-      void window.localflow.listAgents().then((list) => {
+      void window.saiife.listAgents().then((list) => {
         if (!cancelled) setAgents(list)
       })
-      void window.localflow.getLastAgent().then((last) => {
+      void window.saiife.getLastAgent().then((last) => {
         if (!cancelled) setLastAgentId(last?.agentId ?? null)
       })
       return () => {
@@ -254,7 +254,7 @@ Semantics:
     }, [])
 
     const setPath = async (agentId: AgentId): Promise<void> => {
-      const updated = await window.localflow.setAgentPath(agentId)
+      const updated = await window.saiife.setAgentPath(agentId)
       if (updated) setAgents(updated)
     }
 
@@ -414,8 +414,8 @@ Semantics:
 - Modify: `tests/e2e/smoke.spec.ts`, `README.md`
 
 - [ ] **Step 1:** Extend `tests/e2e/smoke.spec.ts` with a second `test()`
-  in the same file (same `LOCALFLOW_E2E`/`LOCALFLOW_USER_DATA`/
-  `LOCALFLOW_CLAUDE_BIN` launch pattern):
+  in the same file (same `SAIIFE_E2E`/`SAIIFE_USER_DATA`/
+  `SAIIFE_CLAUDE_BIN` launch pattern):
   - Launch, assert exactly one `.new-session` element.
   - Click the Sidebar's "Settings" nav item; assert an Agents-section
     element is visible (e.g. text "Agents" or a locator scoped to the new
@@ -426,12 +426,12 @@ Semantics:
     `.new-session` becomes `disabled` and a "Configure in Settings" hint
     becomes visible. Switch back to `'claude'`; assert enabled again.
   - Click `.new-session` (with the folder-picker path — same
-    `LOCALFLOW_E2E`-gated `cwd` short-circuit the existing test relies on
-    for `createSession`, or call `window.localflow.createSession('claude',
+    `SAIIFE_E2E`-gated `cwd` short-circuit the existing test relies on
+    for `createSession`, or call `window.saiife.createSession('claude',
     cwd)` directly if the picker isn't test-friendly here, matching the
     existing test's approach) to create a session, then `app.close()` and
-    relaunch Electron with the **same** `LOCALFLOW_USER_DATA` dir; evaluate
-    `window.localflow.getLastAgent()` in the new window and assert it
+    relaunch Electron with the **same** `SAIIFE_USER_DATA` dir; evaluate
+    `window.saiife.getLastAgent()` in the new window and assert it
     resolves to `{ agentId: 'claude' }` — proves `lastAgent` persisted
     across a real restart, not just in-memory state.
 - [ ] **Step 2:** `npm run e2e` → all pass (record output).
@@ -463,7 +463,7 @@ Semantics:
 - Type consistency: `LastAgent` defined once in `src/shared/types.ts` (T1),
   consumed by `agent-registry.ts` (T1), `shared/api.ts` +
   `preload/index.ts` (T2), and both `Settings.tsx` and `Landing.tsx` (T3/T4)
-  via `window.localflow.getLastAgent()` — no duplicate/parallel type
+  via `window.saiife.getLastAgent()` — no duplicate/parallel type
   definitions.
 - Known risk: this plan is written against the *current* (partially
   mid-M1) `App.tsx`/`Sidebar.tsx`/`Landing.tsx`, but explicitly defers to

@@ -47,7 +47,7 @@ the **parameterized webhook receiver** `src/main/webhooks/webhook-receiver.ts`
 
 ## 1. Goal + MVP scope
 
-**Goal (one sentence):** Let a localflow user, on the canvas, (a) call **any**
+**Goal (one sentence):** Let a saiife user, on the canvas, (a) call **any**
 HTTP endpoint from a flow — templating the URL / headers / body from run context,
 with the auth secret in the OS keychain and the URL forced through the shared
 SSRF guard — and (b) wake a flow when **any** external system POSTs to a
@@ -67,7 +67,7 @@ ingress axis, and the MVP ships the two halves in order:
   endpoint." **This is the MVP walking skeleton (§13).**
 - **Half 2 — the incoming trigger (`webhook.received`) FOLLOWS.** It is
   **YELLOW** for two real reasons (§2.3): it inherits the **cloud-ingress**
-  tunnel/relay story (localflow has no public endpoint), and it exercises the one
+  tunnel/relay story (saiife has no public endpoint), and it exercises the one
   genuine **architectural extension** — the pinned `subscribe(id, triggerId,
   handler)` seam does not carry per-node config, and the incoming trigger needs
   each node's path + verifier + secret ref (§4.4, §8). Both are addressed here
@@ -133,7 +133,7 @@ decide which vendors deserve a first-class connector (Track A §2, Track C §4).
 fundamentally *"POST to a workflow's webhook URL"* (outbound) + *"receive a signed
 callback"* (inbound) + *"poll an execution"* — so **the generic-webhook connector
 covers ~90% of n8n interop with zero n8n-specific code** (Track C §3, the settled
-strategic call). localflow does the LLM **judgment** inside a node; n8n does the
+strategic call). saiife does the LLM **judgment** inside a node; n8n does the
 deterministic **reach** across its 400+ integrations. This connector is the seam
 between the two layers. Zapier's **Catch Hook** (inbound) / **Send Webhook**
 (outbound) and Make's **Custom Webhook** / **HTTP module** fall out the same way.
@@ -152,7 +152,7 @@ between the two layers. Zapier's **Catch Hook** (inbound) / **Send Webhook**
 
 ### 2.3 Constraints (why the incoming half is YELLOW, not GREEN)
 
-1. **Cloud ingress (incoming half only).** localflow is a Finder-launched
+1. **Cloud ingress (incoming half only).** saiife is a Finder-launched
    Electron app on an 8 GB Mac behind NAT — **no public HTTPS endpoint**. The
    incoming trigger needs a **user-run tunnel** ("for me") or a **hosted relay**
    ("product"), identical to Shopify/Linear §4.4. **One ingress serves ALL
@@ -187,15 +187,15 @@ between the two layers. Zapier's **Catch Hook** (inbound) / **Send Webhook**
 
 ## 3. The core loop → HTTP primitives
 
-localflow's loop is `trigger → read → route → act (gated)`. Each stage maps to a
+saiife's loop is `trigger → read → route → act (gated)`. Each stage maps to a
 concrete HTTP primitive and the concrete flow-engine mechanism that runs it:
 
-| Stage | HTTP primitive | localflow / flow-engine mechanism |
+| Stage | HTTP primitive | saiife / flow-engine mechanism |
 |---|---|---|
 | **trigger** | An external system POSTs to this flow's unguessable, signed webhook URL. | `webhook-receiver` verifies the node's `WebhookVerifier` → normalizes to a `SeedEvent` (`{ eventId, payload: { webhook: {...} } }`) → the connector's `subscribe(triggerId, handler)` hands it to the engine, which `startRun`s the flow with the payload in the trigger node's context slot (`trigger-subscriber.ts`). |
 | **read** | An outgoing `GET` to any endpoint (fetch JSON). | An `action` node (`http.get`) → `registry.invokeAction('http', 'http.get', params)` → the connector resolves the node's request, runs it through `http-client` (SSRF-guarded) → **resolves** the normalized `{ http: { status, headers, body } }`, which the action-runner writes to context under the node id (`action-runner.ts`). |
-| **route** | *(none — pure localflow)* | `selectEdges` evaluates edge conditions over what the read wrote (`context.ts`) — e.g. `field: 'fetch.http.status', op: 'eq', value: 200`. **No LLM decides routing** — deterministic value compares. |
-| **gate** | *(none — pure localflow)* | A `gate` node the author placed pauses the run `needs-you`; the human approves in the cockpit. An `http.send` node sits **downstream of the gate the author drew** (the natural pairing with the Slack/SMS approval round-trip, Track A §1.g). |
+| **route** | *(none — pure saiife)* | `selectEdges` evaluates edge conditions over what the read wrote (`context.ts`) — e.g. `field: 'fetch.http.status', op: 'eq', value: 200`. **No LLM decides routing** — deterministic value compares. |
+| **gate** | *(none — pure saiife)* | A `gate` node the author placed pauses the run `needs-you`; the human approves in the cockpit. An `http.send` node sits **downstream of the gate the author drew** (the natural pairing with the Slack/SMS approval round-trip, Track A §1.g). |
 | **act** | An outgoing `POST`/`PUT`/`PATCH`/`DELETE` with a body. | The gated `http.send` action → `invokeAction` → `http-client` (SSRF-guarded). **Failure = a rejected promise** (the pinned convention); the action-runner forwards the *real* HTTP error (status + body excerpt), never a bare "failed". |
 
 **The authority is the graph the author drew, not the connector.** The connector
@@ -206,7 +206,7 @@ node invokes.
 
 ---
 
-## 4. Architecture in localflow
+## 4. Architecture in saiife
 
 ### 4.1 Where it sits
 
@@ -215,7 +215,7 @@ A new **main-process module set** under `src/main/http/`, mirroring
 `*-descriptor` / `*-connector` / `*-client` / `*-config` / `*-normalize`). It is
 **opt-in**: with no `http` node in any flow and no stored per-node secret, the
 descriptor's `status()` reports `needs-config` and the engine refuses any `http`
-node before any network call (`action-runner.ts`) — localflow's "works with no
+node before any network call (`action-runner.ts`) — saiife's "works with no
 integration" guarantee is unchanged.
 
 Architecturally the connector is a **live implementation behind the registry's
@@ -302,7 +302,7 @@ resolved URL through `src/main/net/ssrf-guard.ts` before opening a socket**:
   opt-in; the default is guarded. (Mirrors the PostHog/WooCommerce SSRF posture,
   Track C §6, hoisted to the shared guard.)
 
-### 4.6 Reused localflow surfaces
+### 4.6 Reused saiife surfaces
 
 - `src/shared/integrations.ts` — the pinned `IntegrationDescriptor` /
   `LiveConnector` / `registerConnector` contract this connector satisfies;
@@ -609,7 +609,7 @@ another n8n workflow."* This is the **interop vehicle** end-to-end (Track C §3-
         │  external system POSTs → webhook-receiver verifies X-Auth against http:<nodeId>:inKey
         │  200-fast, then coerceEvent → context['t'] = { webhook:{ headers, body, query } }
         ▼
-[agent: investigate]               reads webhook.body, forms a judgment (the localflow edge)
+[agent: investigate]               reads webhook.body, forms a judgment (the saiife edge)
         ▼
 [gate: Slack approval]             Track A §1.g — the send is parked on the human's tap
         ▼
@@ -617,16 +617,16 @@ another n8n workflow."* This is the **interop vehicle** end-to-end (Track C §3-
                                    configures an outbound HMAC header; ssrf-guard(url) → POST
 ```
 
-`localflow does the thinking; n8n does the reaching` (Track C §3): the inbound
+`saiife does the thinking; n8n does the reaching` (Track C §3): the inbound
 POST wakes the flow, the agent node judges, and the gated `http.send` fires the
 n8n workflow that deterministically fans out to Salesforce / Jira / Notion —
-**five systems localflow never integrated**, reached through one generic pair.
+**five systems saiife never integrated**, reached through one generic pair.
 
 ---
 
 ## 9. Error handling
 
-localflow's principle (error-message-style memory; `credential-store.ts`,
+saiife's principle (error-message-style memory; `credential-store.ts`,
 `action-runner.ts`): **every failure is human-readable, actionable, and carries
 the real underlying cause. No silent catch. No bare "failed" / "not found".** An
 action signals failure by **rejecting** with that message; the action-runner
@@ -656,7 +656,7 @@ scrubbed) rather than minting a vaguer one.
 
 ## 10. Testing strategy (offline / mockable — no live network in CI)
 
-Testable **without any live endpoint**, matching localflow's seams (pure modules,
+Testable **without any live endpoint**, matching saiife's seams (pure modules,
 injected transport, fixture events):
 
 - **`HttpTransport` interface + `MockHttpTransport` seam.** `http-client.ts` is
@@ -716,7 +716,7 @@ graph the author drew.** `http.get` is a pure read and needs no gate.
 **The SSRF guard is a deterministic floor under the gates (§4.5)** — even a
 mis-authored flow or an attacker-templated URL cannot pivot to an internal/
 metadata address unless the author explicitly set `allowLocal` on that node. This
-is the lfguard posture (a deterministic guard, no model in the loop) applied to
+is the saiifeguard posture (a deterministic guard, no model in the loop) applied to
 outbound HTTP.
 
 **Never render secrets (§7, §9).** Every per-node secret lives in the keychain;
@@ -808,7 +808,7 @@ SSRF-guarded) and is dogfoodable immediately with no tunnel.
 
 ---
 
-## Appendix — reused localflow surfaces (by path)
+## Appendix — reused saiife surfaces (by path)
 
 - `src/shared/integrations.ts` — the pinned `IntegrationDescriptor` /
   `LiveConnector` / `registerConnector` contract this connector satisfies;
@@ -837,5 +837,5 @@ SSRF-guarded) and is dogfoodable immediately with no tunnel.
   (§4.2, §6.4).
 - **`src/main/net/ssrf-guard.ts`** (sibling-owned) — the shared URL guard every
   outbound request passes before dialing (§4.2, §4.5).
-- `guard/` (lfguard) — the deterministic-guard *posture* the SSRF floor borrows (a
+- `guard/` (saiifeguard) — the deterministic-guard *posture* the SSRF floor borrows (a
   policy floor under the author's gates, no model in the loop).

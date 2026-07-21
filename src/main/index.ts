@@ -174,9 +174,9 @@ import {
  * override. The one-off legacy carry-over MUST NOT run in that case: it would
  * copy a real installation's data into a scratch fixture directory.
  */
-const userDataOverridden = Boolean(process.env['LOCALFLOW_USER_DATA'])
+const userDataOverridden = Boolean(process.env['SAIIFE_USER_DATA'])
 if (userDataOverridden) {
-  app.setPath('userData', process.env['LOCALFLOW_USER_DATA'] as string)
+  app.setPath('userData', process.env['SAIIFE_USER_DATA'] as string)
 }
 
 /**
@@ -226,7 +226,7 @@ function createWindow(): void {
   win = new BrowserWindow({
     width: 1400,
     height: 900,
-    title: 'localflow',
+    title: 'saiife',
     webPreferences: {
       preload: join(__dirname, '../preload/index.mjs'),
       contextIsolation: true,
@@ -255,7 +255,7 @@ function createWindow(): void {
 
 /**
  * Electron's default application menu binds cmd+w to Close Window, cmd+h
- * to Hide and cmd+m to Minimize. localflow owns those as in-app pane keys
+ * to Hide and cmd+m to Minimize. saiife owns those as in-app pane keys
  * (close-pane, focus-left, enlarge-toggle), so the menu must not carry
  * those accelerators.
  */
@@ -271,7 +271,7 @@ function buildAppMenu(): void {
         // Not role: 'hide' — Electron treats `accelerator: undefined` on a
         // role item as omitted and applies the role default (Cmd+H), which
         // must stay free for the in-app focus-left key.
-        { label: 'Hide localflow', click: () => app.hide() },
+        { label: 'Hide saiife', click: () => app.hide() },
         { role: 'hideOthers' },
         { role: 'unhide' },
         { type: 'separator' },
@@ -530,7 +530,7 @@ app.whenReady().then(async () => {
   )
 
   // Slack connector: the CROSS-CUTTING control connector whose headline export is
-  // localflow's FIRST real ApprovalPort (§3) — wired over the stub below. The
+  // saiife's FIRST real ApprovalPort (§3) — wired over the stub below. The
   // live Socket-Mode WS + Web API HTTPS transport are DEFERRED (foundation
   // slice), exactly like Shopify's live transport: the descriptor, block-kit
   // builders, approval port, connector dispatch, and Events-path verifier are all
@@ -594,7 +594,7 @@ app.whenReady().then(async () => {
   )
 
   // Discord connector: the SECOND cross-cutting control connector, whose headline
-  // export is localflow's SECOND real ApprovalPort (§3) — a peer of Slack's,
+  // export is saiife's SECOND real ApprovalPort (§3) — a peer of Slack's,
   // against the SAME seam, no engine change. Like Slack the live Gateway WS + REST
   // HTTPS transport are DEFERRED (foundation slice): the descriptor, component
   // builders, approval port, connector dispatch, and gateway core are all in place
@@ -663,7 +663,7 @@ app.whenReady().then(async () => {
       api: new PagerDutyHttpApi({
         transport: deferredPagerDutyTransport(),
         reveal: deferredPagerDutyReveal,
-        fromEmail: 'pagerduty-deferred@localflow.invalid'
+        fromEmail: 'pagerduty-deferred@saiife.invalid'
       })
     })
   )
@@ -786,7 +786,7 @@ app.whenReady().then(async () => {
   void hostedTokens
   const hostedBindings = new WebhookBindingRegistry()
   const hostedControlApi = new HttpControlApi({
-    baseUrl: 'https://hosted.localflow.invalid',
+    baseUrl: 'https://hosted.saiife.invalid',
     accountToken: () => hostedTokens.revealToken()
   })
   void hostedControlApi
@@ -808,7 +808,7 @@ app.whenReady().then(async () => {
   void hostedIngressClient
   // The live Pub/Sub source, constructed behind the seam but never drained here.
   const hostedIngressSource = new GcpPubSubIngressSource({
-    subscription: 'projects/localflow-hosted/subscriptions/deferred',
+    subscription: 'projects/saiife-hosted/subscriptions/deferred',
     token: async () => {
       throw new Error('Hosted ingress drain token minting is not wired yet (design O-1/O-3).')
     }
@@ -819,7 +819,7 @@ app.whenReady().then(async () => {
   ensureThemesSeeded(themesDir)
 
   const endpoint = await startHookServer((e) => manager.applyHookEvent(e))
-  if (process.env['LOCALFLOW_E2E'] === '1') {
+  if (process.env['SAIIFE_E2E'] === '1') {
     writeFileSync(
       join(userData, 'endpoint.json'),
       JSON.stringify({ port: endpoint.port, token: endpoint.token }),
@@ -926,7 +926,7 @@ app.whenReady().then(async () => {
 
   // Extracted so the Flow Engine's PaneDriver can drive panes through the SAME
   // control-API router (handleRequest) — the engine is an operator client, not a
-  // privileged SessionManager caller, so the capability boundary + lfguard guard
+  // privileged SessionManager caller, so the capability boundary + saiifeguard guard
   // apply to flow work identically.
   const controlDeps: ControlDeps = {
     registry: paneRegistry,
@@ -967,7 +967,7 @@ app.whenReady().then(async () => {
   // Opt-in and inert by default: the `flows` config block is off unless a user
   // turns it on, so with no flow configured nothing subscribes and nothing runs.
   // The engine drives panes only as an OPERATOR CLIENT — via the PaneDriver over
-  // the same control-API router grants + lfguard already gate.
+  // the same control-API router grants + saiifeguard already gate.
   const flowsFile = join(userData, 'flows.json')
   const flowConfigFile = join(userData, 'config.json')
   const flowsConfig = loadFlowsConfig(flowConfigFile)
@@ -1062,12 +1062,12 @@ app.whenReady().then(async () => {
   const launchTracker = new OperatorLaunchTracker()
 
   // Grant/revoke mirrored into an EXISTING OpenClaw config (the block the
-  // manual setup documents): grant writes skills.entries.localflow.env,
+  // manual setup documents): grant writes skills.entries.saiife.env,
   // revoke removes exactly that entry. Missing file → no-op (never created);
   // any failure is NON-FATAL — the grant/revoke itself always proceeds, with
   // a console warning + an operator:activity entry. Token values are never
   // logged. The env override keeps e2e runs away from a real ~/.openclaw.
-  const openclawConfig = process.env['LOCALFLOW_OPENCLAW_CONFIG'] ?? defaultOpenclawConfig()
+  const openclawConfig = process.env['SAIIFE_OPENCLAW_CONFIG'] ?? defaultOpenclawConfig()
   const reportSkillEnv = (env: number, verb: 'write' | 'remove', result: SkillEnvResult): void => {
     if (result.ok) return
     console.warn(`openclaw config skill-env ${verb} failed: ${result.reason} (${openclawConfig})`)
@@ -1353,7 +1353,7 @@ app.whenReady().then(async () => {
       if (!template) return null
       // Dir-picking logic copied verbatim from session:create — dialog
       // unless under the e2e harness, which passes an explicit cwd.
-      let dir = process.env['LOCALFLOW_E2E'] === '1' ? cwd : undefined
+      let dir = process.env['SAIIFE_E2E'] === '1' ? cwd : undefined
       if (!dir) {
         const result = await dialog.showOpenDialog(win!, {
           properties: ['openDirectory', 'createDirectory'],
@@ -1600,7 +1600,7 @@ app.whenReady().then(async () => {
     }
     // Under e2e, expose the grant to the scripted control-API client on disk
     // (mirrors the hook server's endpoint.json handshake).
-    if (process.env['LOCALFLOW_E2E'] === '1') {
+    if (process.env['SAIIFE_E2E'] === '1') {
       writeFileSync(join(userData, `operator-grant-${env}.json`), JSON.stringify(info), {
         mode: 0o600
       })
@@ -1683,7 +1683,7 @@ app.whenReady().then(async () => {
   ipcMain.on('console:setPrefs', (_e, prefs: ConsolePrefs) => registry.setConsolePrefs(prefs))
 
   ipcMain.handle('guard:getPacks', () => registry.getGuardPacks())
-  // Security-relevant setting (which lfguard packs are enforced): a bare
+  // Security-relevant setting (which saiifeguard packs are enforced): a bare
   // ipcMain.on fire-and-forget here would mean a config.json write failure
   // (disk full, permission revoked) left the renderer's checkbox showing a
   // pack as enabled while it was never persisted — surfaced instead as a

@@ -5,7 +5,7 @@
  *
  * NO raw Shopify GraphQL shape lives here — those are isolated in
  * `src/main/shopify/shopify-admin.ts` (the API-version blast radius, §4.1). This
- * file holds ONLY localflow-facing, already-normalized vocabulary: money as a
+ * file holds ONLY saiife-facing, already-normalized vocabulary: money as a
  * `number`, statuses as lowercase enums, GIDs reduced to bare ids — the exact
  * types the (sibling-owned) edge-condition operators of §10 expect.
  */

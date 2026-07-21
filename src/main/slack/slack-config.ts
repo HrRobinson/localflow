@@ -15,7 +15,7 @@ export interface SlackConfig {
   defaultChannel: string
   /** Ingress mode; defaults to 'socket' (the zero-ingress path, §2.1). */
   mode: SlackMode
-  /** localflow environment (1-9). */
+  /** saiife environment (1-9). */
   environment: number
   /** The public ingress URL for `mode: 'events'` only (§4.4). */
   eventsUrl?: string

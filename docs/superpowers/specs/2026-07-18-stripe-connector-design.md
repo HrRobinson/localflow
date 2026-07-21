@@ -48,7 +48,7 @@ mirroring how the Shopify spec names the conditions/templates tracks.
 
 ## 1. Goal + MVP scope
 
-**Goal (one sentence):** Let a localflow user assemble, on the canvas, an ecom
+**Goal (one sentence):** Let a saiife user assemble, on the canvas, an ecom
 worker that wakes on a Stripe payment event (a dispute, a refund, a failed
 invoice), reads the relevant charge / customer / dispute facts through Stripe's
 API, **composes them with Shopify/Woo order context**, routes on those facts via
@@ -97,7 +97,7 @@ the OS keychain, **never** rendered, and **no money action ever auto-running**.
   worker whose edge conditions read **both** `{{shopify.order.*}}` and
   `{{stripe.charge.*}}`, taking order context from Shopify and issuing a gated
   refund through Stripe.
-- **Single account, single localflow environment.** Config-as-code `stripe` block
+- **Single account, single saiife environment.** Config-as-code `stripe` block
   in `config.json` (non-secret refs only); restricted key + webhook secret in the
   keychain.
 
@@ -180,16 +180,16 @@ solved (a tunnel in MVP, a relay in the product fork).
 
 ## 3. The core loop → Stripe primitives
 
-localflow's ecom loop is `trigger → read → route → act (gated)`. Each stage maps
+saiife's ecom loop is `trigger → read → route → act (gated)`. Each stage maps
 to a concrete Stripe primitive and the concrete flow-engine mechanism that runs
 it:
 
-| Stage | Stripe primitive | localflow / flow-engine mechanism |
+| Stage | Stripe primitive | saiife / flow-engine mechanism |
 |---|---|---|
 | **trigger** | A verified Stripe event (`charge.dispute.created`, `charge.refunded`, `invoice.payment_failed`) delivered to the **shared webhook receiver**. | The receiver verifies the `Stripe-Signature` (timestamp scheme, §7) → the connector normalizes the event to a `SeedEvent` → `subscribe(triggerId, handler)` hands it to the engine, which `startRun`s the flow with the payload in trigger-node context (`trigger-subscriber.ts`, `flow-engine.ts`). |
 | **read** | `GET /v1/charges/:id` · `/customers/:id` · `/disputes/:id` · `/subscriptions/:id`. | An `action` node (`getCharge` / `getCustomer` / `getDispute` / `getSubscription`) → `registry.invokeAction('stripe', ref, params)` → the connector calls `stripe-client.ts` → `stripe-normalize.ts` maps it (minor→major) → the connector **resolves** it, which the action-runner writes to context under the node id. |
-| **route** | *(none — pure localflow)* | `selectEdges` evaluates edge conditions over the context the reads wrote, including **cross-connector** paths (`{{stripe.charge.amount}}`, `{{shopify.order.total}}` — §7.3). Deterministic value compares; **no LLM decides routing**. |
-| **gate** | *(none — pure localflow)* | A `gate` node the author placed pauses the run `needs-you`; the human approves in the cockpit. Every money mutation sits **downstream of the gate the author drew** (§9). |
+| **route** | *(none — pure saiife)* | `selectEdges` evaluates edge conditions over the context the reads wrote, including **cross-connector** paths (`{{stripe.charge.amount}}`, `{{shopify.order.total}}` — §7.3). Deterministic value compares; **no LLM decides routing**. |
+| **gate** | *(none — pure saiife)* | A `gate` node the author placed pauses the run `needs-you`; the human approves in the cockpit. Every money mutation sits **downstream of the gate the author drew** (§9). |
 | **act** | `POST /v1/refunds` · `POST /v1/disputes/:id` · `DELETE /v1/subscriptions/:id` (each with an `Idempotency-Key`). | The gated `action` node (`createRefund` / `respondToDispute` / `cancelSubscription`) → `invokeAction` → `stripe-client.ts` mutation. **Failure = a rejected promise** (the pinned convention); the action-runner forwards the *real* Stripe error (`error.type`/`error.code`/`error.message`). |
 
 **The authority is the graph the author drew, not the connector.** The connector
@@ -198,7 +198,7 @@ gates. A money mutation with no gated path to it never runs.
 
 ---
 
-## 4. Architecture in localflow
+## 4. Architecture in saiife
 
 ### 4.1 Where it sits
 
@@ -206,7 +206,7 @@ A new **main-process module set** under `src/main/stripe/`, mirroring
 `src/main/shopify/` (the closest sibling) and `src/main/integrations/` (the hub).
 It is **opt-in**: with no `stripe` config entry (and no stored key) the
 descriptor's `status()` returns `needs-config` and the engine refuses any Stripe
-node before any network call — localflow's "works with no integration" guarantee
+node before any network call — saiife's "works with no integration" guarantee
 is unchanged. The connector is the live implementation behind the registry's
 pinned `invokeAction`/`subscribe`, registered via `registerConnector('stripe',
 …)`. **All Stripe API shapes are isolated in `stripe-client.ts`** (the blast
@@ -236,7 +236,7 @@ radius for any API-version bump), exactly as Shopify isolates GraphQL in
 | `src/main/integrations/integration-registry.ts` | `registerConnector('stripe', …)` (line 54) wires the live dispatch; `deriveStatus('stripe')` gives Stripe its status for free. | Integrations Hub. |
 | `src/main/flow/node-runners/action-runner.ts` | How `invokeAction` is called, the **reject = failure** convention, and how the resolved value lands in context for conditions. | Flow engine. |
 | `src/main/flow/trigger-subscriber.ts`, `context.ts`, `flow-engine.ts`, `flow-model.ts` | How `subscribe` seeds runs; dotted-path reads + boolean routing; the run lifecycle + gate handling; the `INTEGRATION_IDS` allow-list (edited, §6.0). | Flow engine. |
-| `guard/` (lfguard) | The deterministic-guard *posture* the optional Stripe backstop (§9) borrows — a policy floor under the author's gates, no model in the loop. | lfguard. |
+| `guard/` (saiifeguard) | The deterministic-guard *posture* the optional Stripe backstop (§9) borrows — a policy floor under the author's gates, no model in the loop. | saiifeguard. |
 
 ### 4.4 Wiring the live dispatch (verbatim, the Shopify pattern)
 
@@ -290,7 +290,7 @@ boundary):
 | `webhookSecret` | Webhook signing secret | **yes** | yes | string | `whsec_…`. Verifies `Stripe-Signature` (§7). Keychain only. |
 | `accountId` | Stripe account id | no | no | string | `acct_…`. Non-secret ref (display / future Connect). |
 | `apiVersion` | Stripe API version | no | no | string | e.g. `2025-06-30`; defaults to a pinned version in `stripe-client.ts`. |
-| `environment` | localflow environment (1-9) | no | yes | number | Which env hosts Stripe work (same field/validation as Shopify's). |
+| `environment` | saiife environment (1-9) | no | yes | number | Which env hosts Stripe work (same field/validation as Shopify's). |
 | `webhookUrl` | Ingress webhook URL | no | no | string | The tunnel/relay endpoint (§4.5). Placeholder `https://<tunnel>/stripe/webhook`. |
 | `mode` | Stripe mode | no | no | string | `test` \| `live`; if omitted, derived from the key prefix (`rk_test_`/`rk_live_`). Guards against a live key firing against a test flow and vice-versa. |
 
@@ -329,7 +329,7 @@ flow validator), and `DESCRIPTOR_DEFS` (`descriptors/index.ts`). No other
 | trigger id | label | underlying Stripe event | note |
 |---|---|---|---|
 | `charge.dispute.created` | Dispute (chargeback) opened | `charge.dispute.created` (native, 1:1). | The anchor trigger — a chargeback is the highest-stakes payment event a worker reacts to. |
-| `charge.refunded` | Charge refunded | `charge.refunded` (native, 1:1). Fires when a charge is fully or partially refunded (including refunds issued outside localflow). | Lets a flow reconcile a Stripe refund back to the store order (composition, §7.3). |
+| `charge.refunded` | Charge refunded | `charge.refunded` (native, 1:1). Fires when a charge is fully or partially refunded (including refunds issued outside saiife). | Lets a flow reconcile a Stripe refund back to the store order (composition, §7.3). |
 | `invoice.payment_failed` | Invoice payment failed | `invoice.payment_failed` (native, 1:1). | Subscription/dunning path — wake a worker on a failed renewal to dun, pause, or gate a cancel. |
 
 All three are **native 1:1 Stripe events** — no derivation cost (unlike Shopify's
@@ -623,7 +623,7 @@ connector treats them **uniformly as gated money actions** — there is no
 gate is not a suggestion for these actions; it is the entire safety model.
 
 **Optional deterministic backstop (phased — §13.2).** A *deterministic floor*
-under the author's gates, in the spirit of **lfguard** (`guard/`) but as an **ecom
+under the author's gates, in the spirit of **saiifeguard** (`guard/`) but as an **ecom
 money policy** rather than a shell tokenizer:
 
 - A small declarative `stripe.limits` config block (non-secret): e.g.
@@ -672,7 +672,7 @@ connector does not depend on the operator set landing first (it works under
 
 ## 11. Error handling
 
-localflow's principle (error-message-style memory; demonstrated in
+saiife's principle (error-message-style memory; demonstrated in
 `credential-store.ts` and `action-runner.ts`): **every failure is human-readable,
 actionable, and carries the real underlying exception. No silent catch. No bare
 "failed" / "not found".** A mutation signals failure by **rejecting** its promise
@@ -707,7 +707,7 @@ The connector **never** catches-and-drops. Where Stripe already returns a precis
 
 ## 12. Testing strategy (offline / mockable — no live calls in CI)
 
-Testable **without a live Stripe account**, matching localflow's existing seams
+Testable **without a live Stripe account**, matching saiife's existing seams
 (pure modules, injected backends, fixture events). **No test ever performs a live
 Stripe call**; CI has no Stripe credentials.
 
@@ -774,7 +774,7 @@ Stripe call**; CI has no Stripe credentials.
    `cancelRequiresGate: true`) so a mis-authored flow can't fire a large refund or
    accept a large chargeback. This is a product-safety call, not a technical one —
    flagged for a decision before the backstop phase. Whatever the default, it is
-   **deterministic** (lfguard-style), never model-mediated.
+   **deterministic** (saiifeguard-style), never model-mediated.
 3. **Trust the event's embedded object vs re-fetch via `getCharge`.** A
    `charge.dispute.created` event embeds the charge/dispute snapshot; re-fetching
    via `getCharge`/`getDispute` guarantees freshness (a dispute status can change
@@ -833,7 +833,7 @@ mode**.
   "dispute → Shopify order context → gated refund" template (owned/wired by the
   templates track, consuming §6 verbatim). This is the connector's headline value.
 - **Phase 4 — deterministic money backstop:** the `stripe.limits` policy (§9),
-  lfguard-style, with the default decided (§13.2). Per-action limits enforced in
+  saiifeguard-style, with the default decided (§13.2). Per-action limits enforced in
   the connector before any mutation.
 - **Phase 5 — product fork:** Stripe Connect (OAuth), per-account `Stripe-Account`
   headers, a hosted webhook relay, `accounts[]` multi-account isolation (§13.1).
@@ -845,7 +845,7 @@ mode**.
 
 ---
 
-## Appendix — reused localflow surfaces (by path)
+## Appendix — reused saiife surfaces (by path)
 
 - `src/shared/integrations.ts` — the pinned `IntegrationDescriptor` /
   `LiveConnector` / `IntegrationRegistry` this connector satisfies; `IntegrationId`
@@ -881,7 +881,7 @@ mode**.
 - `src/main/flow/flow-model.ts` — the `INTEGRATION_IDS` allow-list (edited, §6.0).
 - `src/main/index.ts` — constructs + `registerConnector`s the `StripeConnector`
   (§4.4), the Shopify/Woo pattern verbatim (`index.ts:249`, `:269`).
-- `guard/` (lfguard) — the deterministic-guard posture the optional money backstop
+- `guard/` (saiifeguard) — the deterministic-guard posture the optional money backstop
   (§9) borrows (a policy floor under the author's gates, no model in the loop).
 </content>
 </invoke>

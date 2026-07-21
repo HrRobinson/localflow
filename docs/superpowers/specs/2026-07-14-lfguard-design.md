@@ -1,8 +1,8 @@
-# lfguard — command guard engine (design)
+# saiifeguard — command guard engine (design)
 
 An in-repo Rust command guard that intercepts destructive shell commands before
-an agent runs them. localflow hosts many autonomous agent terminals at once;
-lfguard is the safety layer that inspects each proposed command and blocks the
+an agent runs them. saiife hosts many autonomous agent terminals at once;
+saiifeguard is the safety layer that inspects each proposed command and blocks the
 known-catastrophic ones (`rm -rf /`, `git reset --hard` on dirty state,
 `gcloud ... delete`, `DROP DATABASE`, …) while staying out of the way of the
 99% of commands that are fine.
@@ -10,20 +10,20 @@ known-catastrophic ones (`rm -rf /`, `git reset --hard` on dirty state,
 The engine is our own code, inspired by the pipeline shape of
 [destructive_command_guard](https://github.com/Dicklesworthstone/destructive_command_guard)
 but not a fork or a dependency of it. It is a **pure sidecar binary** — no
-napi, no WASM, no link into the Electron main process. localflow version-locks
+napi, no WASM, no link into the Electron main process. saiife version-locks
 the binary to the app and ships it via electron-builder `extraResources`.
 
 This spec covers the whole arc so the shape is legible end to end:
 
 - **G1** (this work) — the standalone Rust crate: engine, packs, and CLI, with
   zero coupling to the TypeScript app.
-- **G2** (designed here, built after G1 review) — the localflow integration:
+- **G2** (designed here, built after G1 review) — the saiife integration:
   hook injection per session, a decision listener, and the needs-you / approve
   cockpit loop.
 
 ## Why a separate binary (and why Rust)
 
-- **Continuity is the product.** localflow's whole premise is many agents
+- **Continuity is the product.** saiife's whole premise is many agents
   running unattended. A guard that wedges, crashes, or adds visible latency to
   every command would get disabled within a day — so the guard must be fast and
   must **fail open** (see below). A compiled binary with a hard latency budget
@@ -32,7 +32,7 @@ This spec covers the whole arc so the shape is legible end to end:
   address space can take the whole cockpit down with it. A sidecar the app
   spawns (or that an agent hook spawns) can only ever fail locally.
 - **Portable enforcement.** The same binary backs agent hooks *and* a shell
-  preexec integration *and* the `lfguard test` CLI a human can run by hand. One
+  preexec integration *and* the `saiifeguard test` CLI a human can run by hand. One
   decision engine, many callers.
 - **Rust** buys the startup time (no runtime warmup per invocation — hooks
   spawn the binary per command), a small static binary that `extraResources`
@@ -274,7 +274,7 @@ One pass, dcg-inspired, each stage cheap before the expensive one:
   string). Full-path invocations (`/usr/bin/time`) are recognized. So
   `timeout 300 rm -rf /`, `time rm -rf /`, `chroot /mnt rm -rf /`,
   `flock /tmp/lock rm -rf /`, `su -c 'rm -rf /'`, and `watch rm -rf /` are
-  all caught now. See `docs/superpowers/specs/2026-07-16-lfguard-wrapper-hardening-design.md`.
+  all caught now. See `docs/superpowers/specs/2026-07-16-saiifeguard-wrapper-hardening-design.md`.
   **Still not unwrapped, accepted limitations:** `xargs` (its catastrophic
   operand arrives on stdin from the producer — `find / | xargs rm -rf` — and
   is invisible to any static scan; unwrapping it would catch almost nothing
@@ -372,7 +372,7 @@ resolves the same way a nested `bash -c 'bash -c "…"'` would.
 ### Fail-open (the load-bearing decision)
 
 On **any** of: JSON parse error, missing/oversized payload (a hard size limit),
-regex timeout, pack-load failure, or an internal panic — lfguard **ALLOWs** and
+regex timeout, pack-load failure, or an internal panic — saiifeguard **ALLOWs** and
 logs a warning to stderr. It never blocks on its own malfunction.
 
 Rationale: the failure mode of a fail-*closed* guard is "every agent in every
@@ -386,7 +386,7 @@ result is ALLOW + warning, never an indefinite stall.
 ## Packs
 
 A **pack** is a TOML file — metadata plus an allow-regex list and a deny-regex
-list, each deny carrying a reason. At runtime packs live under localflow's
+list, each deny carrying a reason. At runtime packs live under saiife's
 userData at `guard/packs/*.toml`; the crate also ships the canonical four as
 built-in defaults so the CLI works standalone.
 
@@ -452,14 +452,14 @@ G1 ships **all four packs**, each wired through the pipeline and CLI with a
 golden corpus (denies + must-allow safe commands, no false positives). The two
 default-on packs (`core.filesystem`, `core.git`) load under the default profile;
 the two opt-in packs (`cloud.gcloud`, `db.postgres`) stay inactive until enabled
-(crate: `profile::select_active`; CLI: `--pack <id>`; localflow later resolves
+(crate: `profile::select_active`; CLI: `--pack <id>`; saiife later resolves
 the per-environment `guard.packs` list). The packs follow a **precision-over-
 coverage** posture: they block the irrecoverable footguns and fail open on the
 long tail rather than risk false positives that would get the guard disabled.
 
 ## Configuration
 
-Per-environment profiles live in localflow's `config.json`, hand-editable
+Per-environment profiles live in saiife's `config.json`, hand-editable
 first, GUI later:
 
 ```json
@@ -470,7 +470,7 @@ first, GUI later:
 }
 ```
 
-- Keys are localflow environment numbers (single digit, same parser rules as
+- Keys are saiife environment numbers (single digit, same parser rules as
   the existing `environments` names map).
 - A profile's `packs` list is **additive** to the default-on packs; a profile
   can also disable a default-on pack (`"packs": ["-core.git"]`, exact syntax
@@ -478,7 +478,7 @@ first, GUI later:
   filesystem+git defaults.
 - Absent config ⇒ default-on packs only. The crate itself reads packs and an
   explicit pack list from argv/stdin; the `config.json` mapping is a **G2**
-  concern (localflow resolves the environment's pack set and passes it to the
+  concern (saiife resolves the environment's pack set and passes it to the
   binary) — the crate stays app-agnostic.
 
 ## Enforcement surface
@@ -488,16 +488,16 @@ Deliberately scoped — enough coverage to be useful, no fragile over-reach:
 - **Agent PreToolUse-style hooks** (primary). Claude Code exposes a
   `PreToolUse` hook that receives the proposed tool call as JSON on stdin and
   can block by exit code; Codex/Gemini get the same treatment where their hook
-  surface supports it. localflow auto-configures the hook per session at spawn
-  (G2), pointing it at the shipped `lfguard` binary. This is the highest-signal
+  surface supports it. saiife auto-configures the hook per session at spawn
+  (G2), pointing it at the shipped `saiifeguard` binary. This is the highest-signal
   point: it sees the command *before* the agent runs it, with structured
   context.
 - **Opt-in shell preexec integration** (secondary) for plain Shell panes that
   have no agent hook. A `preexec` shim (zsh `preexec` / bash `DEBUG` trap) pipes
-  the about-to-run command through `lfguard test` and aborts on deny. Opt-in
+  the about-to-run command through `saiifeguard test` and aborts on deny. Opt-in
   because it touches the user's interactive shell.
-- **CLI** (always) — `lfguard test "<cmd>"` (exit 0 allow / 1 deny) and
-  `lfguard explain "<cmd>"` (full decision trace: which pack, which rule, the
+- **CLI** (always) — `saiifeguard test "<cmd>"` (exit 0 allow / 1 deny) and
+  `saiifeguard explain "<cmd>"` (full decision trace: which pack, which rule, the
   reason, and whether an allow or the pre-filter short-circuited).
 
 ### Why not binary PATH-shims
@@ -513,9 +513,9 @@ shims are out.
 ## CLI surface (G1)
 
 ```
-lfguard test "<cmd>"        # exit 0 = allow, 1 = deny; deny prints reason to stderr
-lfguard explain "<cmd>"     # human decision trace to stdout, always exit 0
-lfguard check               # (hook mode) read agent PreToolUse JSON on stdin,
+saiifeguard test "<cmd>"        # exit 0 = allow, 1 = deny; deny prints reason to stderr
+saiifeguard explain "<cmd>"     # human decision trace to stdout, always exit 0
+saiifeguard check               # (hook mode) read agent PreToolUse JSON on stdin,
                             #   emit the hook's block/allow response, fail open
 ```
 
@@ -524,17 +524,17 @@ has); `check` takes the agent hook JSON payload on stdin (what a PreToolUse hook
 delivers) and speaks the hook's own allow/block protocol. All three share the
 one engine.
 
-## G2 — localflow integration (designed, built after G1 review)
+## G2 — saiife integration (designed, built after G1 review)
 
 Built on top of the reviewed G1 crate. Four seams into the existing app:
 
 1. **Hook injection.** At `session:create`, for agents that support it,
-   localflow writes/points the agent's PreToolUse hook config at the shipped
-   `lfguard` binary with the environment's resolved pack set, and tears it down
+   saiife writes/points the agent's PreToolUse hook config at the shipped
+   `saiifeguard` binary with the environment's resolved pack set, and tears it down
    on session close — mirroring how the OpenClaw operator launch injects and
    revokes per session.
-2. **Decision listener (cockpit loop).** lfguard POSTs each decision to
-   localflow's existing token-authenticated hook listener (the same
+2. **Decision listener (cockpit loop).** saiifeguard POSTs each decision to
+   saiife's existing token-authenticated hook listener (the same
    loopback + bearer-token surface the operator control API already uses). A
    **blocked** command flips the session to **needs-you** with a peek at the
    blocked command and an **allow-once** token; the user can approve it once
@@ -595,8 +595,8 @@ per-session inject/revoke lifecycle), so it is integration, not new machinery.
   `env FOO=$(...) cmd` and `$(...)suffix` residuals are asserted closed;
   plus latency checks for many substitutions in one segment and many
   segments each carrying one), asserting no false positives.
-- **Acceptance (this slice):** `lfguard test "git reset --hard"` exits 1 with a
-  reason; `lfguard test "git status"` exits 0; `lfguard explain "git reset
+- **Acceptance (this slice):** `saiifeguard test "git reset --hard"` exits 1 with a
+  reason; `saiifeguard test "git status"` exits 0; `saiifeguard explain "git reset
   --hard"` prints the matched pack + rule + reason.
 
 **G2 (integration, later):** hook injected at create and removed at close;
@@ -612,12 +612,12 @@ per-environment pack toggles take effect.
   short of a full AST: no variable expansion, no glob expansion, no here-docs,
   no evaluating what a substitution actually resolves to).
 - Binary PATH-shims (rejected above).
-- Network calls from the crate itself (G2's localflow does the POST; the crate
+- Network calls from the crate itself (G2's saiife does the POST; the crate
   only decides and, in `check` mode, speaks the hook protocol).
 - Per-command machine learning / heuristic scoring — packs are explicit regex,
   auditable and user-editable.
-- Windows-specific packs (v1 targets the macOS/Linux shells localflow runs).
-- Rolling back a command already executed — lfguard is strictly a *pre*-guard.
+- Windows-specific packs (v1 targets the macOS/Linux shells saiife runs).
+- Rolling back a command already executed — saiifeguard is strictly a *pre*-guard.
 - SQL `UPDATE` without a `WHERE` clause — regex on SQL text is a poor fit for
   reliably distinguishing a real `WHERE` clause from one that's commented out,
   spans multiple statements, or is inside a string literal; deferred to G2,

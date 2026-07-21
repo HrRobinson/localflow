@@ -34,7 +34,7 @@ export interface PaletteDragPayload {
   ref?: string
 }
 
-export const PALETTE_DND_MIME = 'application/localflow-flow-node'
+export const PALETTE_DND_MIME = 'application/saiife-flow-node'
 
 interface Props {
   graph: FlowGraph

@@ -68,7 +68,7 @@ export class FlowEngine {
   constructor(private deps: FlowEngineDeps) {}
 
   /** Subscribes trigger streams for every enabled, RUNNABLE flow. Opt-in: with
-   *  the flows block disabled the engine never starts (localflow's no-config
+   *  the flows block disabled the engine never starts (saiife's no-config
    *  guarantee). Listing/editing is lenient (a draft with an unreachable node,
    *  a missing trigger, etc. still loads and stays editable — flow-store.ts),
    *  but going LIVE is the strict gate: a flow that fails the STRICT

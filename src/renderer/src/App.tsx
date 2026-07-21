@@ -126,13 +126,13 @@ export default function App(): React.JSX.Element {
   // push), see persistence.ts's loadSavedState/saveState.
   const [persistenceNotice, setPersistenceNotice] = useState<string | null>(null)
   useEffect(() => {
-    void window.localflow.getCapabilities().then(setCaps)
+    void window.saiife.getCapabilities().then(setCaps)
   }, [])
   useEffect(() => {
-    void window.localflow.getPersistenceNotice().then((notice) => {
+    void window.saiife.getPersistenceNotice().then((notice) => {
       if (notice) setPersistenceNotice(notice)
     })
-    const off = window.localflow.onPersistenceNotice((message) => setPersistenceNotice(message))
+    const off = window.saiife.onPersistenceNotice((message) => setPersistenceNotice(message))
     return () => off()
   }, [])
   // Which environments currently have an operator, for the sidebar indicator.
@@ -143,7 +143,7 @@ export default function App(): React.JSX.Element {
   const [envNames, setEnvNames] = useState<Record<string, string>>({})
   useEffect(() => {
     let cancelled = false
-    void window.localflow.getEnvironmentNames().then((names) => {
+    void window.saiife.getEnvironmentNames().then((names) => {
       if (!cancelled) setEnvNames(names)
     })
     return () => {
@@ -155,7 +155,7 @@ export default function App(): React.JSX.Element {
   const [agents, setAgents] = useState<AgentInfo[]>([])
   useEffect(() => {
     let cancelled = false
-    void window.localflow.listAgents().then((list) => {
+    void window.saiife.listAgents().then((list) => {
       if (!cancelled) setAgents(list)
     })
     return () => {
@@ -173,7 +173,7 @@ export default function App(): React.JSX.Element {
     let cancelled = false
     const tick = async (): Promise<void> => {
       const envs = [...new Set(sessions.map((s) => s.environment))]
-      const flags = await Promise.all(envs.map((e) => window.localflow.operatorStatus(e)))
+      const flags = await Promise.all(envs.map((e) => window.saiife.operatorStatus(e)))
       if (cancelled) return
       setGrantedEnvs(new Set(flags.filter((f) => f.granted).map((f) => f.environment)))
     }
@@ -191,8 +191,8 @@ export default function App(): React.JSX.Element {
   // until the next render.
   const refresh = useCallback(async (): Promise<SessionInfo[]> => {
     const [list, groupList] = await Promise.all([
-      window.localflow.listSessions(),
-      window.localflow.listGroups()
+      window.saiife.listSessions(),
+      window.saiife.listGroups()
     ])
     setSessions(list)
     setGroups(groupList)
@@ -208,7 +208,7 @@ export default function App(): React.JSX.Element {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch on mount
     void refresh()
-    const offStatus = window.localflow.onStatus((id, status) => {
+    const offStatus = window.saiife.onStatus((id, status) => {
       setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, status } : s)))
     })
     // Session state arrives via two paths: pushed onStatus events (fast path
@@ -228,7 +228,7 @@ export default function App(): React.JSX.Element {
     customCommand?: string,
     cwd?: string
   ): Promise<void> => {
-    const created = await window.localflow.createSession(agentId, cwd, customCommand, environment)
+    const created = await window.saiife.createSession(agentId, cwd, customCommand, environment)
     if (created) {
       setView('environment')
       // A pane enlarged before we left the environment view would otherwise
@@ -239,7 +239,7 @@ export default function App(): React.JSX.Element {
     }
   }
   const createBrowser = async (url: string): Promise<void> => {
-    const created = await window.localflow.createBrowserSession(url, environment)
+    const created = await window.saiife.createBrowserSession(url, environment)
     if (created) {
       setView('environment')
       setEnlarged(null)
@@ -251,7 +251,7 @@ export default function App(): React.JSX.Element {
   // environment view on the first pane the template produced (main derives
   // cwd via the folder picker, so there's nothing else to pass through).
   const createTemplate = async (name: string): Promise<void> => {
-    const created = await window.localflow.createTemplate(name, undefined, environment)
+    const created = await window.saiife.createTemplate(name, undefined, environment)
     if (created && created.length > 0) {
       setView('environment')
       setEnlarged(null)
@@ -263,7 +263,7 @@ export default function App(): React.JSX.Element {
   // runFlow IPC — no pane is opened; the engine produces a run. Surfaces the
   // engine's legible result (run id, or its real error) as a notice.
   const launchWorker = async (flowId: string): Promise<void> => {
-    const res = await window.localflow.runFlow(flowId)
+    const res = await window.saiife.runFlow(flowId)
     setConsoleNotice(
       res.ok
         ? `Worker handed to the engine — run ${res.runId} started.`
@@ -276,7 +276,7 @@ export default function App(): React.JSX.Element {
   // request) is simply a no-op beyond that.
   const addPane = async (sourceId: string, req: AddPaneRequest): Promise<void> => {
     setAddPaneFor(null)
-    const created = await window.localflow.addPane(sourceId, req)
+    const created = await window.saiife.addPane(sourceId, req)
     if (created) {
       setActiveId(created.id)
       await refresh()
@@ -292,13 +292,13 @@ export default function App(): React.JSX.Element {
     if (target === 'new') {
       const pane = sessions.find((s) => s.id === paneId)
       if (!pane) return
-      const created = await window.localflow.createGroup(pane.name, pane.environment)
+      const created = await window.saiife.createGroup(pane.name, pane.environment)
       if (!created) return
       groupId = created.id
     } else {
       groupId = target
     }
-    const updated = await window.localflow.assignToGroup(paneId, groupId)
+    const updated = await window.saiife.assignToGroup(paneId, groupId)
     if (updated) await refresh()
   }
   // No-op on an already-ungrouped pane — assignToGroup always records a
@@ -307,23 +307,23 @@ export default function App(): React.JSX.Element {
   const ungroupPane = async (paneId: string): Promise<void> => {
     const pane = sessions.find((s) => s.id === paneId)
     if (!pane?.groupId) return
-    const updated = await window.localflow.assignToGroup(paneId, null)
+    const updated = await window.saiife.assignToGroup(paneId, null)
     if (updated) await refresh()
   }
   const restart = async (id: string, fresh: boolean): Promise<void> => {
-    await window.localflow.restartSession(id, fresh)
+    await window.saiife.restartSession(id, fresh)
     await refresh()
   }
   const closeTerminal = async (id: string): Promise<void> => {
-    await window.localflow.closeTerminal(id)
+    await window.saiife.closeTerminal(id)
     await afterPaneGone(id)
   }
   const deleteSession = async (id: string): Promise<void> => {
-    await window.localflow.deleteSession(id)
+    await window.saiife.deleteSession(id)
     await afterPaneGone(id)
   }
   const renameSession = async (id: string, name: string): Promise<void> => {
-    const updated = await window.localflow.renameSession(id, name)
+    const updated = await window.saiife.renameSession(id, name)
     if (updated) setSessions((prev) => prev.map((s) => (s.id === id ? updated : s)))
   }
   // Shared post-action cleanup: whether the pane vanished entirely
@@ -389,7 +389,7 @@ export default function App(): React.JSX.Element {
   // "Open lazygit here": main spawns a custom lazygit session in the reviewed
   // session's own cwd + environment; jump to it in the environment grid.
   const openLazygit = async (sessionId: string): Promise<void> => {
-    const created = await window.localflow.openLazygit(sessionId)
+    const created = await window.saiife.openLazygit(sessionId)
     if (created) {
       setEnvironment(created.environment)
       setView('environment')
@@ -403,8 +403,8 @@ export default function App(): React.JSX.Element {
   // editor didn't launch; surface main's availability hint as a notice (the
   // keybinding path has no disabled button to explain itself).
   const openEditor = async (sessionId: string): Promise<void> => {
-    if (await window.localflow.openEditor(sessionId)) return
-    const current = await window.localflow.getCapabilities()
+    if (await window.saiife.openEditor(sessionId)) return
+    const current = await window.saiife.getCapabilities()
     setCaps(current)
     setEditorNotice(
       current.editor.hint ?? `Couldn't open the configured editor (${current.editor.command})`
@@ -434,14 +434,14 @@ export default function App(): React.JSX.Element {
   const rerunWatchpoint = async (event: ConsoleEvent): Promise<void> => {
     if (event.detail.source !== 'capture') return
     const watchpointId = event.detail.watchpointId
-    const watchpoints = await window.localflow.listWatchpoints(event.environment)
+    const watchpoints = await window.saiife.listWatchpoints(event.environment)
     const notice = missingWatchpointNotice(watchpoints, watchpointId)
     if (notice) {
       setConsoleNotice(notice)
       return
     }
     const wp = watchpoints.find((w) => w.id === watchpointId)!
-    await window.localflow.registerWatchpoint(event.environment, wp.workflow, wp.step, wp.capture)
+    await window.saiife.registerWatchpoint(event.environment, wp.workflow, wp.step, wp.capture)
   }
   // Switching environments re-scopes focus: the active/enlarged pane must be
   // one of the target environment's panes, or null.
@@ -461,7 +461,7 @@ export default function App(): React.JSX.Element {
     )
   }
   const moveToEnvironment = async (id: string, n: number): Promise<void> => {
-    await window.localflow.setEnvironment(id, n)
+    await window.saiife.setEnvironment(id, n)
     // The pane leaves the visible grid (spec: focus stays behind), but unlike
     // close/delete it's still a live session — just on another environment.
     // For a grouped pane, the whole group moved with it (session-manager
@@ -539,8 +539,8 @@ export default function App(): React.JSX.Element {
         if (parsed) bindings.push([action, parsed])
       }
     }
-    void window.localflow.getKeybindings().then(loadBindings)
-    const offChanged = window.localflow.onKeybindingsChanged(loadBindings)
+    void window.saiife.getKeybindings().then(loadBindings)
+    const offChanged = window.saiife.onKeybindingsChanged(loadBindings)
 
     // Capture phase: this dispatcher runs before terminal xterm instances
     // see the event, so it can claim bound combos (cmd+w, cmd+enter, ...)
@@ -677,7 +677,7 @@ export default function App(): React.JSX.Element {
       e.stopPropagation()
       runAction(match[0])
     }
-    const offForwarded = window.localflow.onKeyAction((action) => runAction(action))
+    const offForwarded = window.saiife.onKeyAction((action) => runAction(action))
     window.addEventListener('keydown', onKey, true)
     return () => {
       offChanged()
@@ -693,8 +693,8 @@ export default function App(): React.JSX.Element {
       setTerminalTheme(themeToXterm(payload.theme))
       setThemeNotice(payload.error ?? null)
     }
-    void window.localflow.getTheme().then(apply)
-    const off = window.localflow.onThemeChanged(apply)
+    void window.saiife.getTheme().then(apply)
+    const off = window.saiife.onThemeChanged(apply)
     return () => off()
   }, [])
 
@@ -702,7 +702,7 @@ export default function App(): React.JSX.Element {
   // of the prefs (height, sources, text) since it's already the sole reader.
   useEffect(() => {
     let alive = true
-    void window.localflow.getConsolePrefs().then((prefs) => {
+    void window.saiife.getConsolePrefs().then((prefs) => {
       if (alive && !consoleTouched.current) setConsoleOpen(prefs.open)
     })
     return () => {

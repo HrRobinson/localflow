@@ -16,9 +16,9 @@ export const VALID_AGENTS: AgentId[] = ['claude', 'codex', 'gemini', 'openclaw',
 export type SessionKind = 'terminal' | 'browser'
 
 /**
- * The vocabulary of the activity feed (M7): the three hook events localflow
+ * The vocabulary of the activity feed (M7): the three hook events saiife
  * applies, plus the lifecycle moments it already knows. Lives only in main's
- * memory — the ring is never persisted, so the feed says "since localflow
+ * memory — the ring is never persisted, so the feed says "since saiife
  * started".
  */
 export type ActivityEventKind =
@@ -118,7 +118,7 @@ export interface SessionInfo {
    */
   resumeFailed?: boolean
   /**
-   * Codex cli-args-* panes only: whether lfguard's guard hook has been observed
+   * Codex cli-args-* panes only: whether saiifeguard's guard hook has been observed
    * firing for this pane since the current pty was spawned.
    * - 'unverified': guard configured on this launch's CLI, but no invocation
    *   observed yet (the pane may simply not have run a command — silence is not
@@ -166,7 +166,7 @@ export interface AgentInfo {
 
 /**
  * Result of a per-agent override write (mirrors BindingChangeResult): an
- * env override naming a key that localflow's hook injection owns is
+ * env override naming a key that saiife's hook injection owns is
  * rejected with the offending names, because user env overrides win the
  * spawn env merge and such a clobber would silently kill that agent's
  * status feed.
@@ -176,7 +176,7 @@ export type AgentOverrideResult =
 
 /**
  * Result of a `guard:setPacks` write (mirrors `AgentOverrideResult`/
- * `BindingChangeResult`): this is a security-relevant setting (which lfguard
+ * `BindingChangeResult`): this is a security-relevant setting (which saiifeguard
  * packs are enforced), so a disk-write failure must be surfaced rather than
  * silently discarded — a checkbox that looks "on" while nothing was actually
  * persisted would leave the user believing protection is active when it

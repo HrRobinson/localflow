@@ -17,13 +17,13 @@ export interface DiscordConfig {
   guildId: string
   /** The channel approvals + notifications post to by default (snowflake). */
   defaultChannel: string
-  /** Application id — needed to register `/localflow` + address callbacks. */
+  /** Application id — needed to register `/saiife` + address callbacks. */
   applicationId?: string
   /** Application PUBLIC key — Ed25519 verify key for `mode: 'http'` only. */
   publicKey?: string
   /** Ingress mode; defaults to 'gateway' (the zero-ingress path, §2.1). */
   mode: DiscordMode
-  /** localflow environment (1-9). */
+  /** saiife environment (1-9). */
   environment: number
   /** The public ingress URL for `mode: 'http'` only (§4.4). */
   interactionsUrl?: string

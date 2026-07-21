@@ -15,7 +15,7 @@ matching Claude Code today, instead of the permanent violet `running`
 fallback. Research (2026-07-06, summarized in the v2 roadmap's M2 section)
 confirmed both CLIs have Claude-like hook systems, but with real, named
 uncertainty about exactly how much of each can be injected per-invocation
-(no on-disk config edits — localflow never touches the user's own
+(no on-disk config edits — saiife never touches the user's own
 `~/.codex/config.toml` or `~/.gemini/settings.json`). This spec's job is to
 turn that uncertainty into an explicit, testable set of fallback tiers
 rather than a single "hope it works" implementation.
@@ -24,7 +24,7 @@ rather than a single "hope it works" implementation.
 
 Every agent's hook command — however it gets injected — POSTs the same
 `{paneId, event}` JSON body to the existing `hook-server.ts` listener, with
-the same `X-Localflow-Token` header. `hook-server.ts`, `parseHookBody`,
+the same `X-Saiife-Token` header. `hook-server.ts`, `parseHookBody`,
 `SessionManager.applyHookEvent`, and `state-machine.ts`'s `transition()` are
 **unchanged by this milestone** — they already only know about the three
 canonical `HookEventName`s (`UserPromptSubmit`, `Notification`, `Stop`).
@@ -33,7 +33,7 @@ What differs per agent is:
 1. **How the hook command is injected** (a file path flag, an env var, or
    raw CLI args) — the *mechanism*.
 2. **Which of the agent's native hook events exist at all, and which of
-   *those* localflow can actually reach programmatically** — the
+   *those* saiife can actually reach programmatically** — the
    *fidelity*, expressed as a per-agent tier.
 3. **The mapping from the agent's native event name (or payload shape) to
    our canonical `HookEventName`** — baked into the generated hook command
@@ -96,7 +96,7 @@ validation) but not in mechanism.
 
 Research: `settings.json` hooks `BeforeAgent`, `Notification`
 (`ToolPermission` sub-type → needs-you), `AfterAgent`, injectable via the
-`GEMINI_CLI_SYSTEM_SETTINGS_PATH` env var pointing at a localflow-managed
+`GEMINI_CLI_SYSTEM_SETTINGS_PATH` env var pointing at a saiife-managed
 file. This is *structurally* the same mechanism as Claude's — a full
 hooks-table JSON file — just pointed at via an environment variable instead
 of a CLI flag, which is why it's the higher-confidence of the two new
@@ -119,14 +119,14 @@ Mapping (native → canonical):
 its own stdin (the hook payload Gemini feeds it) to decide whether this
 notification is a `ToolPermission` approval prompt before POSTing, since a
 `Notification` hook can fire for other notification kinds that are *not*
-needs-you moments (e.g., a background progress ping) and localflow must
+needs-you moments (e.g., a background progress ping) and saiife must
 not paint the pane yellow for those.
 
 ```sh
 sh -c 'body=$(cat); case "$body" in
   *"\"type\":\"ToolPermission\""*|*"\"type\": \"ToolPermission\""*)
     curl -s -m 3 -X POST http://127.0.0.1:<port>/event \
-      -H "Content-Type: application/json" -H "X-Localflow-Token: <token>" \
+      -H "Content-Type: application/json" -H "X-Saiife-Token: <token>" \
       -d '"'"'{"paneId":"<id>","event":"Notification"}'"'"' ;;
 esac'
 ```
@@ -217,7 +217,7 @@ honest resolution, not a workaround:
 - **Known, documented limitation:** between the user submitting a new
   prompt and the next `Stop` firing, the pane keeps showing `idle` even
   though the agent is actually mid-turn — there is no event that could
-  ever tell localflow otherwise in this tier. This is *stale-but-honest*,
+  ever tell saiife otherwise in this tier. This is *stale-but-honest*,
   not silently wrong: it is exactly as accurate as the last real signal,
   never fabricated. It is still a net improvement over permanent violet
   `running`, because `idle`↔`exited` (crash/quit) remain fully accurate
@@ -326,14 +326,14 @@ export function buildHookInjection(
   generating the injected command/file/env, never about the receiving
   side.
 - No support for a user's own pre-existing `~/.codex/hooks.json` or
-  `~/.gemini/settings.json` merging with localflow's injected ones —
+  `~/.gemini/settings.json` merging with saiife's injected ones —
   `-c`/env-var injection is chosen specifically because it's additive at
   the process-invocation level and never touches the user's on-disk
   config; if a user's own `GEMINI_CLI_SYSTEM_SETTINGS_PATH` is already
-  set in their shell profile, localflow's spawn-time override wins for
+  set in their shell profile, saiife's spawn-time override wins for
   that session (documented limitation, not solved this milestone — no
   known way to merge two settings files short of reading and re-writing
-  the user's own file, which localflow deliberately never does).
+  the user's own file, which saiife deliberately never does).
 - No UI change beyond the pane border color already driven by
   `SessionStatus` — `working`/`needs-you`/`idle`/`exited`/`running` colors
   and the state machine's transitions are all pre-existing.
@@ -349,13 +349,13 @@ testing cannot be automated. The split:
   correct event→canonical mapping, correct embedded `paneId`/`port`/
   `token`, input validation (same injection-safety assertions as
   `hook-settings.test.ts` today), 0600 file permissions for the two
-  file-writing adapters. These test **localflow's own logic**, not
+  file-writing adapters. These test **saiife's own logic**, not
   whether Codex/Gemini would actually accept the generated string — that
   question is explicitly out of unit-test scope.
 - **E2E fixture scripts** (`tests/fixtures/fake-codex.sh`,
   `fake-gemini.sh`, alongside the existing `fake-claude.sh`): stand-ins
   that *simulate the CLI's own hook-firing behavior* by executing whatever
-  command localflow's adapter placed in argv/env, at a scripted moment
+  command saiife's adapter placed in argv/env, at a scripted moment
   (e.g., immediately after start, to simulate a fast turn). This proves
   the full local chain — `SpawnSpec` → `buildHookInjection` → argv/env →
   process spawn → command execution → `hook-server.ts` → `SessionManager`

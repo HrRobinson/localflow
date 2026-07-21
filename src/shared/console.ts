@@ -157,3 +157,19 @@ export function toCaptureEvent(capture: Capture): ConsoleEventInput {
     }
   }
 }
+
+/**
+ * The one-off userData carry-over that follows the product rename. It runs
+ * before the bus exists, so main buffers the summary string and replays it
+ * here once the bus is constructed. Emitted on `operator` deliberately: adding
+ * a sixth ConsoleSource would change CONSOLE_SOURCE_CAPS, the renderer filter
+ * chips and the persisted ConsolePrefs shape, which is out of scope.
+ */
+export function toMigrationEvent(summary: string, environment = 1): ConsoleEventInput {
+  return {
+    source: 'operator',
+    environment,
+    label: `userData migration · ${summary}`,
+    detail: { source: 'operator', action: 'userdata-migration', args: summary }
+  }
+}

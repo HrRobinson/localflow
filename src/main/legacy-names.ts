@@ -56,3 +56,51 @@ export function userDataDirFor(productName: string, input: UserDataPathInput): s
 export function legacyUserDataDir(input: UserDataPathInput): string {
   return userDataDirFor(LEGACY_PRODUCT_NAME, input)
 }
+
+/** A user-settable variable whose name changed with the product rename. */
+export interface RenamedEnvVar {
+  current: string
+  legacy: string
+}
+
+/**
+ * Renaming these outright would break anyone who has set them, so the current
+ * name is read first and the pre-rebrand name is honoured as a fallback for a
+ * release or two, with a deprecation notice.
+ *
+ * Only user-settable tool-path overrides are listed. The remaining LOCALFLOW_*
+ * variables are internal or test-only (userData override, e2e handshakes, the
+ * login-shell PATH sentinels, and the operator grant endpoint/token, which the
+ * app writes and reads on both sides of the same build) and get no fallback.
+ */
+export const RENAMED_ENV_VARS: readonly RenamedEnvVar[] = [
+  { current: 'SAIIFE_CLAUDE_BIN', legacy: 'LOCALFLOW_CLAUDE_BIN' },
+  { current: 'SAIIFE_OPENCLAW_BIN', legacy: 'LOCALFLOW_OPENCLAW_BIN' },
+  { current: 'SAIIFE_LAZYGIT_BIN', legacy: 'LOCALFLOW_LAZYGIT_BIN' },
+  { current: 'SAIIFE_EDITOR_BIN', legacy: 'LOCALFLOW_EDITOR_BIN' }
+]
+
+/**
+ * Reads `current`, falling back to its pre-rebrand spelling. An empty string is
+ * treated as unset on both names. The deprecation notice fires only when the
+ * fallback actually supplied the value.
+ */
+export function readRenamedEnv(
+  env: NodeJS.ProcessEnv,
+  current: string,
+  onDeprecated: (message: string) => void = (message) => console.warn(message)
+): string | undefined {
+  const direct = env[current]
+  if (direct !== undefined && direct !== '') return direct
+
+  const spec = RENAMED_ENV_VARS.find((v) => v.current === current)
+  if (spec === undefined) return undefined
+
+  const legacy = env[spec.legacy]
+  if (legacy === undefined || legacy === '') return undefined
+
+  onDeprecated(
+    `${spec.legacy} is deprecated and will be removed in a future release — rename it to ${spec.current}.`
+  )
+  return legacy
+}

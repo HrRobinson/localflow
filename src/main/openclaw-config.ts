@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { LEGACY_SKILL_KEY } from './legacy-names'
 
 /**
  * Auto-writes the localflow skill env into an EXISTING OpenClaw config on
@@ -54,6 +55,25 @@ function persist(configFile: string, config: Obj): SkillEnvResult {
 }
 
 /**
+ * Deletes the pre-rebrand `skills.entries.<legacy>.env` block, and the entry
+ * itself when nothing else of the user's is left under it. A live grant written
+ * by the previous release would otherwise sit in this user-owned file forever,
+ * holding a stale bearer token nothing reads. Returns true if it changed
+ * anything, so the caller knows a rewrite is needed.
+ */
+function dropLegacySkillEnv(config: Obj): boolean {
+  const skills = config['skills']
+  if (!isObj(skills)) return false
+  const entries = skills['entries']
+  if (!isObj(entries)) return false
+  const legacy = entries[LEGACY_SKILL_KEY]
+  if (!isObj(legacy) || !('env' in legacy)) return false
+  delete legacy['env']
+  if (Object.keys(legacy).length === 0) delete entries[LEGACY_SKILL_KEY]
+  return true
+}
+
+/**
  * Sets `skills.entries.localflow.env` to this grant's credentials. Missing
  * containers along the path are created as objects; a container that exists
  * with a non-object shape belongs to the user and is never replaced (fail
@@ -64,6 +84,7 @@ export function writeSkillEnv(configFile: string, endpoint: string, token: strin
   if ('skip' in loaded) return { ok: true, written: false }
   if ('fail' in loaded) return { ok: false, reason: loaded.fail }
   const { config } = loaded
+  dropLegacySkillEnv(config)
   let node = config
   for (const key of ['skills', 'entries', 'localflow']) {
     const next = node[key]
@@ -91,12 +112,17 @@ export function removeSkillEnv(configFile: string): SkillEnvResult {
   if ('skip' in loaded) return { ok: true, written: false }
   if ('fail' in loaded) return { ok: false, reason: loaded.fail }
   const { config } = loaded
+  const droppedLegacy = dropLegacySkillEnv(config)
   const skills = config['skills']
-  if (!isObj(skills)) return { ok: true, written: false }
+  if (!isObj(skills))
+    return droppedLegacy ? persist(configFile, config) : { ok: true, written: false }
   const entries = skills['entries']
-  if (!isObj(entries)) return { ok: true, written: false }
-  const localflow = entries['localflow']
-  if (!isObj(localflow) || !('env' in localflow)) return { ok: true, written: false }
-  delete localflow['env']
+  if (!isObj(entries))
+    return droppedLegacy ? persist(configFile, config) : { ok: true, written: false }
+  const current = entries['localflow']
+  if (!isObj(current) || !('env' in current)) {
+    return droppedLegacy ? persist(configFile, config) : { ok: true, written: false }
+  }
+  delete current['env']
   return persist(configFile, config)
 }

@@ -118,3 +118,74 @@ describe('removeSkillEnv', () => {
     expect(readFileSync(file, 'utf8')).toBe('nope')
   })
 })
+
+describe('legacy skill-env cleanup', () => {
+  let dir: string
+  let file: string
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'openclaw-legacy-'))
+    file = join(dir, 'openclaw.json')
+  })
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  const legacyConfig = {
+    skills: {
+      entries: {
+        localflow: { env: { LOCALFLOW_ENDPOINT: 'http://127.0.0.1:5000', LOCALFLOW_TOKEN: 'old' } },
+        other: { env: { KEEP: 'me' } }
+      }
+    },
+    unrelated: true
+  }
+
+  it('writeSkillEnv removes the pre-rebrand block while writing the current one', () => {
+    writeFileSync(file, JSON.stringify(legacyConfig))
+    const result = writeSkillEnv(file, 'http://127.0.0.1:6000', 'new')
+    expect(result).toEqual({ ok: true, written: true })
+    const parsed = JSON.parse(readFileSync(file, 'utf8')) as Record<string, never>
+    const entries = (parsed as unknown as { skills: { entries: Record<string, unknown> } }).skills
+      .entries
+    // Pre-Task-10, the current key and LEGACY_SKILL_KEY are both literally
+    // 'localflow' (the rename hasn't touched the hardcoded path yet), so the
+    // sweep-then-write leaves the key present but holding only the fresh
+    // grant — the stale legacy token must not survive as a duplicate/merge.
+    expect(entries['localflow']).toEqual({
+      env: { LOCALFLOW_ENDPOINT: 'http://127.0.0.1:6000', LOCALFLOW_TOKEN: 'new' }
+    })
+    expect(entries['other']).toEqual({ env: { KEEP: 'me' } })
+  })
+
+  it('removeSkillEnv strips the pre-rebrand block too', () => {
+    writeFileSync(file, JSON.stringify(legacyConfig))
+    const result = removeSkillEnv(file)
+    expect(result).toEqual({ ok: true, written: true })
+    const entries = (
+      JSON.parse(readFileSync(file, 'utf8')) as { skills: { entries: Record<string, unknown> } }
+    ).skills.entries
+    expect(entries['localflow']).toBeUndefined()
+    expect(entries['other']).toEqual({ env: { KEEP: 'me' } })
+  })
+
+  it('keeps sibling keys the user put under the pre-rebrand entry', () => {
+    writeFileSync(
+      file,
+      JSON.stringify({
+        skills: { entries: { localflow: { env: { LOCALFLOW_TOKEN: 't' }, notes: 'mine' } } }
+      })
+    )
+    removeSkillEnv(file)
+    const entries = (
+      JSON.parse(readFileSync(file, 'utf8')) as { skills: { entries: Record<string, unknown> } }
+    ).skills.entries
+    expect(entries['localflow']).toEqual({ notes: 'mine' })
+  })
+
+  it('is a silent no-op when no pre-rebrand block exists', () => {
+    writeFileSync(file, JSON.stringify({ skills: { entries: {} } }))
+    expect(removeSkillEnv(file)).toEqual({ ok: true, written: false })
+  })
+})

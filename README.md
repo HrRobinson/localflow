@@ -9,6 +9,12 @@ glance which ones need you. Status colors make that glanceable: blue means a
 session is working, yellow means it's waiting on you, green means it
 finished, and gray means the process has exited.
 
+**Full documentation: [saiife.com/docs](https://saiife.com/docs)** — the
+command guard and all 11 rule packs, flows, the 20 connectors, and the
+keybinding, `config.json` and userData reference. None of that is covered
+below. (The docs site ships from the `saiife.com` repo; the link resolves
+once that deploy lands.)
+
 ## How it works
 
 - Each pane is a real `claude` CLI process running in a PTY — no wrapping,

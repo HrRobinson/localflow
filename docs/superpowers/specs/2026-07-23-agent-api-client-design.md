@@ -280,10 +280,20 @@ string, bypassing the shape/withhold model entirely.** `sendRaw()` returns
 connector that depends on it. The API client uses `sendRaw` and classifies every
 status uniformly.
 
-**Collections get their own `IntegrationId`, not the `http` keyspace.** Reusing
-`http` would put collection secrets and canvas-node secrets in one namespace,
-where a collection named `orders` collides with a node named `orders`. A distinct
-integration id makes the collision structurally impossible rather than carefully
+**Collection secrets get a dedicated store, not the `http` keyspace and not a new
+`IntegrationId`.** Reusing `http` would put collection secrets and canvas-node
+secrets in one namespace, where a collection named `orders` collides with a node
+named `orders`. Adding an `IntegrationId` would leak a non-integration into
+descriptor/registry enumeration.
+
+`hosted-token-store.ts` already establishes the pattern for exactly this case —
+*"its OWN tiny store (not `CredentialStore`) so `IntegrationId` stays clean —
+'hosted' is not an integration and must not leak into descriptor/registry
+enumeration"*. `CollectionSecretStore` follows it: its own `safeStorage`-encrypted
+sidecar file, the same injected `SecretBackend` seam, atomic temp+rename writes,
+one main-process-only `revealSecret` exit, and the same legible
+availability/decrypt errors that never render a value. A separate file makes
+collision with the `http` keyspace structurally impossible rather than carefully
 avoided.
 
 ## 8. The human surface
@@ -306,8 +316,9 @@ not a second log view.
 
 - `collection-store.ts` — non-secret collection data in userData: environment,
   origins, auth config, saved requests, varSets.
-- `collection-secrets.ts` — `CredentialStore` wrapper under the collection's own
-  integration id. The sole plaintext exit, main-process-only.
+- `collection-secrets.ts` — `CollectionSecretStore`, a dedicated keychain store
+  on the `hosted-token-store.ts` pattern (§7). Its own sidecar file; `revealSecret`
+  is the sole plaintext exit, main-process-only.
 - `request-resolve.ts` — pure: collection + varSet + spec + `$ref`s → params for
   `resolveRequest`; plus the origin check.
 - `response-store.ts` — full bodies, main-only, environment-scoped, LRU-bounded;

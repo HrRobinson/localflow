@@ -156,7 +156,7 @@ describe('resolveShellPath', () => {
       currentPath: proc,
       platform: 'darwin',
       home: HOME,
-      runner: async () => '__LOCALFLOW_PATH_START__/some/leaked/partial/path'
+      runner: async () => '__SAIIFE_PATH_START__/some/leaked/partial/path'
       // no end sentinel — e.g. the shell was killed mid-write
     })
     const parts = entries(result)
@@ -164,6 +164,6 @@ describe('resolveShellPath', () => {
     for (const dir of COMMON) expect(parts).toContain(dir)
     // The unterminated partial output must not leak into the resolved PATH.
     expect(parts).not.toContain('/some/leaked/partial/path')
-    expect(result).not.toContain('__LOCALFLOW_PATH_START__')
+    expect(result).not.toContain('__SAIIFE_PATH_START__')
   })
 })

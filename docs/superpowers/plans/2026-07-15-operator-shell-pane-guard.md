@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Run an lfguard command-check before any operator prompt write reaches a pane's pty, closing lfguard G2's one coverage gap (raw operator bytes bypass agent hooks).
+**Goal:** Run an saiifeguard command-check before any operator prompt write reaches a pane's pty, closing saiifeguard G2's one coverage gap (raw operator bytes bypass agent hooks).
 
-**Architecture:** A pure, injectable `operator-guard.ts` unit spawns `lfguard test <text> --pack …` (argv array, no shell) and returns an allow/deny verdict, fail-open on every failure mode. `control-api.ts`'s `POST /panes/:handle/prompt` route awaits the verdict before writing; on deny it returns 403, echoes a notice into the pane (`session-manager.emitNotice`), and emits a `guard` console row via `onGuardBlock`. `index.ts` wires the already-resolved `guardBin` + `registry.getGuardPacks()` and routes `onGuardBlock` to the existing G2 console `guard` source.
+**Architecture:** A pure, injectable `operator-guard.ts` unit spawns `saiifeguard test <text> --pack …` (argv array, no shell) and returns an allow/deny verdict, fail-open on every failure mode. `control-api.ts`'s `POST /panes/:handle/prompt` route awaits the verdict before writing; on deny it returns 403, echoes a notice into the pane (`session-manager.emitNotice`), and emits a `guard` console row via `onGuardBlock`. `index.ts` wires the already-resolved `guardBin` + `registry.getGuardPacks()` and routes `onGuardBlock` to the existing G2 console `guard` source.
 
 **Tech Stack:** TypeScript, Electron main process, Node `child_process.execFile`, Vitest.
 
@@ -12,11 +12,11 @@
 
 - **Fail-open is absolute.** Missing binary, spawn error, timeout, or any non-0/1 exit code → the write is ALLOWED. A broken guard must never block a legitimate write.
 - **Deny signal is the exit code (1); stderr is best-effort enrichment.** If stderr can't be parsed, still deny with `reason: 'blocked by command guard'`, `pack: 'unknown'`.
-- **No shell.** Spawn the binary with an argv array; the operator's text is one argv element (zero quoting/escaping; multi-line passes through for lfguard's own tokenizer).
+- **No shell.** Spawn the binary with an argv array; the operator's text is one argv element (zero quoting/escaping; multi-line passes through for saiifeguard's own tokenizer).
 - **Timeout:** `2000` ms default (catastrophe backstop, not the expected path).
 - **Back-compatible.** The `guard` / `onGuardBlock` control-API deps are OPTIONAL; omitting them restores prior behavior exactly.
 - **Reuse G2, add no new console plumbing:** the `guard` console source, `toGuardEvent`, and `GuardAuditRecord` already exist in `src/shared/console.ts`.
-- **stderr deny line format (verbatim from `guard/crates/lfguard/src/main.rs`):** `lfguard: BLOCKED by <pack>: <reason>[ (inline: <i>)]`. Other stderr lines (pack warnings) may also be present, so match the `BLOCKED by` line specifically, not "the last line".
+- **stderr deny line format (verbatim from `guard/crates/saiifeguard/src/main.rs`):** `saiifeguard: BLOCKED by <pack>: <reason>[ (inline: <i>)]`. Other stderr lines (pack warnings) may also be present, so match the `BLOCKED by` line specifically, not "the last line".
 
 ---
 
@@ -56,7 +56,7 @@ function fakeRunner(
 }
 
 const base = {
-  resolveBinary: () => '/bin/lfguard',
+  resolveBinary: () => '/bin/saiifeguard',
   getPacks: () => [] as string[]
 }
 
@@ -64,7 +64,7 @@ describe('makeOperatorGuard', () => {
   it('denies on exit 1 and parses pack + reason from stderr', async () => {
     const { runner } = fakeRunner({
       code: 1,
-      stderr: 'lfguard: BLOCKED by core.filesystem: catastrophic rm',
+      stderr: 'saiifeguard: BLOCKED by core.filesystem: catastrophic rm',
       timedOut: false
     })
     const g = makeOperatorGuard({ ...base, runner })
@@ -79,8 +79,8 @@ describe('makeOperatorGuard', () => {
     const { runner } = fakeRunner({
       code: 1,
       stderr:
-        'lfguard: pack warning (core.git): noise\n' +
-        'lfguard: BLOCKED by core.filesystem: catastrophic rm (inline: bash -c)',
+        'saiifeguard: pack warning (core.git): noise\n' +
+        'saiifeguard: BLOCKED by core.filesystem: catastrophic rm (inline: bash -c)',
       timedOut: false
     })
     const g = makeOperatorGuard({ ...base, runner })
@@ -150,12 +150,12 @@ describe('makeOperatorGuard', () => {
   it('forwards packs as repeated --pack args and passes command as one argv element', async () => {
     const { runner, calls } = fakeRunner({ code: 0, stderr: '', timedOut: false })
     const g = makeOperatorGuard({
-      resolveBinary: () => '/bin/lfguard',
+      resolveBinary: () => '/bin/saiifeguard',
       getPacks: () => ['cloud.gcloud', 'db.postgres'],
       runner
     })
     await g.check('gcloud auth print-access-token')
-    expect(calls[0].bin).toBe('/bin/lfguard')
+    expect(calls[0].bin).toBe('/bin/saiifeguard')
     expect(calls[0].args).toEqual([
       'test',
       'gcloud auth print-access-token',
@@ -209,7 +209,7 @@ export type GuardRunner = (
 ) => Promise<{ code: number | null; stderr: string; timedOut: boolean }>
 
 export interface OperatorGuardOptions {
-  /** Resolved lfguard binary path, or null when none is bundled. */
+  /** Resolved saiifeguard binary path, or null when none is bundled. */
   resolveBinary: () => string | null
   /** Currently-enabled opt-in pack ids (core.* are always active in the binary). */
   getPacks: () => string[]
@@ -241,9 +241,9 @@ const defaultRunner: GuardRunner = (bin, args, opts) =>
   })
 
 function parseDeny(stderr: string): { allowed: false; reason: string; pack: string } {
-  // Format: `lfguard: BLOCKED by <pack>: <reason>` — pack warnings may share stderr,
+  // Format: `saiifeguard: BLOCKED by <pack>: <reason>` — pack warnings may share stderr,
   // so match the BLOCKED line specifically. `.` stops at newline, so <reason> is one line.
-  const m = /lfguard: BLOCKED by (.+?): (.+)/.exec(stderr)
+  const m = /saiifeguard: BLOCKED by (.+?): (.+)/.exec(stderr)
   if (m) return { allowed: false, pack: m[1], reason: m[2].trim() }
   return { allowed: false, reason: 'blocked by command guard', pack: 'unknown' }
 }
@@ -306,7 +306,7 @@ Add to `tests/unit/session-manager.test.ts` (new top-level `describe` block; it 
 describe('SessionManager.emitNotice', () => {
   it('fans a synthetic line out to every onData subscriber', () => {
     const mgr = new SessionManager({
-      settingsDir: mkdtempSync(join(tmpdir(), 'localflow-sm-')),
+      settingsDir: mkdtempSync(join(tmpdir(), 'saiife-sm-')),
       port: 0,
       token: 'tok'
     })
@@ -337,7 +337,7 @@ In `src/main/session-manager.ts`, immediately after the `write` method (ends ~li
   /**
    * Push a synthetic line to the pane's renderer WITHOUT writing to the pty.
    * Same fan-out the instant-exit and relaunch notices use. Used to surface an
-   * lfguard block in the pane the operator tried to drive.
+   * saiifeguard block in the pane the operator tried to drive.
    */
   emitNotice(id: string, text: string): void {
     this.dataCbs.forEach((cb) => cb(id, text))
@@ -444,7 +444,7 @@ it('prompt denied by the guard returns 403, does not write, echoes the pane, emi
   expect(r.status).toBe(403)
   expect(r.json).toEqual({ error: 'blocked by command guard', reason: 'catastrophic rm', pack: 'core.filesystem' })
   expect(writes).toEqual([])
-  expect(notices).toEqual([{ id: 'a-term', text: '\r\n⛔ lfguard blocked: catastrophic rm\r\n' }])
+  expect(notices).toEqual([{ id: 'a-term', text: '\r\n⛔ saiifeguard blocked: catastrophic rm\r\n' }])
   expect(blocks).toEqual([
     {
       record: { ts: expect.any(Number), tag: 'a-term', command: 'rm -rf /', reason: 'catastrophic rm', pack: 'core.filesystem' },
@@ -503,7 +503,7 @@ Replace the body of the `prompt` branch (`src/main/control-api.ts` ~line 215-226
       if (deps.guard) {
         const v = await deps.guard.check(b.text)
         if (!v.allowed) {
-          deps.manager.emitNotice(handle, `\r\n⛔ lfguard blocked: ${v.reason}\r\n`)
+          deps.manager.emitNotice(handle, `\r\n⛔ saiifeguard blocked: ${v.reason}\r\n`)
           deps.onGuardBlock?.(
             { ts: Date.now(), tag: handle, command: b.text, reason: v.reason, pack: v.pack },
             environment
@@ -596,7 +596,7 @@ git commit -m "feat: activate operator guard on control server"
 
 ## Notes for the executor
 
-- **Do not** re-implement any command tokenization/segmentation in TS — pass raw text to `lfguard`; the Rust engine owns parsing.
+- **Do not** re-implement any command tokenization/segmentation in TS — pass raw text to `saiifeguard`; the Rust engine owns parsing.
 - **Do not** guard `session-manager.write()` broadly — that path carries interactive keystrokes and control bytes on the hot typing path; the guard belongs only on the operator `prompt` route.
 - `Date.now()` is used in `control-api.ts` for the audit record `ts` — this is the Electron main process (not a workflow script), so `Date.now()` is available and correct.
 - Emoji `⛔` in the pane notice and copy is intentional (matches the approved design); keep it exactly.

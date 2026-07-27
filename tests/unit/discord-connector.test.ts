@@ -93,7 +93,7 @@ describe('DiscordConnector — inbound routing', () => {
     ])
   })
 
-  it('a non-/localflow command fires the interaction trigger; /localflow goes to the bridge', () => {
+  it('a non-/saiife command fires the interaction trigger; /saiife goes to the bridge', () => {
     const controlReplies: unknown[] = []
     const control = { handle: vi.fn().mockReturnValue({ text: 'ok', ephemeral: true }) }
     const c = new DiscordConnector({
@@ -119,7 +119,7 @@ describe('DiscordConnector — inbound routing', () => {
     })
     expect(seen).toHaveLength(1)
 
-    // The reserved /localflow → the control bridge, NOT the trigger.
+    // The reserved /saiife → the control bridge, NOT the trigger.
     c.handleInbound({
       type: 'interaction',
       payload: {
@@ -128,12 +128,12 @@ describe('DiscordConnector — inbound routing', () => {
         type: 2,
         channel_id: 'C1',
         member: { user: { id: 'U1' } },
-        data: { name: 'localflow', options: [{ name: 'status' }] }
+        data: { name: 'saiife', options: [{ name: 'status' }] }
       }
     })
     expect(control.handle).toHaveBeenCalled()
     expect(controlReplies).toEqual([{ text: 'ok', ephemeral: true }])
-    expect(seen).toHaveLength(1) // /localflow is NOT an interaction trigger
+    expect(seen).toHaveLength(1) // /saiife is NOT an interaction trigger
   })
 
   it('onApprovalDecision fans out to the approval.responded trigger', () => {

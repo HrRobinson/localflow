@@ -25,7 +25,7 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
 
 /** A value that looks like a secret literal (a token/key), for the §10 guard
  *  that a secret is NEVER placed directly in a header value — only a ref. */
-function looksLikeSecretLiteral(value: string): boolean {
+export function looksLikeSecretLiteral(value: string): boolean {
   const v = value.trim()
   if (/^Bearer\s+\S/i.test(v)) return true
   if (/^Basic\s+\S/i.test(v)) return true
@@ -34,7 +34,50 @@ function looksLikeSecretLiteral(value: string): boolean {
   return false
 }
 
-function resolveHeaders(raw: unknown): Record<string, string> {
+/**
+ * `elidedHeaderValues`, when supplied, maps a header key → that header's raw
+ * value with every `$ref`-derived span blanked to `''` (api-client finding 1,
+ * wave 3 — see the note at the bottom of `request-resolve.ts`) — passed as an
+ * EXPLICIT parameter, never smuggled through `params`, since `params` is
+ * otherwise entirely agent-controlled and this map must not be.
+ *
+ * WAVE 4 (here): waves 1-3 all ran `looksLikeSecretLiteral` against some
+ * transform of the header text and asked "does the AGENT-AUTHORED portion
+ * look like a secret". That question lets the agent choose which bytes the
+ * predicate sees — `looksLikeSecretLiteral` is anchored at `^`, and elision
+ * DELETES bytes, so a chained span sitting at position 0 (or wherever the
+ * vendor prefix/scheme keyword lives) donates its leading character(s) to the
+ * agent-authored remainder, sliding the prefix out of the anchor's reach:
+ * `'{{t}}k_live_STOLEN'` with a one-character chained `t` elides to
+ * `'k_live_STOLEN'`, which `looksLikeSecretLiteral` does NOT match, even
+ * though the wire value `'sk_live_STOLEN'` plainly does.
+ *
+ * The fix asks the opposite question: does the FINAL value — real,
+ * unmodified, exactly what reaches the wire — look like a credential? If so,
+ * is the agent's contribution confined to nothing at all, or to a bare
+ * auth-scheme keyword (`Bearer`/`Basic`, matching the two scheme branches
+ * `looksLikeSecretLiteral` itself special-cases)? `looksLikeSecretLiteral`
+ * runs against `value` — never a transformed/elided copy — so the agent can
+ * no longer choose what text the predicate sees; only whether the ALLOWANCE
+ * on top of a match applies. Placement of the chained span within the header
+ * no longer matters: prefix, suffix, or middle, the guard sees the same real
+ * bytes every time.
+ *
+ * `elidedHeaderValues` (the authored remainder) now feeds only that
+ * allowance, never the predicate call. No entry for a key, or no map at all
+ * (the flow-node path below, and `http-connector.ts`'s direct call) means
+ * `authored` is `undefined`, which is never benign — the real value is
+ * guarded unconditionally, exactly as before chaining existed.
+ *
+ * Known accepted trade: `'sk_live_{{t}}'` legitimately building a key from a
+ * chained suffix is now refused, because the agent authored the
+ * credential-identifying prefix (`'sk_live_'` is not `''` and is not
+ * `Bearer`/`Basic`). Fail-closed is intended — use `auth.secretRef`.
+ */
+function resolveHeaders(
+  raw: unknown,
+  elidedHeaderValues?: ReadonlyMap<string, string>
+): Record<string, string> {
   if (raw === undefined) return {}
   if (!isObject(raw)) {
     throw new Error('http node has an invalid `headers` — expected an object of string values.')
@@ -44,7 +87,15 @@ function resolveHeaders(raw: unknown): Record<string, string> {
     if (typeof value !== 'string') {
       throw new Error(`http node header "${key}" must be a string value.`)
     }
-    if (looksLikeSecretLiteral(value)) {
+    // The agent-authored remainder (every `$ref`-derived span blanked). Only
+    // an EMPTY remainder (the whole value was chained) or a bare scheme
+    // keyword (`Bearer {{t}}`) is benign — anything else means the agent
+    // authored text that shares the header with a credential-shaped value.
+    const authored = elidedHeaderValues?.get(key)
+    const benignAuthored =
+      authored !== undefined &&
+      (authored.trim() === '' || /^(Bearer|Basic)$/i.test(authored.trim()))
+    if (looksLikeSecretLiteral(value) && !benignAuthored) {
       throw new Error(
         `http node header "${key}" looks like a secret literal — put the secret in the ` +
           `keychain via \`auth.secretRef\`, never in \`config.headers\`.`
@@ -97,7 +148,8 @@ function resolveBody(raw: unknown): { body?: string; contentType?: string } {
  */
 export function resolveRequest(
   actionId: HttpActionId,
-  params: Record<string, unknown>
+  params: Record<string, unknown>,
+  elidedHeaderValues?: ReadonlyMap<string, string>
 ): ResolvedRequest {
   const url = params.url
   if (typeof url !== 'string' || url.trim().length === 0) {
@@ -117,7 +169,7 @@ export function resolveRequest(
     method = raw as HttpMethod
   }
 
-  const headers = resolveHeaders(params.headers)
+  const headers = resolveHeaders(params.headers, elidedHeaderValues)
   const auth = resolveAuth(params.auth)
 
   const resolved: ResolvedRequest = {

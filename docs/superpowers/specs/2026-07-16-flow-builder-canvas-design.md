@@ -4,7 +4,7 @@
 **Status:** Design (spec) — not started. Design-approval gate for the marquee
 "pilot" UI. Sub-project **#3 of 3** in the visual-flows program
 (**#1 Integrations Hub** → **#2 Flow Engine** → **#3 Flow Canvas**).
-**Feature:** A Shopify-Flow-style drag-and-drop editor — a new localflow **VIEW**
+**Feature:** A Shopify-Flow-style drag-and-drop editor — a new saiife **VIEW**
 where the user drops nodes from a **palette** (trigger / agent / action / gate /
 router), positions them, draws **arrows** (edges) between them, configures each
 node in a **side panel**, and **saves/loads** a `FlowGraph` that the hybrid Flow
@@ -18,7 +18,7 @@ interfaces owned by the other sub-projects: the `IntegrationDescriptor` registry
 consume what the canvas saves. Both interfaces are treated as fixed contracts
 (§8), with stubs (§9) so this can be built before they land.
 
-It reuses localflow's existing seams verbatim — the `view` union + view-switch in
+It reuses saiife's existing seams verbatim — the `view` union + view-switch in
 `App.tsx`, the `Sidebar` nav pattern, the typed IPC surface
 (`api.ts` → `preload` → `ipcMain.handle`), the atomic-write / corrupt-file
 persistence discipline of `persistence.ts`, the status-color design system in
@@ -31,7 +31,7 @@ into real agent panes — it does **not** reinvent any of them.
 
 **Goal (one sentence):** Let a user visually author a flow — drop nodes, wire
 arrows, configure each node against connected integrations — and save it as a
-`FlowGraph` that the Flow Engine runs, all inside a new localflow view that looks
+`FlowGraph` that the Flow Engine runs, all inside a new saiife view that looks
 and behaves like the rest of the app.
 
 ### In scope (MVP — the "walking skeleton")
@@ -64,7 +64,7 @@ and behaves like the rest of the app.
 - **Pure, unit-testable graph-edit reducers** (`flow-reducer.ts`) and **pure
   validation** (`flow-validate.ts`) fully separated from rendering (§7).
 - **Opt-in:** the view exists but is inert with no flows and no integrations; it
-  never changes localflow's "works with nothing configured" guarantee.
+  never changes saiife's "works with nothing configured" guarantee.
 
 ### Out of scope (MVP) — explicitly deferred
 
@@ -88,16 +88,16 @@ and behaves like the rest of the app.
 
 ---
 
-## 2. The Shopify-Flow model → localflow primitives
+## 2. The Shopify-Flow model → saiife primitives
 
-Shopify Flow is *trigger → condition → action*. localflow generalizes it to a
-five-node graph, and every node type maps onto an existing localflow primitive so
+Shopify Flow is *trigger → condition → action*. saiife generalizes it to a
+five-node graph, and every node type maps onto an existing saiife primitive so
 nothing is invented:
 
-| `FlowNodeType` | What it is | localflow primitive it maps to |
+| `FlowNodeType` | What it is | saiife primitive it maps to |
 |---|---|---|
 | `trigger` | Entry point — an integration event starts the flow. Palette-sourced from `IntegrationDescriptor.triggers`. | A `FlowGraph` must have ≥1 (§5 validation). At run time the engine (#2) subscribes it; the canvas only records `{ integration, ref }`. |
-| `agent` | "Creates an agent" — spawns a localflow terminal pane running a chosen agent with a prompt. | The engine spawns it via `POST /panes` (`kind:'terminal'`, an `OPERATOR_TERMINAL_AGENTS` agent) then `POST /panes/:h/prompt` — the same guarded operator surface Linear/OpenClaw use. Config = `{ agentId, environment, prompt }`. |
+| `agent` | "Creates an agent" — spawns a saiife terminal pane running a chosen agent with a prompt. | The engine spawns it via `POST /panes` (`kind:'terminal'`, an `OPERATOR_TERMINAL_AGENTS` agent) then `POST /panes/:h/prompt` — the same guarded operator surface Linear/OpenClaw use. Config = `{ agentId, environment, prompt }`. |
 | `action` | A side-effecting integration call. Palette-sourced from `IntegrationDescriptor.actions`. | The engine invokes the integration's action; config = `{ integration, ref, ...fields }`. Secret fields are references only (§6.4). |
 | `gate` | Human-in-the-loop / condition checkpoint — "pause for approval" or "only continue if". | Reuses the `needs-you` primitive — a `gate` an agent hits surfaces as `needs-you`, resolvable by `ApproveButton` exactly as today. Config = `{ condition: {field, equals} }` or `{ manual: true }`. |
 | `router` | Fan-out on a condition — different downstream edges taken per outcome. | Realized purely as `FlowEdge.condition {field, equals}` on the outgoing edges; the node marks the branch point. |
@@ -108,12 +108,12 @@ evaluates a condition, never touches a secret payload. It records intent
 
 ---
 
-## 3. Architecture in localflow
+## 3. Architecture in saiife
 
 ### 3.1 Where it sits
 
 A new **renderer view** plus a thin **main-process store**, wired exactly like
-every other localflow view/IPC pair:
+every other saiife view/IPC pair:
 
 - **Renderer:** a `flows` value added to `App.tsx`'s `view` union (currently
   `'home' | 'environment' | 'settings' | 'changes' | 'activity' | 'cockpit'`,
@@ -202,13 +202,13 @@ autosave become trivial phase-2 adds (snapshot the immutable graph).
 │        ▼                                                                              │
 │  flow-validate(graph) ──► ValidationResult ──► inline node badges + toolbar chip      │
 │        │                                                                              │
-│  Toolbar "Save" ──► window.localflow.saveFlow(graph) ─IPC─► flow-store (atomic write) │
-│  Toolbar "Run"  ──► window.localflow.runFlow(graph.id) ─IPC─► Flow Engine (#2 / stub) │
+│  Toolbar "Save" ──► window.saiife.saveFlow(graph) ─IPC─► flow-store (atomic write) │
+│  Toolbar "Run"  ──► window.saiife.runFlow(graph.id) ─IPC─► Flow Engine (#2 / stub) │
 └──────────────────────────────────────────────────────────────────────────────────────┘
                                                               │ engine, at run time:
                                                               ▼
                         control-api  POST /panes (kind:terminal, agentId, groupId)
-                                     POST /panes/:handle/prompt   (lfguard-guarded)
+                                     POST /panes/:handle/prompt   (saiifeguard-guarded)
                                      ──► SessionManager.create ──► real agent pane
 ```
 
@@ -221,7 +221,7 @@ Key properties:
   saves-then-runs; see §10.2).
 - The engine, not the canvas, is the only thing that spawns panes. The canvas has
   **no** operator grant and **never** calls `POST /panes` itself — keeping the
-  capability boundary (`OPERATOR_TERMINAL_AGENTS`, lfguard) entirely on the engine
+  capability boundary (`OPERATOR_TERMINAL_AGENTS`, saiifeguard) entirely on the engine
   side.
 
 ### 4.2 Save / load path (IPC)
@@ -229,7 +229,7 @@ Key properties:
 New IPC, following the exact `api.ts` → `preload` → `ipcMain.handle` shape:
 
 ```ts
-// shared/api.ts (added to LocalflowApi)
+// shared/api.ts (added to SaiifeApi)
 /** All saved flows as lightweight summaries (list view). */
 listFlows(): Promise<FlowSummary[]>
 /** Full graph by id; null if unknown/unreadable. */
@@ -387,7 +387,7 @@ disk** (§4.3) and is savable/shareable — so a secret must never enter
 
 ## 7. Testing strategy
 
-Mirrors localflow's existing seams — **pure logic is exhaustively unit-tested;
+Mirrors saiife's existing seams — **pure logic is exhaustively unit-tested;
 rendering is manual + e2e** (the split §3.3 exists precisely to make this
 possible).
 
@@ -515,7 +515,7 @@ options:
 - **`@xyflow/react` (React Flow v12).** Purpose-built for exactly this: node
   dragging, drag-to-connect handles, bezier edge routing, pan/zoom, selection,
   optional minimap — the fiddly, well-solved interaction layer. Supports React
-  19. **Cost:** it is localflow's *first heavy renderer dependency* — it pulls
+  19. **Cost:** it is saiife's *first heavy renderer dependency* — it pulls
   `d3-zoom`/`d3-drag`/`d3-selection` + `zustand` and adds ~100–150 KB gzipped to
   the renderer bundle. That's a bundle/tree concern, not a runtime-RAM one (a
   small graph is cheap), but it cuts against the repo's conspicuously lean dep
@@ -614,7 +614,7 @@ builds a flow visually and watches it validate + persist + hand off).
 
 ---
 
-## Appendix — reused localflow surfaces (by path)
+## Appendix — reused saiife surfaces (by path)
 
 - `src/renderer/src/App.tsx` — the `view` union + view-switch (`:93`, `:963`) the
   `flows` view slots into; the dismissible-notice banner pattern (`:796`,
@@ -633,7 +633,7 @@ builds a flow visually and watches it validate + persist + hand off).
   every `flow:*` call follows; boundary validation of untrusted renderer input
   (`filterSessions`/`isGroup`).
 - `src/main/control-api.ts` — `POST /panes` (`OPERATOR_TERMINAL_AGENTS`,
-  `kind:'terminal'`, `groupId`) + `POST /panes/:handle/prompt` (lfguard-guarded):
+  `kind:'terminal'`, `groupId`) + `POST /panes/:handle/prompt` (saiifeguard-guarded):
   the surface the **engine** (#2) uses to turn an `agent` node into a real pane.
   The canvas never calls it directly.
 - `src/shared/types.ts` — `VALID_AGENTS` as the model for `VALID_NODE_TYPES`

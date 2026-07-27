@@ -13,7 +13,7 @@
 
 ## 1. Goal & scope
 
-localflow's webhook connectors (Shopify, Stripe, HubSpot, GitHub, GitLab,
+saiife's webhook connectors (Shopify, Stripe, HubSpot, GitHub, GitLab,
 Sentry, Woo, Linear, …) can only receive a vendor webhook when the machine has a
 **public URL**. Today every one of them binds a **loopback** HTTP server
 (`startWebhookReceiver`, `host: '127.0.0.1'`) and every wiring comment in
@@ -23,7 +23,7 @@ behind NAT with no inbound port simply cannot be a webhook target — the entire
 trigger half of every connector is dark for the typical user.
 
 **This spec designs the OSS half of the paid hosted-webhook-ingress feature: a
-thin client, in the open-source localflow app, that PULLS webhooks from a hosted
+thin client, in the open-source saiife app, that PULLS webhooks from a hosted
 relay instead of receiving them over an inbound HTTP port.** The relay
 (closed-source, separate private repo — **not designed here**) is a dumb pipe:
 vendor → relay POSTs to a per-tenant unguessable URL → relay publishes the RAW

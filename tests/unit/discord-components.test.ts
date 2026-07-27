@@ -179,12 +179,12 @@ describe('parseCommand', () => {
         channel_id: 'C1',
         member: { user: { id: 'U1' } },
         data: {
-          name: 'localflow',
+          name: 'saiife',
           options: [{ name: 'run', options: [{ name: 'flow', value: 'refund-worker' }] }]
         }
       })
     ).toEqual({
-      name: 'localflow',
+      name: 'saiife',
       text: 'run refund-worker',
       channelId: 'C1',
       userId: 'U1',

@@ -118,7 +118,7 @@ export function normalizeIssue(raw: RawIssue, repo = ''): GitHubIssueContext {
 }
 
 function prState(raw: RawPull): GitHubPRState {
-  // A merged PR is 'closed' in GitHub's own `state`; localflow distinguishes it.
+  // A merged PR is 'closed' in GitHub's own `state`; saiife distinguishes it.
   if (raw?.merged === true) return 'merged'
   return str(raw?.state).toLowerCase() === 'closed' ? 'closed' : 'open'
 }
@@ -212,7 +212,7 @@ const isFailure = (conclusion: unknown): boolean =>
 /**
  * Map a raw (untrusted) webhook body — dispatched by its `X-GitHub-Event` type —
  * to the pinned trigger id + its normalized context payload, or `null` when the
- * event/action isn't one localflow triggers on (so no run is ever seeded on an
+ * event/action isn't one saiife triggers on (so no run is ever seeded on an
  * uninteresting delivery). `check.failed`/`workflow.failed` are DERIVED filters
  * over the native `completed` events: only a failing conclusion fires (§6.1).
  */

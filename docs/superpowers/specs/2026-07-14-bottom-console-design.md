@@ -21,7 +21,7 @@ already produces.
   (browser-pane CDP) requests are **deferred to v2** — the `source` enum
   reserves the slot so adding it is purely additive.
 - **In-memory, since-launch** — the timeline is a capped ring that resets on
-  restart, matching M7's "since localflow started" model. No new persistent
+  restart, matching M7's "since saiife started" model. No new persistent
   store. Capture rows open their already-on-disk detail on demand.
 - **Scope follows location by default; an explicit chip pin sticks** until
   cleared back to auto.
@@ -152,7 +152,7 @@ shell, outside the view switch so it overlays every view.
 - **Network-request source** (browser-pane CDP) — v2; enum slot reserved.
 - **Persistence of the timeline** — in-memory, since-launch only.
 - **Request composition / test authoring / schema-check building** — the
-  show-not-author boundary; localflow is the cockpit, not the brain.
+  show-not-author boundary; saiife is the cockpit, not the brain.
 - **A query DSL / regex** — chips + substring text only.
 - **Cross-environment analytics dashboards** — `everywhere` is a filter, not
   a separate surface.

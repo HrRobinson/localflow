@@ -110,7 +110,7 @@ regressions to session creation, resume, or the existing e2e DOM contract.
   `getLastAgent()` (read) and `recordLastAgent(agentId, customCommand?)`
   (write + persist), mirroring the existing `setPath()` pattern.
 - Read by the renderer through a new read-only IPC call, `getLastAgent()`
-  on `window.localflow`, analogous to `getKeybindings()`.
+  on `window.saiife`, analogous to `getKeybindings()`.
 
 ## DOM contract (preserved)
 

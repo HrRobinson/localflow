@@ -494,7 +494,7 @@ export class SessionManager {
         this.dataCbs.forEach((cb) =>
           cb(
             id,
-            '\r\nlfguard: the command guard hook was rejected by this agent; ' +
+            '\r\nsaiifeguard: the command guard hook was rejected by this agent; ' +
               'relaunched without the guard (running unguarded).\r\n'
           )
         )
@@ -549,7 +549,7 @@ export class SessionManager {
   }
 
   /**
-   * Marks a Codex pane's guard as observed-enforcing: called once lfguard's
+   * Marks a Codex pane's guard as observed-enforcing: called once saiifeguard's
    * invocation marker for this pane's id has been written. No-op for an unknown
    * id, a non-Codex/undefined pane, or a pane already 'observed' (idempotent —
    * a second invocation must not re-fire changedCbs). Never un-sets: only a
@@ -582,7 +582,7 @@ export class SessionManager {
   /**
    * Push a synthetic line to the pane's renderer WITHOUT writing to the pty.
    * Same fan-out the instant-exit and relaunch notices use. Used to surface an
-   * lfguard block in the pane the operator tried to drive.
+   * saiifeguard block in the pane the operator tried to drive.
    */
   emitNotice(id: string, text: string): void {
     this.dataCbs.forEach((cb) => cb(id, text))

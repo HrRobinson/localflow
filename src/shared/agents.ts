@@ -22,7 +22,7 @@ export interface AgentPreset {
    */
   startArgs?: string[]
   /**
-   * Which hook-injection mechanism/tier localflow uses for this agent's
+   * Which hook-injection mechanism/tier saiife uses for this agent's
    * status feed. 'cli-args-notify' (not the optimistic 'cli-args-full')
    * is Codex's shipped default — see
    * docs/superpowers/specs/2026-07-07-m2-status-adapters-design.md for

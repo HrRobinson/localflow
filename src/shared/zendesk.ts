@@ -6,7 +6,7 @@
  *
  * NO raw Zendesk request/response shape lives here — those are isolated in
  * `src/main/zendesk/zendesk-api.ts` (the API blast radius, §4.1). This file holds
- * ONLY localflow-facing, already-normalized vocabulary: lowercase status/priority
+ * ONLY saiife-facing, already-normalized vocabulary: lowercase status/priority
  * enums (so `eq`/`ne` are exact, §10), `tags` as a string array (so `contains`
  * works), `public` as a boolean (so `truthy` works), and — critically —
  * `requesterEmail` as a plain string so the CROSS-CONNECTOR join to Shopify's

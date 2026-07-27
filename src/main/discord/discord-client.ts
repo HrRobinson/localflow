@@ -56,7 +56,7 @@ export interface DiscordApi {
   editMessage(input: EditMessageInput): Promise<void>
   /** `POST /interactions/{id}/{token}/callback` → ack (+ optional edit/reply). */
   respondToInteraction(input: RespondToInteractionInput): Promise<void>
-  /** `PUT /applications/{app}/guilds/{guild}/commands` → register `/localflow`. */
+  /** `PUT /applications/{app}/guilds/{guild}/commands` → register `/saiife`. */
   registerCommands(commands: unknown[]): Promise<void>
   /** `GET /gateway/bot` → the Gateway WSS url. */
   getGatewayUrl(): Promise<{ url: string }>

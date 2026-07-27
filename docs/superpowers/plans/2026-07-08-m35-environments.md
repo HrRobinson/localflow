@@ -37,7 +37,7 @@ Spec: `docs/superpowers/specs/2026-07-08-m35-environments-design.md` (approved 2
   - `SessionInfo.environment: number`; `SavedSession.environment?: number`.
   - `KeyAction`: `'environment-1'`…`'environment-9'`, `'move-to-environment-1'`…`'move-to-environment-9'` (defaults `cmd+N` / `ctrl+N`).
   - `SessionManager.create(cwd, spec, environment)`, `.setEnvironment(id, environment): SessionInfo | null`, `.restore(..., environment?: unknown)`.
-  - IPC `session:setEnvironment`, `environments:getNames`; `LocalflowApi.setEnvironment(id, environment)`, `.getEnvironmentNames()`, `createSession(agentId, cwd?, customCommand?, environment?)`.
+  - IPC `session:setEnvironment`, `environments:getNames`; `SaiifeApi.setEnvironment(id, environment)`, `.getEnvironmentNames()`, `createSession(agentId, cwd?, customCommand?, environment?)`.
   - `src/main/environment-names.ts`: `parseEnvironmentNames(raw: unknown)`, `loadEnvironmentNames(configFile)` reading config key `environments`.
   - App: state `environment`, `switchEnvironment(n)`, `moveToEnvironment(id, n)`, view union `'home' | 'environment' | 'settings'`; Sidebar props `environment`, `onSwitchEnvironment`, `onEnvironment` (nav callback, was `onTerminals`), nav label "Environment", section header "Environments", `data-nav-environment`.
   - `nextNeedsYou(order, sessions, activeId, currentEnvironment)`.
@@ -108,7 +108,7 @@ git commit -m "refactor: rename workspace to environment"
   - `src/shared/types.ts`: `export type SessionKind = 'terminal' | 'browser'`; `SessionInfo.kind: SessionKind`; `SessionInfo.url?: string`.
   - `SessionManager.createBrowser(url: string, environment: number): SessionInfo`, `.restoreBrowser(id: string, url: string, name?: string, environment?: unknown): SessionInfo | null` (null for invalid url), `.setUrl(id: string, url: string): SessionInfo | null`.
   - IPC: `session:createBrowser` (url, environment) invoke; `session:setUrl` invoke; `shell:openExternal` send (wired in Task 3's policy module — declared here in api/preload).
-  - `LocalflowApi.createBrowserSession(url: string, environment?: number): Promise<SessionInfo | null>`, `.setSessionUrl(id: string, url: string): Promise<SessionInfo | null>`, `.openExternal(url: string): void`.
+  - `SaiifeApi.createBrowserSession(url: string, environment?: number): Promise<SessionInfo | null>`, `.setSessionUrl(id: string, url: string): Promise<SessionInfo | null>`, `.openExternal(url: string): void`.
 
 - [ ] **Step 1: Write the failing URL tests**
 
@@ -540,7 +540,7 @@ git commit -m "feat: browser session records and url gate"
 - Consumes: `isHttpUrl` (Task 2), `loadOrCreateKeybindings` + `parseBinding`/`eventMatches`/`bindingEntries` (existing shared code — works in main), `sendToWindow` (existing).
 - Produces:
   - `installWebviewPolicy(opts: { bindings: Record<KeyAction, string>; onAction: (action: KeyAction) => void }): void` — attaches the global `app.on('web-contents-created')` handler and the partition permission handler.
-  - IPC push channel `'keybinding:action'` (main → renderer); `LocalflowApi.onKeyAction(cb: (action: KeyAction) => void): () => void`.
+  - IPC push channel `'keybinding:action'` (main → renderer); `SaiifeApi.onKeyAction(cb: (action: KeyAction) => void): () => void`.
   - IPC `'shell:openExternal'` (renderer → main, fire-and-forget, http/https only).
   - `BROWSER_PARTITION = 'persist:browser-panes'` exported for Task 4's webview element.
 
@@ -685,7 +685,7 @@ git commit -m "feat: webview policy and key forwarding"
 - Test: none new (no component rig; behavior in Task 6 e2e; `npm run check` gates)
 
 **Interfaces:**
-- Consumes: `SessionInfo.kind`/`url` (Task 2), `window.localflow.setSessionUrl` / `openExternal` (Tasks 2-3), `onKeyAction` (Task 3), `normalizeHttpUrl` (Task 2 — shared module works in the renderer), partition string `'persist:browser-panes'` (MUST match Task 3's `BROWSER_PARTITION`; it is a JSX attribute here, so the literal is repeated with a comment pointing at the constant).
+- Consumes: `SessionInfo.kind`/`url` (Task 2), `window.saiife.setSessionUrl` / `openExternal` (Tasks 2-3), `onKeyAction` (Task 3), `normalizeHttpUrl` (Task 2 — shared module works in the renderer), partition string `'persist:browser-panes'` (MUST match Task 3's `BROWSER_PARTITION`; it is a JSX attribute here, so the literal is repeated with a comment pointing at the constant).
 - Produces: `BrowserPane` default export, props `{ session: SessionInfo; enlarged: boolean; active: boolean; onToggleEnlarge: () => void; onActivate: () => void; onReopen: () => void; onClose: () => void }`. e2e contract: the pane keeps `.pane[data-pane-id][data-status]`; the webview element carries class `.browser-view`; the URL input carries class `.url-bar`; buttons `.nav-back`, `.nav-forward`, `.nav-reload`, `.open-external`.
 
 - [ ] **Step 1: webview JSX typing in `src/renderer/src/env.d.ts`**
@@ -765,7 +765,7 @@ export default function BrowserPane({
       setCanGoBack(view.canGoBack())
       setCanGoForward(view.canGoForward())
       if (!editing) setBarValue(current)
-      void window.localflow.setSessionUrl(session.id, current)
+      void window.saiife.setSessionUrl(session.id, current)
     }
     view.addEventListener('did-navigate', onNavigate)
     view.addEventListener('did-navigate-in-page', onNavigate)
@@ -878,7 +878,7 @@ export default function BrowserPane({
           title="Open in system browser"
           onClick={() => {
             const current = viewRef.current?.getURL() ?? session.url
-            if (current) window.localflow.openExternal(current)
+            if (current) window.saiife.openExternal(current)
           }}
           onDoubleClick={(e) => e.stopPropagation()}
           onMouseDown={guard}
@@ -984,7 +984,7 @@ export default function BrowserPane({
       e.stopPropagation()
       runAction(match[0])
     }
-    const offForwarded = window.localflow.onKeyAction((action) => runAction(action))
+    const offForwarded = window.saiife.onKeyAction((action) => runAction(action))
     window.addEventListener('keydown', onKey, true)
     return () => {
       offForwarded()
@@ -1014,7 +1014,7 @@ git commit -m "feat: browser pane with mini-browser chrome"
 - Test: none new (Task 6 e2e drives the full UI path headlessly — browser creation needs no folder picker)
 
 **Interfaces:**
-- Consumes: `window.localflow.createBrowserSession(url, environment)` (Task 2), `normalizeHttpUrl` (Task 2), App's `environment` state.
+- Consumes: `window.saiife.createBrowserSession(url, environment)` (Task 2), `normalizeHttpUrl` (Task 2), App's `environment` state.
 - Produces: Landing prop `onCreateBrowser: (url: string) => void`; picker option `value="browser"` labeled `Browser…`; URL input class `.url-input` (e2e contract); browser rows show the URL as subtitle, chip text `browser`, and a single `reopen` action when exited.
 
 - [ ] **Step 1: App.tsx — create wiring**
@@ -1023,7 +1023,7 @@ Next to `createSession`:
 
 ```ts
   const createBrowser = async (url: string): Promise<void> => {
-    const created = await window.localflow.createBrowserSession(url, environment)
+    const created = await window.saiife.createBrowserSession(url, environment)
     if (created) {
       setView('environment')
       setEnlarged(null)
@@ -1143,7 +1143,7 @@ git commit -m "feat: create browser panes from overview"
 
 **Files:**
 - Modify: `tests/e2e/smoke.spec.ts` (one new test)
-- Modify: `README.md`, `docs/superpowers/specs/2026-07-06-localflow-v2-roadmap.md`
+- Modify: `README.md`, `docs/superpowers/specs/2026-07-06-saiife-v2-roadmap.md`
 
 **Interfaces:**
 - Consumes: everything above; e2e contract classes `.url-input`, `.url-bar`, `.browser-view`, `.nav-back`/`.nav-forward`/`.nav-reload`/`.open-external`; `data-nav-environment`; existing `launchApp` helper.
@@ -1163,7 +1163,7 @@ test('browser pane: UI creation, chrome, close/reopen, persistence', async () =>
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const pageUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`
 
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   const app = await launchApp(userData)
   const win = await app.firstWindow()
   await win.setViewportSize({ width: 1400, height: 900 })
@@ -1254,7 +1254,7 @@ system browser. Keyboard combos (`cmd+1…9`, `cmd+u`, …) keep working while a
 page has focus.
 ```
 
-2. `docs/superpowers/specs/2026-07-06-localflow-v2-roadmap.md`:
+2. `docs/superpowers/specs/2026-07-06-saiife-v2-roadmap.md`:
    - § M3 heading line: append ` **Renamed workspaces → environments in M3.5.**` after the heading's first paragraph (one sentence, no rewrite of the shipped spec).
    - § M3.5: prepend a line `**Superseded by docs/superpowers/specs/2026-07-08-m35-environments-design.md (approved design; shipped).**`
 
@@ -1264,7 +1264,7 @@ Run: `npm run check`
 Expected: PASS.
 
 ```bash
-git add tests/e2e/smoke.spec.ts README.md docs/superpowers/specs/2026-07-06-localflow-v2-roadmap.md
+git add tests/e2e/smoke.spec.ts README.md docs/superpowers/specs/2026-07-06-saiife-v2-roadmap.md
 git commit -m "test: browser pane e2e; docs: environments"
 ```
 

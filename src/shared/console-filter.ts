@@ -44,6 +44,7 @@ export interface ConsoleFocus {
     | 'activity'
     | 'cockpit'
     | 'integrations'
+    | 'apiclient'
     | 'flows'
   enlarged: { id: string; level: 'pane' | 'session' } | null
   environment: number

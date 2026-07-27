@@ -14,6 +14,12 @@ import { normalizeHttpUrl } from '../shared/urls'
 import type { GuardVerdict } from './operator-guard'
 import type { GuardAuditRecord } from '../shared/console'
 import { guardDenyMessage } from './guard-message'
+import type { ApiGrantStore } from './api-client/api-grant'
+import type { ApiSender } from './api-client/send'
+import type { CollectionStore } from './api-client/collection-store'
+import type { ResponseStore } from './api-client/response-store'
+import type { SendInput } from './api-client/request-resolve'
+import type { HttpMethod } from '../shared/http'
 
 export interface ControlDeps {
   registry: PaneRegistry
@@ -37,6 +43,17 @@ export interface ControlDeps {
   browser?: BrowserControl
   captures?: CaptureStore
   watchpoints?: WatchpointRegistry
+  /**
+   * The agent API client (design §2). Authenticated against its OWN grant store
+   * with its OWN tokens — an operator token must never confer API-send, and an
+   * API token must never drive panes. Absent ⇒ every /http/* route 404s.
+   */
+  apiClient?: {
+    grants: ApiGrantStore
+    sender: ApiSender
+    collections: CollectionStore
+    responses: ResponseStore
+  }
 }
 
 /**
@@ -116,6 +133,27 @@ export function clampLines(raw: string | null): number {
   return Math.min(Math.max(Number.isFinite(n) ? Math.trunc(n) : 5, 1), 50)
 }
 
+/** The only methods `resolveSendInput`/`resolveRequest` ever accept — used to
+ *  cap what an agent-supplied method can make the activity log say it sent. */
+const HTTP_METHODS: ReadonlySet<HttpMethod> = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
+
+/**
+ * Drop every ASCII control byte (0x00-0x1f, 0x7f) from agent-controlled text
+ * before it can reach the cockpit activity log. Written as a char-code filter
+ * rather than a regex so no control byte needs to appear, escaped or literal,
+ * in this file's own source. Without this, an agent-chosen `collectionId`
+ * containing "\n[operator] approved ..." would forge an operator-looking line
+ * in the one channel meant to be a trustworthy account of what it did.
+ */
+function stripControlChars(s: string): string {
+  let out = ''
+  for (const ch of s) {
+    const code = ch.codePointAt(0) ?? 0
+    if (code >= 0x20 && code !== 0x7f) out += ch
+  }
+  return out
+}
+
 /**
  * The control-API router. Pure over its inputs (no socket), so auth, scoping,
  * and every route are unit-testable. `token` is the raw bearer secret; it must
@@ -131,6 +169,130 @@ export async function handleRequest(
 ): Promise<Result> {
   if (Buffer.byteLength(body) > CONTROL_MAX_BODY_BYTES)
     return json(400, { error: 'body too large' })
+
+  // ── Agent API client (/http/*) ──────────────────────────────────────────
+  // A separate authority with separate tokens, resolved here and returned from
+  // here, so no operator token can reach these routes and no API token can fall
+  // through to the pane routes below. Declared BEFORE the operator-grant check,
+  // so it must not use `parsed`/`path`/`record`/`readBody` (declared later).
+  const apiUrl = new URL(url, 'http://127.0.0.1')
+  const apiPath = apiUrl.pathname
+  if (apiPath.startsWith('/http/')) {
+    if (!deps.apiClient) return json(404, { error: 'not enabled' })
+    const api = deps.apiClient
+
+    const grant = api.grants.resolve(token)
+    if (grant === null) {
+      // Never log token material — route + reason only, matching the operator path.
+      const reason = token.length === 0 ? 'missing bearer token' : 'unknown token'
+      console.warn(`control-api: 403 ${method} ${apiPath} — ${reason}`)
+      return json(403, { error: 'no grant' })
+    }
+
+    if (method === 'GET' && apiPath === '/http/collections') {
+      const visible = api.collections
+        .list(grant.environment)
+        .filter((c) => grant.collections.has(c.id))
+        .map((c) => ({
+          id: c.id,
+          name: c.name,
+          origins: c.origins,
+          varSets: Object.keys(c.varSets),
+          requests: c.requests.map((r) => ({
+            id: r.id,
+            name: r.name,
+            method: r.method,
+            path: r.path
+          }))
+        }))
+      return json(200, { collections: visible })
+    }
+
+    if (method === 'POST' && apiPath === '/http/send') {
+      let input: SendInput
+      try {
+        input = JSON.parse(body) as SendInput
+      } catch {
+        return json(400, { error: 'invalid JSON body' })
+      }
+      if (typeof input?.collectionId !== 'string') {
+        return json(400, { error: 'collectionId required' })
+      }
+      const result = await api.sender.send(grant, input)
+      // Audit every send (design §8 + "Security & isolation": every send
+      // belongs in the cockpit action log, same as an operator action). Route
+      // + collection + method + status ONLY — NEVER the resolved URL, which
+      // would reopen the varSet-value leak class fixed in
+      // `request-resolve.ts`'s origin-refusal message, just through the audit
+      // channel instead of the error channel.
+      //
+      // `collectionId` and the method both come straight off the request body
+      // and must never reach the log unvalidated — an agent could otherwise
+      // forge an operator-looking line (a fake "[operator] approved ..." row)
+      // in the one channel meant to be a trustworthy account of what it did.
+      // Mirror the operator routes above, which only ever log a `handle` that
+      // already resolved against the registry: log the collection id only
+      // when it resolved to a real, in-scope collection (control characters
+      // stripped even then, defence in depth), and the method only when it is
+      // one of the fixed `HttpMethod`s — the closed set makes it inherently
+      // control-character-free — falling back to a fixed placeholder for
+      // either otherwise.
+      const resolvedCollection =
+        grant.collections.has(input.collectionId) &&
+        api.collections.get(input.collectionId, grant.environment) !== undefined
+      const loggedHandle = resolvedCollection ? stripControlChars(input.collectionId) : 'unknown'
+      const rawMethod =
+        input.spec?.method ??
+        api.collections
+          .get(input.collectionId, grant.environment)
+          ?.requests.find((r) => r.id === input.requestId)?.method
+      const loggedMethod = rawMethod !== undefined && HTTP_METHODS.has(rawMethod) ? rawMethod : '?'
+      deps.onActivity?.(grant.environment, {
+        at: Date.now(),
+        route: 'POST /http/send',
+        handle: loggedHandle,
+        detail: `${loggedMethod} ${result.ok ? result.view.status : result.status}`
+      })
+      return result.ok ? json(200, result.view) : json(result.status, { error: result.error })
+    }
+
+    const pullMatch = /^\/http\/responses\/([^/]+)\/pull$/.exec(apiPath)
+    if (pullMatch && method === 'GET') {
+      // Named `pullPath`, not `path`, so it never reads as the router's own
+      // later-declared `path` binding.
+      const pullPath = apiUrl.searchParams.get('path')
+      if (pullPath === null || pullPath.length === 0) return json(400, { error: 'path required' })
+      const pulled = api.responses.pull(pullMatch[1], grant, pullPath)
+      if (pulled.ok) return json(200, { path: pullPath, value: pulled.value })
+      if (pulled.reason === 'withheld') {
+        // Layer 3 hard-refuses; the approval gate replaces this in a later plan.
+        return json(403, {
+          error:
+            'withheld — this field is classified sensitive. You can chain it by ' +
+            'reference into another request without reading it.'
+        })
+      }
+      if (pulled.reason === 'container') {
+        // `pull` only ever returns scalars — read the shape to find the leaf
+        // path you actually want, then pull that instead of the subtree.
+        return json(400, {
+          error:
+            'container — this path resolves to an object or array, not a scalar. ' +
+            'Read the shape to find a leaf path under it, then pull that path instead.'
+        })
+      }
+      return json(404, { error: pulled.reason === 'unknown' ? 'unknown response' : 'unknown path' })
+    }
+
+    const viewMatch = /^\/http\/responses\/([^/]+)$/.exec(apiPath)
+    if (viewMatch && method === 'GET') {
+      const view = api.responses.view(viewMatch[1], grant)
+      return view ? json(200, view) : json(404, { error: 'unknown response' })
+    }
+
+    return json(404, { error: 'not found' })
+  }
+
   const environment = deps.grants.environmentForToken(token)
   if (environment === null) {
     // Auth rejections are worth a trace (a misconfigured or revoked operator

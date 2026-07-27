@@ -42,13 +42,13 @@ function launchApp(userData: string): Promise<ElectronApplication> {
     args: ['.'],
     env: {
       ...process.env,
-      LOCALFLOW_E2E: '1',
-      LOCALFLOW_USER_DATA: userData,
-      LOCALFLOW_CLAUDE_BIN: join(here, '../fixtures/fake-claude.sh'),
-      LOCALFLOW_OPENCLAW_CONFIG: join(userData, 'openclaw.json'),
-      LOCALFLOW_LAZYGIT_BIN: '/nonexistent/lazygit',
-      LOCALFLOW_EDITOR_BIN: '/nonexistent/code',
-      LOCALFLOW_E2E_GO: join(userData, 'e2e-go')
+      SAIIFE_E2E: '1',
+      SAIIFE_USER_DATA: userData,
+      SAIIFE_CLAUDE_BIN: join(here, '../fixtures/fake-claude.sh'),
+      SAIIFE_OPENCLAW_CONFIG: join(userData, 'openclaw.json'),
+      SAIIFE_LAZYGIT_BIN: '/nonexistent/lazygit',
+      SAIIFE_EDITOR_BIN: '/nonexistent/code',
+      SAIIFE_E2E_GO: join(userData, 'e2e-go')
     }
   })
 }
@@ -58,9 +58,9 @@ interface Session {
   environment: number
 }
 
-/** Renderer-side `window.localflow` surface this spec calls through IPC. */
+/** Renderer-side `window.saiife` surface this spec calls through IPC. */
 type Api = {
-  localflow: {
+  saiife: {
     createSession(
       agentId: string,
       cwd?: string,
@@ -80,7 +80,7 @@ type Api = {
 function createSessionIpc(win: Page, cwd: string, environment = 1): Promise<Session | null> {
   return win.evaluate(
     (args) =>
-      (window as unknown as Api).localflow.createSession(
+      (window as unknown as Api).saiife.createSession(
         'claude',
         args.cwd,
         undefined,
@@ -94,7 +94,7 @@ function grantOperatorIpc(
   win: Page,
   environment: number
 ): Promise<{ endpoint: string; token: string }> {
-  return win.evaluate((env) => (window as unknown as Api).localflow.grantOperator(env), environment)
+  return win.evaluate((env) => (window as unknown as Api).saiife.grantOperator(env), environment)
 }
 
 function registerWatchpointIpc(
@@ -106,7 +106,7 @@ function registerWatchpointIpc(
 ): Promise<{ id: string } | null> {
   return win.evaluate(
     (args) =>
-      (window as unknown as Api).localflow.registerWatchpoint(
+      (window as unknown as Api).saiife.registerWatchpoint(
         args.environment,
         args.workflow,
         args.step,
@@ -121,7 +121,7 @@ function postHook(userData: string, paneId: string, event: string): Promise<Resp
   const { port, token } = JSON.parse(readFileSync(join(userData, 'endpoint.json'), 'utf8'))
   return fetch(`http://127.0.0.1:${port}/event`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Localflow-Token': token },
+    headers: { 'Content-Type': 'application/json', 'X-Saiife-Token': token },
     body: JSON.stringify({ paneId, event })
   })
 }
@@ -158,7 +158,7 @@ async function openConsoleDrawer(win: Page): Promise<Locator> {
 }
 
 test('toggle drawer: cmd+/ default, then a remapped key survives relaunch', async () => {
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   const app = await launchApp(userData)
   const win = await app.firstWindow()
   await expect(win.locator('.new-session')).toBeVisible()
@@ -192,7 +192,7 @@ test('toggle drawer: cmd+/ default, then a remapped key survives relaunch', asyn
 })
 
 test('three sources appear: status, operator, capture — capture expands to detail', async () => {
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   const app = await launchApp(userData)
   const win = await app.firstWindow()
   await expect(win.locator('.new-session')).toBeVisible()
@@ -249,7 +249,7 @@ test('three sources appear: status, operator, capture — capture expands to det
 })
 
 test('filters: source chips, text substring, everywhere scope pin', async () => {
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   const app = await launchApp(userData)
   const win = await app.firstWindow()
   await expect(win.locator('.new-session')).toBeVisible()
@@ -318,7 +318,7 @@ test('filters: source chips, text substring, everywhere scope pin', async () => 
 })
 
 test('scope follow + pin: enlarging a session narrows the timeline; pin sticks; follow resumes', async () => {
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   const app = await launchApp(userData)
   const win = await app.firstWindow()
   await win.setViewportSize({ width: 1400, height: 900 })
@@ -372,7 +372,7 @@ test('scope follow + pin: enlarging a session narrows the timeline; pin sticks; 
 })
 
 test('resize + relaunch: height and open state are remembered', async () => {
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   const app = await launchApp(userData)
   const win = await app.firstWindow()
   await expect(win.locator('.new-session')).toBeVisible()
@@ -431,7 +431,7 @@ test('resize + relaunch: height and open state are remembered', async () => {
 })
 
 test('expanding a capture row with a screenshot renders an inline thumbnail', async () => {
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   const app = await launchApp(userData)
   const win = await app.firstWindow()
   await expect(win.locator('.new-session')).toBeVisible()
@@ -473,7 +473,7 @@ test('expanding a capture row with a screenshot renders an inline thumbnail', as
 })
 
 test('network source: a browser pane page load fills the drawer with network rows', async () => {
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   const server = createServer((req, res) => {
     if (req.url === '/asset.js') {
       res.writeHead(200, { 'Content-Type': 'application/javascript' })
@@ -505,9 +505,9 @@ test('network source: a browser pane page load fills the drawer with network row
     (u) =>
       (
         window as unknown as {
-          localflow: { createBrowserSession(x: string, e: number): Promise<{ id: string }> }
+          saiife: { createBrowserSession(x: string, e: number): Promise<{ id: string }> }
         }
-      ).localflow.createBrowserSession(u, 1),
+      ).saiife.createBrowserSession(u, 1),
     url
   )
   // The webview only registers its guest webContents while mounted in the
@@ -540,7 +540,7 @@ test('network source: a browser pane page load fills the drawer with network row
 })
 
 test('mute hides a source while others remain; scope selection survives reload', async () => {
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   const app = await launchApp(userData)
   const win = await app.firstWindow()
   await expect(win.locator('.new-session')).toBeVisible()

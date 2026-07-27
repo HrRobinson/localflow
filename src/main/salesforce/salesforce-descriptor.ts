@@ -86,7 +86,7 @@ export const salesforceDescriptor: IntegrationDescriptorDef = {
     },
     {
       key: 'environment',
-      label: 'localflow environment (1-9)',
+      label: 'saiife environment (1-9)',
       secret: false,
       required: true,
       type: 'number'

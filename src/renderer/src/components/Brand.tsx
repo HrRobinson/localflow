@@ -1,7 +1,7 @@
 /** Toolbar identity: three pane squares in the status colors + wordmark. */
 export default function Brand(): React.JSX.Element {
   return (
-    <div className="flex items-center gap-2" title="localflow">
+    <div className="flex items-center gap-2" title="saiife">
       <svg
         className="block opacity-90"
         width="26"

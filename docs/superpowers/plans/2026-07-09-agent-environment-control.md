@@ -3,11 +3,11 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Let an optional, per-environment, revocable **operator** (OpenClaw)
-drive a localflow environment's panes through a loopback, token-guarded control
+drive a saiife environment's panes through a loopback, token-guarded control
 API, and let workflow **watchpoints** capture pane/workflow state at a chosen
 step — while every pane stays fully human-drivable with no operator connected.
 
-**Architecture:** localflow is the cockpit and control surface, not the brain. A
+**Architecture:** saiife is the cockpit and control surface, not the brain. A
 `pane-registry` assigns stable handles (a pane's handle *is* its session id) and
 resolves them **only within a granted environment** (the isolation guarantee). An
 `operator-grant` store mints a per-environment bearer secret. A single loopback
@@ -21,7 +21,7 @@ CDP session, and the isolated `persist:browser-panes` partition's cookies). A
 `watchpoints` registry receives captures POSTed by the OpenClaw-side `checkpoint`
 action. The renderer adds a read-only **cockpit** (operator status, action log,
 captures) and a per-environment **grant toggle**. OpenClaw integrates via a
-shipped `localflow` skill (SKILL.md + thin CLI) wrapping the control API.
+shipped `saiife` skill (SKILL.md + thin CLI) wrapping the control API.
 
 **Tech Stack:** Electron main/preload/renderer, React 19, `node:http` loopback
 server, Electron `webContents` DevTools protocol (`debugger`, `capturePage`,
@@ -889,7 +889,7 @@ git commit -m "feat: loopback control-api with terminal routes"
   - IPC: `operator:grant` (invoke, `environment` → `GrantInfo`),
     `operator:revoke` (invoke, `environment` → `void`),
     `operator:status` (invoke, `environment` → `OperatorStatus`).
-  - `LocalflowApi.grantOperator(environment): Promise<GrantInfo>`,
+  - `SaiifeApi.grantOperator(environment): Promise<GrantInfo>`,
     `.revokeOperator(environment): Promise<void>`,
     `.operatorStatus(environment): Promise<OperatorStatus>`.
   - A per-environment rolling activity buffer in main (`Map<number, ActivityEntry[]>`,
@@ -942,7 +942,7 @@ After the `agents:setPath` handle (~line 247), add:
     const info: GrantInfo = { environment: env, endpoint: `http://127.0.0.1:${control.port}`, token }
     // Under e2e, expose the grant to the scripted control-API client on disk
     // (mirrors the hook server's endpoint.json handshake).
-    if (process.env['LOCALFLOW_E2E'] === '1') {
+    if (process.env['SAIIFE_E2E'] === '1') {
       writeFileSync(join(userData, `operator-grant-${env}.json`), JSON.stringify(info), { mode: 0o600 })
     }
     return info
@@ -981,7 +981,7 @@ next to the server construction (so `control` is in scope).
 import type { GrantInfo, OperatorStatus } from './operator'
 ```
 
-Add to `LocalflowApi`, after `getEnvironmentNames()`:
+Add to `SaiifeApi`, after `getEnvironmentNames()`:
 
 ```ts
   /** Grants (or returns the existing) operator on an environment; mints its bearer token + loopback endpoint. */
@@ -1171,7 +1171,7 @@ git commit -m "feat: capture-store screenshot scratch dir"
     - `webContentsIdFor(handle: string): number | null`
   - IPC: `browser:register` (send, `handle`, `webContentsId`),
     `browser:unregister` (send, `handle`).
-  - `LocalflowApi.registerBrowser(handle, webContentsId): void`,
+  - `SaiifeApi.registerBrowser(handle, webContentsId): void`,
     `.unregisterBrowser(handle): void`.
 
 - [ ] **Step 1: Write the failing test**
@@ -1257,14 +1257,14 @@ unmount:
   // is stable for the guest's life); unregistered on unmount / exit.
   useEffect(() => {
     if (!alive) {
-      window.localflow.unregisterBrowser(session.id)
+      window.saiife.unregisterBrowser(session.id)
       return
     }
     const view = viewRef.current
     if (!view) return
     const onReady = (): void => {
       try {
-        window.localflow.registerBrowser(session.id, view.getWebContentsId())
+        window.saiife.registerBrowser(session.id, view.getWebContentsId())
       } catch {
         /* guest not attached yet; a later dom-ready will catch it */
       }
@@ -1272,7 +1272,7 @@ unmount:
     view.addEventListener('dom-ready', onReady)
     return () => {
       view.removeEventListener('dom-ready', onReady)
-      window.localflow.unregisterBrowser(session.id)
+      window.saiife.unregisterBrowser(session.id)
     }
   }, [session.id, alive])
 ```
@@ -1294,7 +1294,7 @@ inside `whenReady` next to the other operator wiring:
   })
 ```
 
-`src/shared/api.ts` — add to `LocalflowApi`:
+`src/shared/api.ts` — add to `SaiifeApi`:
 
 ```ts
   /** Browser panes report their guest webContents id so the operator API can drive them. */
@@ -1676,32 +1676,32 @@ git commit -m "feat: browser network buffer and selector act"
 
 ---
 
-## Layer 3 — OpenClaw `localflow` skill + renderer cockpit + grant toggle
+## Layer 3 — OpenClaw `saiife` skill + renderer cockpit + grant toggle
 
 *Independently shippable: a user can grant/revoke an operator from the UI, watch
 the action log fill in the cockpit, and OpenClaw can be pointed at the grant via a
 shipped skill.*
 
-### Task 9: The OpenClaw `localflow` skill (SKILL.md + CLI wrapper)
+### Task 9: The OpenClaw `saiife` skill (SKILL.md + CLI wrapper)
 
-> **Design decisions (OpenClaw-side).** The grant's `LOCALFLOW_ENDPOINT` +
-> `LOCALFLOW_TOKEN` are injected via `skills.entries.localflow.env` in
-> `~/.openclaw/openclaw.json`, and localflow **auto-writes** that block
+> **Design decisions (OpenClaw-side).** The grant's `SAIIFE_ENDPOINT` +
+> `SAIIFE_TOKEN` are injected via `skills.entries.saiife.env` in
+> `~/.openclaw/openclaw.json`, and saiife **auto-writes** that block
 > (transparently — it surfaces exactly what it wrote) when it launches a managed
 > OpenClaw session. Watchpoint `checkpoint` steps are **authored directly** in the
 > user's Lobster workflow YAML, calling the wrapper CLI as a step `command`. The
 > control API is stable regardless of the OpenClaw-side packaging.
 
 **Files:**
-- Create: `openclaw/skills/localflow/SKILL.md`
-- Create: `openclaw/skills/localflow/bin/localflow-control.mjs`
-- Create: `openclaw/skills/localflow/README.md`
-- Create: `tests/unit/localflow-cli.test.ts`
+- Create: `openclaw/skills/saiife/SKILL.md`
+- Create: `openclaw/skills/saiife/bin/saiife-control.mjs`
+- Create: `openclaw/skills/saiife/README.md`
+- Create: `tests/unit/saiife-cli.test.ts`
 
 **Interfaces:**
 - Consumes: the control API (Layers 1–2/4) via `endpoint` + `token`, read from
-  env `LOCALFLOW_ENDPOINT` / `LOCALFLOW_TOKEN`.
-- Produces: a CLI `localflow-control <verb> [args...]` emitting JSON on stdout,
+  env `SAIIFE_ENDPOINT` / `SAIIFE_TOKEN`.
+- Produces: a CLI `saiife-control <verb> [args...]` emitting JSON on stdout,
   wrapping the routes: `panes`, `navigate <handle> <url>`, `screenshot <handle>`,
   `cookies <handle>`, `network <handle>`, `act <handle> <selector> <click|type> [text]`,
   `prompt <handle> <text...>`, `output <handle> [maxLines]`,
@@ -1711,11 +1711,11 @@ shipped skill.*
 
 The CLI's URL construction + verb mapping is pure and testable without a live
 server. Extract it into an exported `buildRequest`. Create
-`tests/unit/localflow-cli.test.ts`:
+`tests/unit/saiife-cli.test.ts`:
 
 ```ts
 import { describe, it, expect } from 'vitest'
-import { buildRequest } from '../../openclaw/skills/localflow/bin/localflow-control.mjs'
+import { buildRequest } from '../../openclaw/skills/saiife/bin/saiife-control.mjs'
 
 describe('buildRequest', () => {
   const base = 'http://127.0.0.1:5000'
@@ -1743,19 +1743,19 @@ describe('buildRequest', () => {
 
 - [ ] **Step 2: Run to verify failure**
 
-Run: `npx vitest run tests/unit/localflow-cli.test.ts`
+Run: `npx vitest run tests/unit/saiife-cli.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Create `openclaw/skills/localflow/bin/localflow-control.mjs`**
+- [ ] **Step 3: Create `openclaw/skills/saiife/bin/saiife-control.mjs`**
 
 ```js
 #!/usr/bin/env node
 /**
- * localflow control-API CLI, wrapped by the OpenClaw `localflow` skill. Reads
- * the grant endpoint + token from LOCALFLOW_ENDPOINT / LOCALFLOW_TOKEN and
+ * saiife control-API CLI, wrapped by the OpenClaw `saiife` skill. Reads
+ * the grant endpoint + token from SAIIFE_ENDPOINT / SAIIFE_TOKEN and
  * turns a verb into one control-API request, printing the JSON response.
  *
- * Env is injected via skills.entries.localflow.env (auto-written by localflow).
+ * Env is injected via skills.entries.saiife.env (auto-written by saiife).
  */
 
 /** Pure verb → request mapping (exported for unit tests). */
@@ -1792,9 +1792,9 @@ export function buildRequest(base, argv) {
 }
 
 async function main() {
-  const base = process.env.LOCALFLOW_ENDPOINT
-  const token = process.env.LOCALFLOW_TOKEN
-  if (!base || !token) throw new Error('LOCALFLOW_ENDPOINT and LOCALFLOW_TOKEN required')
+  const base = process.env.SAIIFE_ENDPOINT
+  const token = process.env.SAIIFE_TOKEN
+  if (!base || !token) throw new Error('SAIIFE_ENDPOINT and SAIIFE_TOKEN required')
   const req = buildRequest(base, process.argv.slice(2))
   const res = await fetch(base + req.path, {
     method: req.method,
@@ -1817,31 +1817,31 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 
 - [ ] **Step 4: Run to verify green**
 
-Run: `npx vitest run tests/unit/localflow-cli.test.ts`
+Run: `npx vitest run tests/unit/saiife-cli.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Create `openclaw/skills/localflow/SKILL.md`**
+- [ ] **Step 5: Create `openclaw/skills/saiife/SKILL.md`**
 
 ```markdown
 ---
-name: localflow
-description: Drive a granted localflow environment's panes — list, navigate, screenshot, inspect, act, prompt terminals, and checkpoint workflows.
+name: saiife
+description: Drive a granted saiife environment's panes — list, navigate, screenshot, inspect, act, prompt terminals, and checkpoint workflows.
 metadata:
   openclaw:
     requires:
       bins: [node]
-      env: [LOCALFLOW_ENDPOINT, LOCALFLOW_TOKEN]
+      env: [SAIIFE_ENDPOINT, SAIIFE_TOKEN]
 ---
 
-# localflow operator skill
+# saiife operator skill
 
-localflow exposes a loopback control API for the ONE environment this grant
+saiife exposes a loopback control API for the ONE environment this grant
 covers. Every command is scoped to that environment; foreign-environment handles
-return 404. Auth is the per-grant bearer token in `LOCALFLOW_TOKEN`.
+return 404. Auth is the per-grant bearer token in `SAIIFE_TOKEN`.
 
 Run the wrapped CLI:
 
-    node "$SKILL_DIR/bin/localflow-control.mjs" <verb> [args...]
+    node "$SKILL_DIR/bin/saiife-control.mjs" <verb> [args...]
 
 Verbs: `panes`, `navigate <handle> <url>`, `screenshot <handle>`,
 `cookies <handle>`, `network <handle>`, `act <handle> <selector> <click|type> [text]`,
@@ -1851,16 +1851,16 @@ Verbs: `panes`, `navigate <handle> <url>`, `screenshot <handle>`,
 `screenshot` returns a `{path}` on the target project's disk — reference that
 path in a following `prompt` to hand the image to a coding-agent terminal.
 
-<!-- Wiring: localflow injects LOCALFLOW_ENDPOINT + LOCALFLOW_TOKEN via
-     skills.entries.localflow.env in ~/.openclaw/openclaw.json, auto-written when
+<!-- Wiring: saiife injects SAIIFE_ENDPOINT + SAIIFE_TOKEN via
+     skills.entries.saiife.env in ~/.openclaw/openclaw.json, auto-written when
      it launches a managed OpenClaw session (and shown to the user). -->
 ```
 
-- [ ] **Step 6: Create `openclaw/skills/localflow/README.md`**
+- [ ] **Step 6: Create `openclaw/skills/saiife/README.md`**
 
-Document, for a human wiring OpenClaw: the grant flow (grant in localflow → copy
-endpoint+token → set `LOCALFLOW_ENDPOINT`/`LOCALFLOW_TOKEN`, or let localflow
-auto-write `skills.entries.localflow.env`), and the checkpoint authoring model
+Document, for a human wiring OpenClaw: the grant flow (grant in saiife → copy
+endpoint+token → set `SAIIFE_ENDPOINT`/`SAIIFE_TOKEN`, or let saiife
+auto-write `skills.entries.saiife.env`), and the checkpoint authoring model
 (the `checkpoint` step is written directly in the user's Lobster workflow YAML as
 a `command`). Keep it to the facts confirmed from `docs.openclaw.ai`
 (`SKILL.md` frontmatter `name`/`description`/`metadata.openclaw.requires`;
@@ -1873,8 +1873,8 @@ include `openclaw/**` or is ignored — if lint complains, add `openclaw/skills/
 to the eslint ignore for the CLI and keep only the test under lint).
 
 ```bash
-git add openclaw/skills/localflow tests/unit/localflow-cli.test.ts
-git commit -m "feat: openclaw localflow skill and cli"
+git add openclaw/skills/saiife tests/unit/saiife-cli.test.ts
+git commit -m "feat: openclaw saiife skill and cli"
 ```
 
 ---
@@ -1893,7 +1893,7 @@ git commit -m "feat: openclaw localflow skill and cli"
   new `operator:activity` push; `OperatorStatus`, `ActivityEntry`, `GrantInfo`.
 - Produces:
   - `Cockpit` default export, props `{ environment: number }`.
-  - `LocalflowApi.onOperatorActivity(cb: (environment: number, entry: ActivityEntry) => void): () => void`.
+  - `SaiifeApi.onOperatorActivity(cb: (environment: number, entry: ActivityEntry) => void): () => void`.
   - App: view union gains `'cockpit'`; `enterCockpit()`.
   - Sidebar: `view` union gains `'cockpit'`; prop `onCockpit: () => void`; nav item.
 
@@ -1942,7 +1942,7 @@ export default function Cockpit({ environment }: Props): React.JSX.Element {
   const [status, setStatus] = useState<OperatorStatus | null>(null)
 
   const reload = useCallback(async (): Promise<void> => {
-    setStatus(await window.localflow.operatorStatus(environment))
+    setStatus(await window.saiife.operatorStatus(environment))
   }, [environment])
 
   useEffect(() => {
@@ -1951,18 +1951,18 @@ export default function Cockpit({ environment }: Props): React.JSX.Element {
 
   // Append live activity for THIS environment without a full refetch.
   useEffect(() => {
-    return window.localflow.onOperatorActivity((env, entry: ActivityEntry) => {
+    return window.saiife.onOperatorActivity((env, entry: ActivityEntry) => {
       if (env !== environment) return
       setStatus((cur) => (cur ? { ...cur, connected: true, activity: [...cur.activity, entry].slice(-200) } : cur))
     })
   }, [environment])
 
   const grant = async (): Promise<void> => {
-    await window.localflow.grantOperator(environment)
+    await window.saiife.grantOperator(environment)
     await reload()
   }
   const revoke = async (): Promise<void> => {
-    await window.localflow.revokeOperator(environment)
+    await window.saiife.revokeOperator(environment)
     await reload()
   }
 
@@ -2107,7 +2107,7 @@ in-memory in main):
     let cancelled = false
     const tick = async (): Promise<void> => {
       const envs = [...new Set(sessions.map((s) => s.environment))]
-      const flags = await Promise.all(envs.map((e) => window.localflow.operatorStatus(e)))
+      const flags = await Promise.all(envs.map((e) => window.saiife.operatorStatus(e)))
       if (cancelled) return
       setGrantedEnvs(new Set(flags.filter((f) => f.granted).map((f) => f.environment)))
     }
@@ -2152,7 +2152,7 @@ git commit -m "feat: per-environment operator indicator"
 ## Layer 4 — Workflow watchpoints + capture-store (Lobster checkpoint)
 
 *Independently shippable: a user registers a watch on a workflow step; when the
-OpenClaw-side `checkpoint` action fires, localflow stores the capture and surfaces
+OpenClaw-side `checkpoint` action fires, saiife stores the capture and surfaces
 it in the cockpit, offering resume/stop for a halted capture.*
 
 ### Task 12: Watchpoint registry
@@ -2426,13 +2426,13 @@ git commit -m "feat: capture ingest and watchpoint hit"
   - IPC: `operator:captures` (invoke, `environment` → `Capture[]`),
     `operator:watchpoints` (invoke, `environment` → `Watchpoint[]`),
     `operator:resume` (invoke, `environment`, `captureId`, `approve` → `boolean`).
-  - `LocalflowApi.listCaptures(environment): Promise<Capture[]>`,
+  - `SaiifeApi.listCaptures(environment): Promise<Capture[]>`,
     `.listWatchpoints(environment): Promise<Watchpoint[]>`,
     `.resumeCapture(environment, captureId, approve): Promise<boolean>`.
-  - **Resume semantics:** localflow does not run Lobster; `resumeCapture` marks the
+  - **Resume semantics:** saiife does not run Lobster; `resumeCapture` marks the
     capture resolved locally (clears `halted`) and returns the `resumeToken` so the
     cockpit can hand it back to the operator out-of-band. It records an activity
-    entry (`operator:resume`). Resume ownership stays local by design: localflow
+    entry (`operator:resume`). Resume ownership stays local by design: saiife
     surfaces the token rather than calling back into OpenClaw, so the feature works
     with no OpenClaw resume endpoint (a one-click OpenClaw-side resume is a possible
     post-v1 enhancement).
@@ -2481,7 +2481,7 @@ After the `operator:status` handle, add:
 import type { GrantInfo, OperatorStatus, ActivityEntry, Capture, Watchpoint } from './operator'
 ```
 
-Add to `LocalflowApi`:
+Add to `SaiifeApi`:
 
 ```ts
   /** Watchpoint captures stored for an environment, oldest first. */
@@ -2534,8 +2534,8 @@ Add state + loads:
 
   const reloadSub = useCallback(async (): Promise<void> => {
     const [c, w] = await Promise.all([
-      window.localflow.listCaptures(environment),
-      window.localflow.listWatchpoints(environment)
+      window.saiife.listCaptures(environment),
+      window.saiife.listWatchpoints(environment)
     ])
     setCaptures(c)
     setWatchpoints(w)
@@ -2594,14 +2594,14 @@ Render, below the activity log, a captures section and a watchpoints section:
                   <>
                     <button
                       className="capture-resume cursor-pointer rounded border border-white/10 px-1.5 text-idle"
-                      onClick={() => void window.localflow.resumeCapture(environment, c.id, true).then(reloadSub)}
+                      onClick={() => void window.saiife.resumeCapture(environment, c.id, true).then(reloadSub)}
                       onMouseDown={(e) => e.preventDefault()}
                     >
                       Resume
                     </button>
                     <button
                       className="capture-stop cursor-pointer rounded border border-white/10 px-1.5 text-gray-400"
-                      onClick={() => void window.localflow.resumeCapture(environment, c.id, false).then(reloadSub)}
+                      onClick={() => void window.saiife.resumeCapture(environment, c.id, false).then(reloadSub)}
                       onMouseDown={(e) => e.preventDefault()}
                     >
                       Stop
@@ -2639,14 +2639,14 @@ git commit -m "feat: cockpit captures and watchpoints ui"
 - Create: `tests/e2e/operator.spec.ts`
 
 **Interfaces:**
-- Consumes: the running app under `LOCALFLOW_E2E=1`; the grant handshake file
+- Consumes: the running app under `SAIIFE_E2E=1`; the grant handshake file
   `operator-grant-<env>.json` written by Task 4; a real terminal pane + a real
   browser pane; Node `fetch` as the scripted control-API client.
 - Produces: the security + happy-path proof the spec's "Testing" section requires.
 
 - [ ] **Step 1: Write the e2e spec**
 
-Model it on `tests/e2e/smoke.spec.ts` (same `_electron.launch`, `LOCALFLOW_E2E`
+Model it on `tests/e2e/smoke.spec.ts` (same `_electron.launch`, `SAIIFE_E2E`
 env, `userData`, `readFileSync` of the handshake file). Cover:
 
 ```ts
@@ -2715,7 +2715,7 @@ git commit -m "test: operator control-api e2e loop"
   the wire-format block.
 - Screenshot → terminal handoff (path under a scratch dir) → Task 5, 7.
 - Browser control reuses the M3.5 webview, partition-confined reads → Tasks 6–8.
-- OpenClaw `localflow` skill (portable SKILL.md + CLI) → Task 9.
+- OpenClaw `saiife` skill (portable SKILL.md + CLI) → Task 9.
 - Cockpit (status, action log, captures) → Tasks 10, 15; grant toggle + indicator →
   Tasks 10, 11.
 - Watchpoints + capture-store (checkpoint action) → Tasks 12, 13, 14, 15; the
@@ -2741,34 +2741,34 @@ approach).
 
 ## Design decisions — OpenClaw-side integration
 
-These resolve the integration questions the spec left open. Each keeps localflow
+These resolve the integration questions the spec left open. Each keeps saiife
 decoupled from OpenClaw internals (it works with no operator present) and treats
 plain, hand-editable config as the source of truth.
 
-1. **Skill env injection (Task 9).** The grant's `LOCALFLOW_ENDPOINT` +
-   `LOCALFLOW_TOKEN` are injected via `skills.entries.localflow.env` in
+1. **Skill env injection (Task 9).** The grant's `SAIIFE_ENDPOINT` +
+   `SAIIFE_TOKEN` are injected via `skills.entries.saiife.env` in
    `~/.openclaw/openclaw.json` — the plainest, most inspectable field (not a
-   `config` block or `apiKey` SecretRef, which add opacity/coupling). localflow
+   `config` block or `apiKey` SecretRef, which add opacity/coupling). saiife
    **auto-writes** that block when it launches a managed OpenClaw session, and
    surfaces exactly what it wrote so the user can inspect and revoke by editing the
    file.
 2. **Checkpoint authoring (Task 9/16).** The `checkpoint` step is **authored
    directly** in the user's Lobster workflow YAML, calling
-   `node .../localflow-control.mjs checkpoint <id> --halt` as a step `command`.
-   This keeps the workflow definition owned by the user (localflow never reaches
+   `node .../saiife-control.mjs checkpoint <id> --halt` as a step `command`.
+   This keeps the workflow definition owned by the user (saiife never reaches
    into it) and matches Lobster's per-step approval model
    (`approval: required`, `condition: $approve.approved`).
 3. **Lobster invocation channel (Task 9).** The checkpoint step shells out to the
-   `localflow-control.mjs` CLI via a step `command` string rather than an
+   `saiife-control.mjs` CLI via a step `command` string rather than an
    `openclaw.invoke` tool call, because the OpenClaw docs note `openclaw.invoke`
    "is not currently reliable in the embedded runner."
-4. **Resume ownership (Task 14).** localflow does not run Lobster, so
+4. **Resume ownership (Task 14).** saiife does not run Lobster, so
    `resumeCapture` resolves the halted capture **locally** and surfaces the
    `resumeToken` for the operator to resume out-of-band — no dependency on an
    OpenClaw resume endpoint. A one-click OpenClaw-side resume is a possible post-v1
    enhancement.
 5. **Remote-CDP stays out of v1 (Global Constraints).** v1 keeps browser control
-   fully localflow-implemented and does **not** expose the webview as a remote-CDP
+   fully saiife-implemented and does **not** expose the webview as a remote-CDP
    target for OpenClaw's native `browser` tool. The pane is a human-first browser;
    exposing it via CDP would widen the security surface and couple v1 to OpenClaw.
    Richer native-browser interactions can be revisited post-v1.

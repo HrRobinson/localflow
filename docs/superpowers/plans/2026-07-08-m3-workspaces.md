@@ -8,7 +8,7 @@
 
 **Tech Stack:** Electron main/preload/renderer, React 19, vitest (`tests/unit/**`, node env), Playwright `_electron` e2e.
 
-Spec: `docs/superpowers/specs/2026-07-06-localflow-v2-roadmap.md` § "M3 — Workspaces (spec written 2026-07-08)".
+Spec: `docs/superpowers/specs/2026-07-06-saiife-v2-roadmap.md` § "M3 — Workspaces (spec written 2026-07-08)".
 
 ## Global Constraints
 
@@ -46,7 +46,7 @@ Spec: `docs/superpowers/specs/2026-07-06-localflow-v2-roadmap.md` § "M3 — Wor
   - `SessionInfo.workspace: number`
   - `SessionManager.create(cwd, spec, workspace: number)`, `SessionManager.setWorkspace(id: string, workspace: number): SessionInfo | null`
   - IPC: `session:create` gains 4th arg `workspace?: number`; new invoke `session:setWorkspace`
-  - `LocalflowApi.createSession(agentId, cwd?, customCommand?, workspace?)`, `LocalflowApi.setWorkspace(id: string, workspace: number): Promise<SessionInfo | null>`
+  - `SaiifeApi.createSession(agentId, cwd?, customCommand?, workspace?)`, `SaiifeApi.setWorkspace(id: string, workspace: number): Promise<SessionInfo | null>`
 
 - [ ] **Step 1: Write the failing unit test for the shared module**
 
@@ -507,7 +507,7 @@ git commit -m "feat: workspace keybinding actions 1-9"
 - Test: extend `tests/unit/needs-you.test.ts`
 
 **Interfaces:**
-- Consumes: Task 1's `LocalflowApi.setWorkspace` / `createSession(..., workspace)` and `SessionInfo.workspace`; Task 2's 18 actions; existing `liveRef` pattern, `openSession`, `enterTerminals`.
+- Consumes: Task 1's `SaiifeApi.setWorkspace` / `createSession(..., workspace)` and `SessionInfo.workspace`; Task 2's 18 actions; existing `liveRef` pattern, `openSession`, `enterTerminals`.
 - Produces:
   - `nextNeedsYou(order: string[], sessions: SessionInfo[], activeId: string | null, currentWorkspace: number): string | null` — NEW 4th parameter; current-workspace candidates first.
   - App state `workspace: number` and `switchWorkspace(n: number): void` — Task 4's sidebar consumes `workspace` + `switchWorkspace` as props.
@@ -668,7 +668,7 @@ All edits in `src/renderer/src/App.tsx`:
 5. `createSession` passes the current workspace (first line of the existing function changes):
 
 ```ts
-    const created = await window.localflow.createSession(agentId, undefined, customCommand, workspace)
+    const created = await window.saiife.createSession(agentId, undefined, customCommand, workspace)
 ```
 
 6. `enterTerminals` scopes its fallback to the visible workspace:
@@ -689,7 +689,7 @@ All edits in `src/renderer/src/App.tsx`:
 
 ```ts
   const moveToWorkspace = async (id: string, n: number): Promise<void> => {
-    await window.localflow.setWorkspace(id, n)
+    await window.saiife.setWorkspace(id, n)
     await refresh()
     // The pane leaves the visible grid (spec: focus stays behind): re-scope
     // focus/enlarge exactly like a closed pane.
@@ -820,7 +820,7 @@ git commit -m "feat: workspace switching and pane moves"
 - Produces:
   - `parseWorkspaceNames(raw: unknown): Record<string, string>` in `src/main/workspace-names.ts`
   - IPC invoke `'workspaces:getNames'` → `Record<string, string>`
-  - `LocalflowApi.getWorkspaceNames(): Promise<Record<string, string>>`
+  - `SaiifeApi.getWorkspaceNames(): Promise<Record<string, string>>`
   - Sidebar props gain `workspace: number` and `onSwitchWorkspace: (n: number) => void`
   - DOM: `[data-nav-workspace="N"]` rows with a `.dot[data-status]` rollup
 
@@ -952,7 +952,7 @@ import { visibleWorkspaces, worstStatus } from '../../../shared/workspace'
   const [wsNames, setWsNames] = useState<Record<string, string>>({})
   useEffect(() => {
     let cancelled = false
-    void window.localflow.getWorkspaceNames().then((names) => {
+    void window.saiife.getWorkspaceNames().then((names) => {
       if (!cancelled) setWsNames(names)
     })
     return () => {
@@ -1056,7 +1056,7 @@ Append to `tests/e2e/smoke.spec.ts`:
 
 ```ts
 test('workspaces: switch, move, rollup dot, persistence', async () => {
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   const app = await launchApp(userData)
   const win = await app.firstWindow()
   await win.setViewportSize({ width: 1400, height: 900 })
@@ -1067,9 +1067,9 @@ test('workspaces: switch, move, rollup dot, persistence', async () => {
       (dir) =>
         (
           window as unknown as {
-            localflow: { createSession(a: string, c: string): Promise<{ id: string } | null> }
+            saiife: { createSession(a: string, c: string): Promise<{ id: string } | null> }
           }
-        ).localflow.createSession('claude', dir),
+        ).saiife.createSession('claude', dir),
       cwd
     )
 
@@ -1106,7 +1106,7 @@ test('workspaces: switch, move, rollup dot, persistence', async () => {
   const { port, token } = JSON.parse(readFileSync(join(userData, 'endpoint.json'), 'utf8'))
   await fetch(`http://127.0.0.1:${port}/event`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Localflow-Token': token },
+    headers: { 'Content-Type': 'application/json', 'X-Saiife-Token': token },
     body: JSON.stringify({ paneId: a!.id, event: 'Notification' })
   })
   await expect(ws3.locator('.dot')).toHaveAttribute('data-status', 'needs-you')
@@ -1171,7 +1171,7 @@ The Overview always shows every session across all workspaces.
 
 - [ ] **Step 3b: Amend the roadmap spec's move-binding line**
 
-`docs/superpowers/specs/2026-07-06-localflow-v2-roadmap.md`, § M3, the `move-to-workspace-1…9` bullet: replace ``(default `cmd+shift+1…9`)`` with ``(default `ctrl+1…9`; decided 2026-07-08 — macOS globally owns cmd+shift+3/4/5 for screenshots)``. Also update the section's intro line "AeroSpace-style workspaces 1–9: `cmd-1…9` switch, `cmd-shift-1…9` move pane." if that phrasing appears — the spec must match shipped defaults.
+`docs/superpowers/specs/2026-07-06-saiife-v2-roadmap.md`, § M3, the `move-to-workspace-1…9` bullet: replace ``(default `cmd+shift+1…9`)`` with ``(default `ctrl+1…9`; decided 2026-07-08 — macOS globally owns cmd+shift+3/4/5 for screenshots)``. Also update the section's intro line "AeroSpace-style workspaces 1–9: `cmd-1…9` switch, `cmd-shift-1…9` move pane." if that phrasing appears — the spec must match shipped defaults.
 
 - [ ] **Step 4: Full check + e2e**
 
@@ -1181,7 +1181,7 @@ Expected: both PASS (prettier checks README).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add tests/e2e/smoke.spec.ts README.md docs/superpowers/specs/2026-07-06-localflow-v2-roadmap.md
+git add tests/e2e/smoke.spec.ts README.md docs/superpowers/specs/2026-07-06-saiife-v2-roadmap.md
 git commit -m "test: workspace e2e; docs: workspaces"
 ```
 

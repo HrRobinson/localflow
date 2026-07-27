@@ -34,7 +34,7 @@ authority for the **never-auto-send** gate on customer-facing replies.
 > support-desk field (a single Bearer access token), and a webhook signed with
 > **HMAC-SHA1 over the raw body, NO timestamp** — the weakest scheme of the family
 > the shared receiver already models, but still verifiable when the header is
-> pinned. This spec grounds those two findings in localflow's actual code.
+> pinned. This spec grounds those two findings in saiife's actual code.
 
 **A note on ownership.** This spec **owns and pins the support vocabulary**
 (§6: the `'intercom'` `IntegrationId` addition, triggers, actions, context-field
@@ -46,7 +46,7 @@ tracks own a shape, this spec **names the dependency and stops**.
 
 ## 1. Goal + MVP scope
 
-**Goal (one sentence):** Let a localflow user assemble, on the canvas, a
+**Goal (one sentence):** Let a saiife user assemble, on the canvas, a
 product-led support worker that wakes when a customer replies in Intercom, reads
 the conversation + contact and composes the customer's commerce state (Shopify
 order / Stripe charge), **drafts** a reply, and — only after a human approves at a
@@ -79,7 +79,7 @@ the OS keychain and **never** rendered.
   human-approved gate.** The composed reply text is a **draft** carried in run
   context; the gate's peek shows the exact outbound body; only approval fires the
   send.
-- **Single workspace, single localflow environment.** Config-as-code `intercom`
+- **Single workspace, single saiife environment.** Config-as-code `intercom`
   block in `config.json` (non-secret refs only); token + client secret in the
   keychain.
 
@@ -134,7 +134,7 @@ feasibility pass):
 - **Reply (the customer-facing write).** `POST /conversations/{id}/reply` with a
   `message_type` and `body` posts a reply into the conversation. There is **no
   native draft object** (unlike Front/Gmail) — a reply call **sends**. That single
-  fact is what forces localflow's never-auto-send gate to live in the **flow**
+  fact is what forces saiife's never-auto-send gate to live in the **flow**
   (a draft in run context + an author-placed approval gate), not in a
   provider-level draft/send split (§9).
 - **Close / tag (internal writes).** `POST /conversations/{id}/parts` with a
@@ -172,7 +172,7 @@ feasibility pass):
    the notification `id`** (the id is in the body, not a header — so, exactly like
    Stripe's `evt_…` dedup, the seen-set lives connector-side, not in the receiver's
    header-only `dedup` hook, §7.1). A replay of a seen id is dropped.
-2. **No native draft object.** A reply call **sends**. localflow cannot lean on a
+2. **No native draft object.** A reply call **sends**. saiife cannot lean on a
    provider draft/send split (as email does with Gmail) — the never-auto-send
    boundary must be the **flow's gate** with the draft held in run context (§9).
    Front, the same-slot sibling, *does* have a native draft, which is why it is
@@ -197,17 +197,17 @@ pattern already solved for Stripe/Shopify.
 
 ## 3. The core loop → Intercom primitives
 
-localflow's support loop is `trigger → read → compose → draft → gate → reply`.
+saiife's support loop is `trigger → read → compose → draft → gate → reply`.
 Each stage maps to a concrete Intercom primitive and the concrete flow-engine
 mechanism that runs it:
 
-| Stage | Intercom primitive | localflow / flow-engine mechanism |
+| Stage | Intercom primitive | saiife / flow-engine mechanism |
 |---|---|---|
 | **trigger** | A verified webhook (`conversation.replied` flagship, `conversation.created`). | `intercom-webhook-server` verifies HMAC-SHA1 → the connector dedups on the notification id → normalizes to a `SeedEvent` → `subscribe(triggerId, handler)` hands it to the engine, which `startRun`s the flow with the payload in trigger-node context. |
 | **read** | `GET /conversations/{id}` / `GET /contacts/{id}`. | An `action` node (`getConversation` / `getContact`) → `invokeAction('intercom', ref, params)` → the connector calls `intercom-client` → **resolves** the normalized result, which the action-runner writes to context under the node id. |
-| **compose** | *(cross-connector — pure localflow)* | Other action nodes (`shopify.getOrder`, `stripe.getCharge`, keyed off `{{read.conversation.contactEmail}}`) write commerce facts into the **same** run context — the support worker's whole point: the reply is grounded in the customer's order/charge state. |
-| **draft** | *(none — pure localflow)* | The reply text is **composed into run context** (a template/agent node), NOT sent. There is no Intercom draft object; the "draft" is context data until the gate approves it (§9). |
-| **gate** | *(none — pure localflow)* | A `gate` node the author placed pauses the run `needs-you`; the human peeks the **exact reply body** and approves. The customer-facing `replyToConversation` node sits **downstream of that gate** (§9). |
+| **compose** | *(cross-connector — pure saiife)* | Other action nodes (`shopify.getOrder`, `stripe.getCharge`, keyed off `{{read.conversation.contactEmail}}`) write commerce facts into the **same** run context — the support worker's whole point: the reply is grounded in the customer's order/charge state. |
+| **draft** | *(none — pure saiife)* | The reply text is **composed into run context** (a template/agent node), NOT sent. There is no Intercom draft object; the "draft" is context data until the gate approves it (§9). |
+| **gate** | *(none — pure saiife)* | A `gate` node the author placed pauses the run `needs-you`; the human peeks the **exact reply body** and approves. The customer-facing `replyToConversation` node sits **downstream of that gate** (§9). |
 | **reply / close / tag** | `POST …/reply` (customer-facing) / close / `POST …/tags`. | The gated `action` node → `invokeAction` → `intercom-client`. **Failure = a rejected promise** carrying the real Intercom error (the pinned convention). |
 
 **The authority is the graph the author drew.** The connector exposes
@@ -218,7 +218,7 @@ an approved gate (§9).
 
 ---
 
-## 4. Architecture in localflow
+## 4. Architecture in saiife
 
 ### 4.1 Where it sits
 
@@ -226,7 +226,7 @@ A new **main-process module set** under `src/main/intercom/`, mirroring
 `src/main/stripe/` and `src/main/shopify/` (the closest siblings). It is
 **opt-in**: with no `intercom` config entry (and no stored token) the descriptor's
 `status()` returns `needs-config` and the engine refuses any Intercom node before
-any network call — localflow's "works with no integration" guarantee is unchanged.
+any network call — saiife's "works with no integration" guarantee is unchanged.
 
 The connector is the **live implementation behind the registry's pinned
 `invokeAction`/`subscribe`**, delegated via the `LiveConnector` seam
@@ -275,7 +275,7 @@ causes a redelivery storm). Because Intercom sends **no timestamp**, the
 Stripe's `evt_…`), so a redelivery *or a replay* of a seen id never seeds a second
 run.
 
-### 4.5 Reused localflow surfaces
+### 4.5 Reused saiife surfaces
 
 - `src/shared/integrations.ts` — the pinned `IntegrationDescriptor` /
   `IntegrationRegistry` / `LiveConnector` this connector satisfies; the
@@ -315,7 +315,7 @@ boundary):
 | `accessToken` | Intercom access token | **yes** | yes | string | The `Authorization: Bearer` token. Keychain only. Placeholder `dG9r…` / `intercom access token`. |
 | `clientSecret` | App client secret (webhook signing) | **yes** | yes | string | The HMAC-SHA1 key for `X-Hub-Signature`. Keychain only. |
 | `region` | Intercom region (us \| eu \| au) | no | no | string | Selects the API base URL; defaults `us`. Placeholder `us`. |
-| `environment` | localflow environment (1-9) | no | yes | number | Which env hosts Intercom work (same field/validation as Stripe's). |
+| `environment` | saiife environment (1-9) | no | yes | number | Which env hosts Intercom work (same field/validation as Stripe's). |
 | `webhookUrl` | Ingress webhook URL | no | no | string | The tunnel/relay URL (§4.4). Placeholder `https://<tunnel>/intercom/webhook`. |
 
 `status('intercom')` reports `needs-config` until `accessToken`, `clientSecret`,
@@ -538,7 +538,7 @@ the customer-facing reply, that authority is enforced as an invariant (§9).
 
 This is the **load-bearing** section, because a reply is **customer-facing**: an
 agent, however it reasons or is prompted, must not be able to send a message to a
-real customer without an explicit, recorded human approval. localflow already
+real customer without an explicit, recorded human approval. saiife already
 solved this for email (`2026-07-16-email-execution-design.md` §5). Intercom adopts
 the same invariant, adapted to Intercom's "reply sends" API shape.
 
@@ -609,7 +609,7 @@ time. The dependency is one-directional; the connector works under the current
 
 ## 11. Error handling
 
-localflow's principle (error-message-style memory; `credential-store.ts`,
+saiife's principle (error-message-style memory; `credential-store.ts`,
 `action-runner.ts`): **every failure is human-readable, actionable, and carries the
 real underlying exception. No silent catch. No bare "failed"/"not found".** A write
 signals failure by **rejecting** with that message; the action-runner prefixes it
@@ -765,7 +765,7 @@ against an Intercom development workspace.
 
 ---
 
-## Appendix — reused localflow surfaces (by path)
+## Appendix — reused saiife surfaces (by path)
 
 - `src/shared/integrations.ts` — the pinned `IntegrationDescriptor` /
   `IntegrationRegistry` / `LiveConnector` this connector satisfies; `IntegrationId`

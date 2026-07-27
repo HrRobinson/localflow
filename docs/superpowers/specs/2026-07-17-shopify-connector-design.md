@@ -31,7 +31,7 @@ reference the fields pinned here. Where those tracks own a shape, this spec
 
 ## 1. Goal + MVP scope
 
-**Goal (one sentence):** Let a localflow user assemble, on the canvas, an ecom
+**Goal (one sentence):** Let a saiife user assemble, on the canvas, an ecom
 support worker that wakes on a Shopify order event (or a customer email), reads
 the relevant order/customer facts through the Shopify Admin API, routes on those
 facts via edge conditions, and performs gated mutations (refund / cancel /
@@ -63,7 +63,7 @@ re-ship / note) — with the admin token in the OS keychain, **never** rendered.
   un-gated by construction of the flow the author drew. Plus an **optional,
   deterministic ecom backstop** (per-action limits, e.g. refund ≤ $X) as a
   phased item (§9).
-- **Single store, single localflow environment.** Config-as-code `shopify` block
+- **Single store, single saiife environment.** Config-as-code `shopify` block
   in `config.json` (non-secret refs only); token + webhook secret in the
   keychain.
 
@@ -157,7 +157,7 @@ Grounded in the current Shopify developer docs (verified 2026-07-17):
 
 1. **Two triggers are *derived*, not native 1:1 topics.** `order.created` maps
    cleanly to the native `orders/create`. But `order.refundRequested` and
-   `order.flagged` are **localflow-vocabulary** triggers with *composed* sources
+   `order.flagged` are **saiife-vocabulary** triggers with *composed* sources
    (§6.1) — a customer *requesting* a refund is Shopify's `returns/request` topic
    **or** an email the customer sent (the email trigger), and "flagged" is
    derived from an order's **risk assessment** (high-risk / manual-review),
@@ -189,16 +189,16 @@ blocked, preview-gated, or missing.
 
 ## 3. The core loop → Shopify primitives
 
-localflow's ecom loop is `trigger → read → route → act (gated)`. Each stage maps
+saiife's ecom loop is `trigger → read → route → act (gated)`. Each stage maps
 to a concrete Shopify primitive and the concrete flow-engine mechanism that runs
 it:
 
-| Stage | Shopify primitive | localflow / flow-engine mechanism |
+| Stage | Shopify primitive | saiife / flow-engine mechanism |
 |---|---|---|
 | **trigger** | A verified webhook (`orders/create`, `returns/request`, or a risk-derived flag), OR a customer email (the **email** connector's trigger — the loop composes). | `shopify-webhook-server` verifies HMAC → normalizes to a `SeedEvent` → the connector's `subscribe(id, triggerId, handler)` hands it to the engine, which `startRun`s the flow with the payload in trigger-node context (`flow-engine.ts:147`, `trigger-subscriber.ts`). |
 | **read** | GraphQL `order(id:)` / `customer(id:)` / `orders(query:)`. | An `action` node (`getOrder` / `getCustomer` / `searchOrders`) → `registry.invokeAction('shopify', ref, params)` → the connector calls `shopify-admin.ts` → **resolves** the typed result, which the action-runner writes to context under the node id (`action-runner.ts:58-59`). |
-| **route** | *(none — pure localflow)* | `selectEdges` evaluates edge conditions over the context the read wrote (`context.ts:88`). Today: `field === equals`; soon: the richer `FlowEdgeCondition` operators (§10) over e.g. `order.total`. **No LLM decides routing** — deterministic value compares. |
-| **gate** | *(none — pure localflow)* | A `gate` node the author placed pauses the run as `needs-you` (`flow-engine.ts` gate handling); the human approves in the cockpit. A mutation node sits **downstream of the gate the author drew**. |
+| **route** | *(none — pure saiife)* | `selectEdges` evaluates edge conditions over the context the read wrote (`context.ts:88`). Today: `field === equals`; soon: the richer `FlowEdgeCondition` operators (§10) over e.g. `order.total`. **No LLM decides routing** — deterministic value compares. |
+| **gate** | *(none — pure saiife)* | A `gate` node the author placed pauses the run as `needs-you` (`flow-engine.ts` gate handling); the human approves in the cockpit. A mutation node sits **downstream of the gate the author drew**. |
 | **act** | GraphQL `refundCreate` / `orderCancel` / `orderUpdate` (+ `orderEditBegin/Commit`). | The gated `action` node (`refundOrder` / `cancelOrder` / `updateShippingAddress` / `addOrderNote`) → `invokeAction` → `shopify-admin.ts` mutation. **Failure = a rejected promise** (the pinned convention); the action-runner forwards the *real* Shopify error (`action-runner.ts:60-66`). |
 
 **The authority is the graph the author drew, not the connector.** The connector
@@ -209,7 +209,7 @@ support pipeline, but a worker the user assembles with the authority they choose
 
 ---
 
-## 4. Architecture in localflow
+## 4. Architecture in saiife
 
 ### 4.1 Where it sits
 
@@ -218,7 +218,7 @@ A new **main-process module set** under `src/main/shopify/`, mirroring
 (`*-connector` / `*-admin` client / `*-webhook-server` / token store / config).
 It is **opt-in**: with no `shopify` config entry (and no stored token) the
 descriptor's `status()` returns `needs-config` and the engine refuses any Shopify
-node (`action-runner.ts:42`) — localflow's "works with no integration"
+node (`action-runner.ts:42`) — saiife's "works with no integration"
 guarantee is unchanged.
 
 The connector is, architecturally, **the live implementation behind the
@@ -286,7 +286,7 @@ delivery-timeout expectation is met and a slow flow never causes a redelivery
 storm. A bad / oversized / forged / duplicate delivery is dropped (4xx or 200-
 dedup) and **never** seeds a run.
 
-### 4.5 Reused localflow surfaces
+### 4.5 Reused saiife surfaces
 
 - `src/shared/integrations.ts` — the pinned `IntegrationDescriptor` /
   `IntegrationRegistry` this connector satisfies; the `IntegrationStatus` union;
@@ -327,7 +327,7 @@ boundary):
 | `webhookSecret` | Webhook signing secret | **yes** | yes | string | Verifies `X-Shopify-Hmac-Sha256`. Keychain only. |
 | `shopDomain` | Store domain | no | yes | string | `your-store.myshopify.com`. Non-secret ref. |
 | `apiVersion` | Admin API version | no | no | string | e.g. `2025-07`; defaults to a pinned version in `shopify-admin.ts`. |
-| `environment` | localflow environment (1-9) | no | yes | number | Which env hosts Shopify work (same field/validation as Linear's). |
+| `environment` | saiife environment (1-9) | no | yes | number | Which env hosts Shopify work (same field/validation as Linear's). |
 | `webhookUrl` | Ingress webhook URL | no | no | string | The tunnel/relay `address` (§4.4). Placeholder `https://<tunnel>/shopify/webhook`. |
 
 `status('shopify')` therefore reports `needs-config` until `adminToken`,
@@ -476,7 +476,7 @@ draw it a dozen other ways.
    │        │  invokeAction('shopify','refundOrder',{ id:"{{t.orderId}}", restock:true })
    │        │  refundCreate → resolves { refundId, amount } → context['refund']
    │        ▼
-   │   [action: addOrderNote]            note="Auto-refunded via localflow worker"
+   │   [action: addOrderNote]            note="Auto-refunded via saiife worker"
    │        ▼   (done)
    │
    └── edge condition: (else — total > 50 or not paid)
@@ -568,7 +568,7 @@ node invokes.
 **Optional deterministic backstop (phased — §14 Phase 3).** Gates are the user's
 authored control; a backstop is a *deterministic floor* under them, for the case
 where a flow is mis-authored or an LLM-seeded param is wrong. Proposal, in the
-spirit of **lfguard** (`guard/`, the Rust destructive-command guard) but as an
+spirit of **saiifeguard** (`guard/`, the Rust destructive-command guard) but as an
 **ecom policy** rather than a shell tokenizer:
 
 - A small, declarative `shopify.limits` config block (non-secret): e.g.
@@ -577,7 +577,7 @@ spirit of **lfguard** (`guard/`, the Rust destructive-command guard) but as an
   a hard reject (the pinned failure convention): a `refundOrder` for $250 with
   `refundMaxAmount: 100` **rejects** with a legible "refund $250 exceeds the
   configured $100 ecom limit — raise `shopify.limits.refundMaxAmount` or route it
-  through a human gate." Deterministic, no model in the loop, exactly lfguard's
+  through a human gate." Deterministic, no model in the loop, exactly saiifeguard's
   posture.
 - This is **defense in depth**, not the primary control: the author's gate is the
   intended safety mechanism; the limit is a floor that holds even if the gate was
@@ -620,7 +620,7 @@ current `eq`-only routing, just less expressively).
 
 ## 11. Error handling
 
-localflow's principle (error-message-style memory; demonstrated in
+saiife's principle (error-message-style memory; demonstrated in
 `credential-store.ts` and `action-runner.ts`): **every failure is human-readable,
 actionable, and carries the real underlying exception. No silent catch. No bare
 "failed" / "not found".** A mutation signals failure by **rejecting** its promise
@@ -650,7 +650,7 @@ a vaguer one — the action-runner's job is only to prefix it with the node/acti
 
 ## 12. Testing strategy (offline / mockable — no live calls in CI)
 
-Testable **without a live Shopify store**, matching localflow's existing seams
+Testable **without a live Shopify store**, matching saiife's existing seams
 (pure modules, injected backends, fixture events):
 
 - **`ShopifyApi` interface + `MockShopifyApi` seam.** `shopify-admin.ts` is
@@ -710,7 +710,7 @@ exercised only in manual dogfooding against a development store.
    gate-required) so a mis-authored flow can't fire a large refund. This is a
    product-safety call, not a technical one — flagged for a decision before the
    backstop phase (§14 Phase 3). Whatever the default, it is **deterministic**
-   (lfguard-style), never model-mediated.
+   (saiifeguard-style), never model-mediated.
 3. **`order.refundRequested` source — `returns/request` vs email composition.**
    Both are honest sources (§6.1). Which the **starter template** wires (and
    whether MVP ships both) is a templates-track decision that depends on how
@@ -760,7 +760,7 @@ development store.
   triggers; programmatic webhook-subscription management (§13.4); the email-trigger
   composition wired by the templates track.
 - **Phase 3 — deterministic ecom backstop:** the `shopify.limits` policy (§9),
-  lfguard-style, with the default decided (§13.2). Per-action limits enforced in
+  saiifeguard-style, with the default decided (§13.2). Per-action limits enforced in
   the connector before any mutation.
 - **Phase 4 — richer conditions consumption:** once the conditions track lands
   `FlowEdgeCondition` (§10), verify the pinned fields drive `gt`/`lte`/`contains`/
@@ -775,7 +775,7 @@ development store.
 
 ---
 
-## Appendix — reused localflow surfaces (by path)
+## Appendix — reused saiife surfaces (by path)
 
 - `src/shared/integrations.ts` — the pinned `IntegrationDescriptor` /
   `IntegrationRegistry` contract this connector satisfies; `IntegrationId` (edited,
@@ -803,6 +803,6 @@ development store.
 - `src/main/hook-server.ts` — the loopback receiver pattern the webhook server
   mirrors (createServer, `applyLoopbackTimeouts`, `MAX_BODY_BYTES`,
   `timingSafeEqual`, `responded`) + the HMAC / cloud-ingress additions.
-- `guard/` (lfguard) — the deterministic-guard *posture* the optional ecom
+- `guard/` (saiifeguard) — the deterministic-guard *posture* the optional ecom
   backstop (§9) borrows (a policy floor under the author's gates, no model in the
   loop).

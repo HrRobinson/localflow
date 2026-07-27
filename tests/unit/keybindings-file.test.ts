@@ -6,7 +6,7 @@ import { loadOrCreateKeybindings } from '../../src/main/keybindings-file'
 import { DEFAULT_BINDINGS } from '../../src/shared/keybindings'
 
 function tmpFile(): string {
-  return join(mkdtempSync(join(tmpdir(), 'localflow-kb-')), 'keybindings.json')
+  return join(mkdtempSync(join(tmpdir(), 'saiife-kb-')), 'keybindings.json')
 }
 
 afterEach(() => {

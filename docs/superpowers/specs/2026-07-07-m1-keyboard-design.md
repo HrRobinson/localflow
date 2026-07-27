@@ -2,11 +2,11 @@
 
 **Date:** 2026-07-07
 **Status:** Approved (design agreed in session 2026-07-06; user has AeroSpace
-with alt-* bound globally, so localflow mirrors its grammar on `cmd`).
+with alt-* bound globally, so saiife mirrors its grammar on `cmd`).
 
 ## Goal
 
-Make localflow fully keyboard-drivable in the Terminals view: one always-known
+Make saiife fully keyboard-drivable in the Terminals view: one always-known
 active pane, directional focus movement, pane swapping, and user-remappable
 keybindings — while never stealing keys the agents themselves use.
 
@@ -49,7 +49,7 @@ implementation may register a menu accelerator override).
 - Binding string grammar: `[cmd+][ctrl+][alt+][shift+]<key>` where `<key>` is a
   single character or `enter|escape|tab|space|arrow-left|arrow-right|arrow-up|arrow-down`.
 - Loaded by the main process at startup, exposed read-only to the renderer via
-  `localflow.getKeybindings()`. Unknown actions and malformed bindings are
+  `saiife.getKeybindings()`. Unknown actions and malformed bindings are
   ignored (defaults win) — a broken file never breaks the app.
 - Editing requires an app restart in M1 (GUI editor + live reload is M4).
 - README documents the file, its location, format, and the defaults table.

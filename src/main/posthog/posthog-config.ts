@@ -6,7 +6,7 @@ import type { PostHogConfig } from '../../shared/posthog'
  * validated at the boundary exactly like `parseWoocommerceConfig`: config.json
  * is user-edited, so only well-typed values are honored and any garbage DISABLES
  * the feature (returns `null`) rather than throwing. An absent/disabled block
- * means the connector never subscribes a poll — the opt-in posture localflow's
+ * means the connector never subscribes a poll — the opt-in posture saiife's
  * "works with no integration" guarantee relies on (spec §4.1).
  *
  * Secrets are NOT here: the personal API key lives in the keychain (spec §8).

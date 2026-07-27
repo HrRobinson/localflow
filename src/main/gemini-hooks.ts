@@ -17,7 +17,7 @@ function assertValidPort(port: number): void {
 
 function curlCommand(paneId: string, port: number, token: string, event: HookEventName): string {
   const payload = JSON.stringify({ paneId, event })
-  return `curl -s -m 3 -X POST http://127.0.0.1:${port}/event -H 'Content-Type: application/json' -H 'X-Localflow-Token: ${token}' -d '${payload}'`
+  return `curl -s -m 3 -X POST http://127.0.0.1:${port}/event -H 'Content-Type: application/json' -H 'X-Saiife-Token: ${token}' -d '${payload}'`
 }
 
 /**
@@ -37,7 +37,7 @@ function notificationCommand(paneId: string, port: number, token: string): strin
   // double-quoted single quote, reopen quote), so the payload still reaches
   // curl as one properly single-quoted argument.
   const quotedPayload = `'"'"'${payload}'"'"'`
-  const curl = `curl -s -m 3 -X POST http://127.0.0.1:${port}/event -H "Content-Type: application/json" -H "X-Localflow-Token: ${token}" -d ${quotedPayload}`
+  const curl = `curl -s -m 3 -X POST http://127.0.0.1:${port}/event -H "Content-Type: application/json" -H "X-Saiife-Token: ${token}" -d ${quotedPayload}`
   return `sh -c 'body=$(cat); case "$body" in *"\\"type\\":\\"ToolPermission\\""*|*"\\"type\\": \\"ToolPermission\\""*) ${curl} ;; esac'`
 }
 
@@ -90,7 +90,7 @@ export function writeGeminiHookSettings(
   assertSafeToken(paneId, 'paneId')
   assertSafeToken(token, 'token')
   assertValidPort(port)
-  const file = join(dir, `localflow-gemini-hooks-${paneId}.json`)
+  const file = join(dir, `saiife-gemini-hooks-${paneId}.json`)
   writeFileSync(
     file,
     JSON.stringify(buildGeminiHookSettings(paneId, port, token, guard), null, 2),
@@ -109,7 +109,7 @@ export function writeGeminiHookSettings(
 export function removeGeminiHookSettings(dir: string, paneId: string): void {
   if (!SAFE_TOKEN_RE.test(paneId)) return
   try {
-    rmSync(join(dir, `localflow-gemini-hooks-${paneId}.json`), { force: true })
+    rmSync(join(dir, `saiife-gemini-hooks-${paneId}.json`), { force: true })
   } catch {
     /* best-effort */
   }

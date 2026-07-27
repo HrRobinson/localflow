@@ -7,7 +7,7 @@
  *
  * NO raw Intercom request/response shape lives here — those are isolated in
  * `src/main/intercom/intercom-api.ts` (the API-version blast radius, §4.1). This
- * file holds ONLY localflow-facing, already-normalized vocabulary: ids as bare
+ * file holds ONLY saiife-facing, already-normalized vocabulary: ids as bare
  * strings, statuses as LOWERCASE enums (so §10's `eq`/`ne` compare exactly),
  * `contactEmail` as a lowercase string (the cross-connector JOIN KEY into Shopify /
  * Stripe), and `tags` as a lowercase string array — the exact types the

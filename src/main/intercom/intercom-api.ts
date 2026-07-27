@@ -7,7 +7,7 @@
  *
  * Read methods return the RAW Intercom object (HTML bodies, unix timestamps,
  * nested `contacts`/`tags`/`conversation_parts`); `intercom-normalize.ts` maps it to
- * the pinned context shape (§6.3). Mutation methods return a small localflow-shaped
+ * the pinned context shape (§6.3). Mutation methods return a small saiife-shaped
  * result that becomes the action node's context output. Every request sends
  * `Authorization: Bearer <accessToken>` and targets the REGION base URL (US/EU/AU);
  * a `429` backs off honoring `Retry-After`. Failure follows the pinned convention:
@@ -62,7 +62,7 @@ export interface RawContact {
   last_seen_at?: number | null
 }
 
-// ── Mutation inputs / results (localflow-shaped) ──────────────────────────────
+// ── Mutation inputs / results (saiife-shaped) ──────────────────────────────
 
 export interface ReplyInput {
   conversationId: string

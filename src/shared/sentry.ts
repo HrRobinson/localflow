@@ -6,7 +6,7 @@
  *
  * NO raw Sentry REST shape lives here — those are isolated in
  * `src/main/sentry/sentry-api.ts` (the API blast radius, §4.1). This file holds
- * ONLY localflow-facing, already-normalized vocabulary: the flattened
+ * ONLY saiife-facing, already-normalized vocabulary: the flattened
  * `frames[]` + `topInAppFrame` a downstream GitHub fix-node consumes, the issue
  * fields conditions route on, and the pinned id tuples the templates track reads.
  */

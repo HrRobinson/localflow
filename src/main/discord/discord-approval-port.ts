@@ -13,7 +13,7 @@ import {
 } from './discord-components'
 
 /**
- * THE HEADLINE (spec §3, §7): localflow's SECOND real `ApprovalPort` — a
+ * THE HEADLINE (spec §3, §7): saiife's SECOND real `ApprovalPort` — a
  * near-line-for-line peer of `SlackApprovalPort`, against the SAME
  * `flow/types.ts` seam, with NO engine change. It is CONNECTOR-AGNOSTIC — it
  * knows only `ApprovalRequest`, never which connector's action sits past the
@@ -55,7 +55,7 @@ export const DEFAULT_APPROVAL_TIMEOUT_MS = 3_600_000
 /**
  * Cap on the `settled` double-tap tombstone set. It only needs to outlive the
  * window between a gate resolving and Discord's last redelivery of that same
- * tap; a long-running localflow would otherwise accumulate one entry per gate
+ * tap; a long-running saiife would otherwise accumulate one entry per gate
  * forever (an unbounded leak). Oldest entries are evicted FIFO past this cap — a
  * redelivery older than the last `SETTLED_CAP` resolutions simply degrades to
  * the legible "no longer active" card instead of a silent no-op, which is
@@ -146,7 +146,7 @@ export class DiscordApprovalPort implements ApprovalPort {
     const entry = this.pending.get(key)
     if (!entry) {
       if (this.settled.has(key)) return // double-tap / redelivery → no-op (§7.2).
-      // Unknown/stale: run already ended, or localflow restarted losing the map.
+      // Unknown/stale: run already ended, or saiife restarted losing the map.
       if (ref) {
         this.api
           .respondToInteraction({

@@ -1,6 +1,7 @@
 import type { LiveConnector } from '../../shared/integrations'
 import { HTTP_ACTION_IDS, NODE_ID_PARAM, type HttpActionId } from '../../shared/http'
 import type { ResolvedRequest } from '../../shared/http'
+import { applyAuth } from './apply-auth'
 import { HttpClient } from './http-client'
 import { resolveRequest } from './http-node-config'
 import { responseToContext } from './http-normalize'
@@ -72,25 +73,12 @@ export class HttpConnector implements LiveConnector {
 
   /** Reveal the per-node secret (main-only) and apply it to the request headers
    *  per the auth scheme. The secret NEVER appears in a log, an error, or the
-   *  resolved request that is echoed anywhere (§9). */
+   *  resolved request that is echoed anywhere (§9). The header-building itself
+   *  lives in the shared `apply-auth.ts`, which the API client also uses. */
   private applyAuth(request: ResolvedRequest, nodeId: string): ResolvedRequest {
-    const { scheme, header, secretRef } = request.auth
+    const { scheme, secretRef } = request.auth
     if (scheme === 'none' || secretRef === undefined) return request
-
-    const secret = this.reveal(nodeId, secretRef)
-    const headers = { ...request.headers }
-    switch (scheme) {
-      case 'bearer':
-        headers['authorization'] = `Bearer ${secret}`
-        break
-      case 'basic':
-        headers['authorization'] = `Basic ${Buffer.from(secret).toString('base64')}`
-        break
-      case 'header':
-        headers[header ?? 'authorization'] = secret
-        break
-    }
-    return { ...request, headers }
+    return applyAuth(request, this.reveal(nodeId, secretRef))
   }
 
   // ── Trigger subscription (incoming — Half 2, deferred) ───────────────────────

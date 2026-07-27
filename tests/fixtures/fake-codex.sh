@@ -1,9 +1,9 @@
 #!/bin/sh
 # Stands in for the codex CLI in e2e. Scans argv for -c overrides embedding
-# localflow's hook commands (see src/main/codex-hooks.ts) and executes them,
+# saiife's hook commands (see src/main/codex-hooks.ts) and executes them,
 # simulating whichever Codex lifecycle event this invocation's tier wired
 # up — here, the shipped 'notify' tier's turn-complete (Stop-mapped) hook,
-# fired once the LOCALFLOW_E2E_GO marker file appears (or after a plain
+# fired once the SAIIFE_E2E_GO marker file appears (or after a plain
 # delay when run standalone), simulating a turn-complete. Does NOT
 # validate that a real `codex` binary accepts this exact -c grammar — see
 # the manual verification checklist in
@@ -20,28 +20,28 @@ unescape() {
   sed 's/\\\\/@@BKSL@@/g; s/\\"/"/g; s/@@BKSL@@/\\/g'
 }
 
-# Deterministic e2e synchronization: if LOCALFLOW_E2E_GO is set (the test
+# Deterministic e2e synchronization: if SAIIFE_E2E_GO is set (the test
 # sets it in the app env; SessionManager.spawn passes process env through
 # to the pty), wait for that marker file to exist before firing — the test
 # creates it only after its own must-come-first POSTs/assertions are done,
 # so no status-order race is possible by construction. Unset (running the
 # fixture standalone), fall back to a plain delay.
 wait_for_go() {
-  if [ -n "${LOCALFLOW_E2E_GO:-}" ]; then
-    until [ -f "$LOCALFLOW_E2E_GO" ]; do sleep 0.1; done
+  if [ -n "${SAIIFE_E2E_GO:-}" ]; then
+    until [ -f "$SAIIFE_E2E_GO" ]; do sleep 0.1; done
   else
     sleep 3
   fi
 }
 
 # Separate gate for the guard PreToolUse invocation below: it fires ONLY once
-# LOCALFLOW_E2E_GUARD_GO's file appears (the badge-clears test touches it).
+# SAIIFE_E2E_GUARD_GO's file appears (the badge-clears test touches it).
 # When the var is unset, or the file never appears, the guard is never run —
 # so the idle-pane regression test keeps its "guard: not yet observed" badge.
 # Returns non-zero (never run) when the gate isn't configured.
 guard_wait_for_go() {
-  if [ -n "${LOCALFLOW_E2E_GUARD_GO:-}" ]; then
-    until [ -f "$LOCALFLOW_E2E_GUARD_GO" ]; do sleep 0.1; done
+  if [ -n "${SAIIFE_E2E_GUARD_GO:-}" ]; then
+    until [ -f "$SAIIFE_E2E_GUARD_GO" ]; do sleep 0.1; done
     return 0
   fi
   return 1
@@ -57,13 +57,13 @@ for arg in "$@"; do
     -c)
       case "$arg" in
         *hooks.PreToolUse*)
-          # The guard -c override embeds `lfguard check ... --seen-dir <dir>
+          # The guard -c override embeds `saiifeguard check ... --seen-dir <dir>
           # --audit-tag <paneId>` as a JSON.stringify'd command. That command
           # uses single-quoted paths (no inner double-quotes), so JSON.stringify
           # wraps it in "..." with NO escaping — extract it back out directly.
           # Run it with a PreToolUse payload on stdin, exactly as real Codex
-          # would dispatch a Bash tool-call to the guard, so lfguard writes the
-          # invocation marker localflow's guard-seen watcher observes.
+          # would dispatch a Bash tool-call to the guard, so saiifeguard writes the
+          # invocation marker saiife's guard-seen watcher observes.
           gcmd=$(echo "$arg" | sed -n 's/.*,command="\(.*\)"}]}]$/\1/p')
           if [ -n "$gcmd" ]; then
             (

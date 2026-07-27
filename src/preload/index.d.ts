@@ -1,8 +1,8 @@
-import type { LocalflowApi } from '../shared/api'
+import type { SaiifeApi } from '../shared/api'
 
 declare global {
   interface Window {
-    localflow: LocalflowApi
+    saiife: SaiifeApi
   }
 }
 

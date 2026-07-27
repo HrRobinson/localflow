@@ -6,7 +6,7 @@ import type {
   IntegrationView
 } from '../../../shared/integrations'
 
-// Reused verbatim from Settings.tsx so this reads as native localflow.
+// Reused verbatim from Settings.tsx so this reads as native saiife.
 const card =
   'bg-surface-raised flex flex-col gap-2.5 rounded-[10px] border border-white/10 p-3.5 text-left'
 const rowBtn =
@@ -60,7 +60,7 @@ function ConfigField({
         placeholder={field.placeholder}
         defaultValue={field.value ?? ''}
         onBlur={(e) => {
-          void window.localflow.setIntegrationField(id, field.key, e.target.value).then((res) => {
+          void window.saiife.setIntegrationField(id, field.key, e.target.value).then((res) => {
             if (res.ok) onSaved(res.view)
             else onError(res.reason)
           })
@@ -91,7 +91,7 @@ function SecretField({
   const [value, setValue] = useState('')
 
   const save = (): void => {
-    void window.localflow.setIntegrationSecret(id, field.key, value).then((res) => {
+    void window.saiife.setIntegrationSecret(id, field.key, value).then((res) => {
       if (!res.ok) {
         onError(res.reason)
         return
@@ -102,7 +102,7 @@ function SecretField({
     })
   }
   const clear = (): void => {
-    void window.localflow.clearIntegrationSecret(id, field.key).then((res) => {
+    void window.saiife.clearIntegrationSecret(id, field.key).then((res) => {
       if (!res.ok) onError(res.reason)
       else onChanged()
     })
@@ -175,11 +175,11 @@ export default function Integrations(): React.JSX.Element {
   const [notice, setNotice] = useState<string | null>(null)
 
   const reload = (): void => {
-    void window.localflow.listIntegrations().then(setViews)
+    void window.saiife.listIntegrations().then(setViews)
   }
   useEffect(() => {
     let cancelled = false
-    void window.localflow.listIntegrations().then((v) => {
+    void window.saiife.listIntegrations().then((v) => {
       if (!cancelled) setViews(v)
     })
     return () => {
@@ -196,7 +196,7 @@ export default function Integrations(): React.JSX.Element {
     // than lying that it's on.
     setViews((prev) => (prev ? prev.map((v) => (v.id === id ? { ...v, enabled: next } : v)) : prev))
     setNotice(null)
-    const res = await window.localflow.setIntegrationEnabled(id, next)
+    const res = await window.saiife.setIntegrationEnabled(id, next)
     if (res.ok) replaceView(res.view)
     else {
       setViews(previous)

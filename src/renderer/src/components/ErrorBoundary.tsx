@@ -42,7 +42,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
     return (
       <div className="error-boundary-fallback flex h-screen w-screen flex-col items-center justify-center gap-4 bg-black p-8 text-center text-white">
         <p className="m-0 max-w-[32rem] text-[15px] text-gray-200">
-          localflow hit an unexpected error and this view was stopped.
+          saiife hit an unexpected error and this view was stopped.
         </p>
         <button
           type="button"

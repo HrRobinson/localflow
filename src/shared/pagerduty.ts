@@ -6,7 +6,7 @@
  *
  * NO raw PagerDuty REST/webhook shape lives here — those are isolated in
  * `src/main/pagerduty/pagerduty-api.ts` (the API blast radius, §4.1). This file
- * holds ONLY localflow-facing, already-normalized vocabulary: the incident /
+ * holds ONLY saiife-facing, already-normalized vocabulary: the incident /
  * service fields conditions route on, and the pinned id tuples the templates
  * track reads.
  */

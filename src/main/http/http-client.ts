@@ -40,6 +40,15 @@ export interface HttpTransport {
   send(req: HttpRequest): Promise<HttpRawResponse>
 }
 
+/**
+ * Thrown by `guardUrl` (string-level) and `FetchHttpTransport`'s dial-time
+ * DNS-rebind check — a rejection of the REQUEST, never the upstream. Callers
+ * (`ApiSender.send`) use this to report a guard refusal as 400, distinct from
+ * a genuine transport failure (502): a guard rejection can never succeed on
+ * retry, so conflating the two invites an agent to retry a URL that never can.
+ */
+export class SsrfGuardError extends Error {}
+
 const BODY_EXCERPT_MAX = 500
 
 /** A bounded, single-line excerpt of a remote body for an error message. */
@@ -59,9 +68,16 @@ function hostOf(url: string): string {
 /**
  * Guard a resolved URL before any dial. Default: https-only, no embedded
  * credentials, reject IP-literal/`localhost` private/loopback/link-local/metadata
- * ranges (via the shared guard). `allowLocal` is the explicit, per-node,
- * author-visible opt-in for a legitimate local target (§4.5) — it permits
- * `http://` and loopback/LAN, but still requires a parseable http(s) URL.
+ * ranges (via the shared guard). `allowLocal` is the explicit, author-visible
+ * opt-in for a legitimate local target (§4.5) — it permits `http://` and
+ * loopback/LAN, but still requires a parseable http(s) URL.
+ *
+ * NOTE the full scope of the opt-in: `allowLocal` disables the SSRF guard
+ * ENTIRELY for this request — not just loopback, but also the cloud-metadata
+ * ranges here AND the dial-time DNS-rebind re-check in `FetchHttpTransport`.
+ * It is safe only because it is author-set (per-node on the canvas connector,
+ * per-collection for the agent API client) and the target stays constrained by
+ * the node/collection's own allowlist. Never enable it from untrusted input.
  */
 export function guardUrl(url: string, allowLocal: boolean): void {
   if (allowLocal) {
@@ -69,16 +85,16 @@ export function guardUrl(url: string, allowLocal: boolean): void {
     try {
       u = new URL(url)
     } catch {
-      throw new Error(`Refusing to call "${url}" — it isn't a valid URL.`)
+      throw new SsrfGuardError(`Refusing to call "${url}" — it isn't a valid URL.`)
     }
     if (u.protocol !== 'http:' && u.protocol !== 'https:') {
-      throw new Error(`Refusing to call "${url}" — only http(s) URLs are allowed.`)
+      throw new SsrfGuardError(`Refusing to call "${url}" — only http(s) URLs are allowed.`)
     }
     return
   }
   const check = checkBaseUrl(url, 'URL')
   if (!check.ok) {
-    throw new Error(
+    throw new SsrfGuardError(
       `${check.reason} Set \`allowLocal: true\` on this node only if you intend a local target.`
     )
   }
@@ -92,17 +108,18 @@ export class HttpClient {
   }
 
   /**
-   * Guard → dial → map the result. Resolves the raw response on a 2xx; REJECTS
-   * on a non-2xx (status + body excerpt), a 429 (the remote's `Retry-After`
-   * verbatim), or a transport error (the Node error code). Never returns a
-   * non-2xx as a resolved value; never renders a secret.
+   * Guard → dial → return the raw response for ANY status (design §7). The
+   * agent API client uses this instead of `send`: a 404 is a normal, informative
+   * result it must iterate on, and `send`'s rejection message embeds a body
+   * excerpt that would route raw response content around the redaction model.
+   * Still enforces the SSRF guard before a socket opens, and still maps a
+   * transport failure to the pinned legible reject.
    */
-  async send(req: ResolvedRequest): Promise<HttpRawResponse> {
+  async sendRaw(req: ResolvedRequest): Promise<HttpRawResponse> {
     guardUrl(req.url, req.allowLocal)
 
-    let res: HttpRawResponse
     try {
-      res = await this.transport.send({
+      return await this.transport.send({
         method: req.method,
         url: req.url,
         headers: req.headers,
@@ -111,12 +128,49 @@ export class HttpClient {
         allowLocal: req.allowLocal
       })
     } catch (err) {
-      const code = (err as { code?: string }).code ?? (err as Error).message
+      // A dial-time guard rejection (`FetchHttpTransport`'s DNS-rebind check)
+      // fires from INSIDE `transport.send`, so it lands in this catch too —
+      // pass it through unwrapped so it stays distinguishable from a genuine
+      // transport failure below (see `SsrfGuardError`'s doc).
+      if (err instanceof SsrfGuardError) throw err
+      // NEVER interpolate `err.message` here (finding C1): undici's `Headers`
+      // implementation embeds the ENTIRE offending header value in its
+      // TypeError when a header carries an embedded LF/NUL ("Headers.append:
+      // "<value>" is an invalid header value."), and that value can be a
+      // withheld field chained in via `$ref` (or the collection credential
+      // itself) — this catch is the one place that value would otherwise
+      // reach the agent verbatim, with no gate, no scrub, no audit signal.
+      // `err.code` (a Node error code like `ECONNREFUSED`/`ENOTFOUND`) never
+      // carries request content, so it is safe to surface — but a real
+      // `fetch()` failure never sets `err.code` itself; the Node error code
+      // lives one level down, on `err.cause.code` (verified against a real
+      // DNS miss: `fetch('https://no-such-host.invalid/')` throws with
+      // `err.code === undefined` and `err.cause.code === 'ENOTFOUND'`).
+      // Without this fallback every real transport failure surfaced the
+      // generic label below, never the actual code. `err.cause.code` is
+      // exactly as contentless as `err.code` — still just a short Node error
+      // code string, never a header value or URL path — so reading it does
+      // NOT reopen C1. A transport error with neither gets the fixed,
+      // contentless label, still never `.message`.
+      const code =
+        (err as { code?: string }).code ??
+        (err as { cause?: { code?: string } }).cause?.code ??
+        'transport error'
       throw new Error(
         `Couldn't reach ${hostOf(req.url)} (${code}) — check the URL and that the host is reachable.`,
         { cause: err }
       )
     }
+  }
+
+  /**
+   * Guard → dial → map the result. Resolves the raw response on a 2xx; REJECTS
+   * on a non-2xx (status + body excerpt), a 429 (the remote's `Retry-After`
+   * verbatim), or a transport error (the Node error code). Never returns a
+   * non-2xx as a resolved value; never renders a secret.
+   */
+  async send(req: ResolvedRequest): Promise<HttpRawResponse> {
+    const res = await this.sendRaw(req)
 
     if (res.status === 429) {
       const retryAfter = res.headers['retry-after']
@@ -231,8 +285,9 @@ export class FetchHttpTransport implements HttpTransport {
     for (const { address } of records) {
       const range = blockedIpRange(address)
       if (range) {
-        throw new Error(
-          `Refusing to call "${url}" — "${hostname}" resolves to a private/loopback/metadata address (${address}, ${range}).`
+        throw new SsrfGuardError(
+          `Refusing to call "${url}" — "${hostname}" resolves to a private/loopback/metadata ` +
+            `address (${address}, ${range}).`
         )
       }
     }

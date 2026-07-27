@@ -45,12 +45,12 @@ export default function FlowCanvas(): React.JSX.Element {
   const flowIds = useRef(makeIdFn('flow'))
 
   useEffect(() => {
-    void window.localflow.listIntegrationDescriptors().then(setRegistry)
-    void window.localflow.listFlows().then(setFlows)
+    void window.saiife.listIntegrationDescriptors().then(setRegistry)
+    void window.saiife.listFlows().then(setFlows)
     // The built-in templates are a constant read; a failure just leaves the
     // picker empty (the blank-flow path via custom-blank is unaffected once it
     // returns), so we note it rather than bricking the canvas.
-    void window.localflow
+    void window.saiife
       .listFlowTemplates()
       .then(setTemplates)
       .catch(() =>
@@ -60,7 +60,7 @@ export default function FlowCanvas(): React.JSX.Element {
 
   // A later flow-save failure is pushed here (mirrors persistence notices).
   useEffect(() => {
-    return window.localflow.onFlowPersistenceNotice((message) => setNotice(message))
+    return window.saiife.onFlowPersistenceNotice((message) => setNotice(message))
   }, [])
 
   const palette = useMemo(() => buildPalette(registry), [registry])
@@ -80,7 +80,7 @@ export default function FlowCanvas(): React.JSX.Element {
   }
 
   const refreshList = (): void => {
-    void window.localflow.listFlows().then(setFlows)
+    void window.saiife.listFlows().then(setFlows)
   }
 
   const newFlow = (): void => {
@@ -113,7 +113,7 @@ export default function FlowCanvas(): React.JSX.Element {
   }
 
   const openFlow = (id: string): void => {
-    void window.localflow.getFlow(id).then((g) => {
+    void window.saiife.getFlow(id).then((g) => {
       if (!g) {
         setNotice("That flow couldn't be opened — it may have been deleted or is unreadable.")
         refreshList()
@@ -132,7 +132,7 @@ export default function FlowCanvas(): React.JSX.Element {
   }
 
   const deleteFlow = (id: string): void => {
-    void window.localflow.deleteFlow(id).then(refreshList)
+    void window.saiife.deleteFlow(id).then(refreshList)
   }
 
   const nextPosition = (): { x: number; y: number } => {
@@ -164,7 +164,7 @@ export default function FlowCanvas(): React.JSX.Element {
 
   const save = async (): Promise<FlowGraph | null> => {
     if (!graph) return null
-    const res = await window.localflow.saveFlow(graph)
+    const res = await window.saiife.saveFlow(graph)
     if (res.ok) {
       setDirty(false)
       refreshList()
@@ -178,7 +178,7 @@ export default function FlowCanvas(): React.JSX.Element {
     // Save-then-run: the engine always executes PERSISTED truth (§4.1).
     const saved = await save()
     if (!saved) return
-    const res = await window.localflow.runFlow(saved.id)
+    const res = await window.saiife.runFlow(saved.id)
     setNotice(
       res.ok
         ? `Flow handed to the engine — run ${res.runId} started.`

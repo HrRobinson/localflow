@@ -2,7 +2,7 @@ import type { DiscordCommandPayload } from './discord-components'
 import type { EngineControlSeam, ControlReply } from '../slack/slack-control-bridge'
 
 /**
- * The reserved **`/localflow`** control surface (spec §4.2, §9): `run <flow>`,
+ * The reserved **`/saiife`** control surface (spec §4.2, §9): `run <flow>`,
  * `status [run]`, `stop <run>` — seed / query / stop flow runs from a Discord
  * server. It REUSES the SAME narrow `EngineControlSeam` + `ControlReply` types
  * Slack's bridge defined (the control seam is chat-platform-agnostic already);
@@ -11,19 +11,19 @@ import type { EngineControlSeam, ControlReply } from '../slack/slack-control-bri
  * message, never a silent drop.
  *
  * On Discord the command arrives as an application-command INTERACTION_CREATE
- * (type 2) whose `name` is `localflow`; the connector delivers the reply as an
- * ephemeral interaction-callback. Non-`/localflow` interactions flow to the
+ * (type 2) whose `name` is `saiife`; the connector delivers the reply as an
+ * ephemeral interaction-callback. Non-`/saiife` interactions flow to the
  * `interaction` trigger instead (§6.1). The PEER of `slack-control-bridge.ts`.
  */
 
-export const CONTROL_COMMAND_NAME = 'localflow'
+export const CONTROL_COMMAND_NAME = 'saiife'
 
 const ephemeral = (text: string): ControlReply => ({ text, ephemeral: true })
 
 export class DiscordControlBridge {
   constructor(private readonly engine: EngineControlSeam) {}
 
-  /** Handle a `localflow …` command payload → an ephemeral reply. */
+  /** Handle a `saiife …` command payload → an ephemeral reply. */
   handle(payload: DiscordCommandPayload): ControlReply {
     if (payload.name !== CONTROL_COMMAND_NAME) {
       return ephemeral(

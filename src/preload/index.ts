@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import type { LocalflowApi } from '../shared/api'
+import type { SaiifeApi } from '../shared/api'
 import type {
   ActivityEntry,
   AddPaneRequest,
@@ -14,7 +14,7 @@ import type { ConsoleEvent, ConsolePrefs } from '../shared/console'
 import type { IntegrationId } from '../shared/integrations'
 import type { FlowGraph } from '../shared/flows'
 
-const api: LocalflowApi = {
+const api: SaiifeApi = {
   createSession: (agentId: AgentId, cwd?: string, customCommand?: string, environment?: number) =>
     ipcRenderer.invoke('session:create', agentId, cwd, customCommand, environment),
   restartSession: (id: string, fresh?: boolean) => ipcRenderer.invoke('session:restart', id, fresh),
@@ -159,6 +159,31 @@ const api: LocalflowApi = {
     ipcRenderer.invoke('integrations:setSecret', id, key, value),
   clearIntegrationSecret: (id: IntegrationId, key?: string) =>
     ipcRenderer.invoke('integrations:clearSecret', id, key),
+  listCollections: (environment: number) =>
+    ipcRenderer.invoke('apiClient:listCollections', environment),
+  upsertCollection: (environment: number, collection: unknown) =>
+    ipcRenderer.invoke('apiClient:upsertCollection', environment, collection),
+  removeCollection: (environment: number, id: string) =>
+    ipcRenderer.invoke('apiClient:removeCollection', environment, id),
+  setCollectionSecret: (
+    environment: number,
+    collectionId: string,
+    secretRef: string,
+    value: string
+  ) =>
+    ipcRenderer.invoke(
+      'apiClient:setCollectionSecret',
+      environment,
+      collectionId,
+      secretRef,
+      value
+    ),
+  clearCollectionSecret: (environment: number, collectionId: string, secretRef?: string) =>
+    ipcRenderer.invoke('apiClient:clearCollectionSecret', environment, collectionId, secretRef),
+  grantApiAccess: (environment: number, paneId: string, collectionIds: string[]) =>
+    ipcRenderer.invoke('apiClient:grant', environment, paneId, collectionIds),
+  revokeApiAccess: (environment: number) => ipcRenderer.invoke('apiClient:revoke', environment),
+  apiGrantStatus: (environment: number) => ipcRenderer.invoke('apiClient:status', environment),
   listIntegrationDescriptors: () => ipcRenderer.invoke('integration:list'),
   listFlowTemplates: () => ipcRenderer.invoke('flow:list-templates'),
   listFlows: () => ipcRenderer.invoke('flow:list'),
@@ -173,4 +198,4 @@ const api: LocalflowApi = {
   }
 }
 
-contextBridge.exposeInMainWorld('localflow', api)
+contextBridge.exposeInMainWorld('saiife', api)

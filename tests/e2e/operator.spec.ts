@@ -9,7 +9,7 @@ import type { AddressInfo } from 'node:net'
 const here = dirname(fileURLToPath(import.meta.url))
 
 /**
- * Same launch shape as smoke.spec.ts: a temp userData dir, LOCALFLOW_E2E=1, the
+ * Same launch shape as smoke.spec.ts: a temp userData dir, SAIIFE_E2E=1, the
  * fake-claude fixture as the terminal binary, and the codex/gemini paths pointed
  * at nonexistent files so their detection short-circuits without a login-shell
  * spawn. This spec drives the operator control API with Node `fetch` as the
@@ -24,15 +24,15 @@ function launchApp(userData: string): Promise<ElectronApplication> {
     args: ['.'],
     env: {
       ...process.env,
-      LOCALFLOW_E2E: '1',
-      LOCALFLOW_USER_DATA: userData,
-      LOCALFLOW_CLAUDE_BIN: join(here, '../fixtures/fake-claude.sh'),
+      SAIIFE_E2E: '1',
+      SAIIFE_USER_DATA: userData,
+      SAIIFE_CLAUDE_BIN: join(here, '../fixtures/fake-claude.sh'),
       // Keep the skill-env auto-writer away from any real ~/.openclaw config;
       // this path never exists, so the writer no-ops.
-      LOCALFLOW_OPENCLAW_CONFIG: join(userData, 'openclaw.json'),
-      LOCALFLOW_LAZYGIT_BIN: '/nonexistent/lazygit',
-      LOCALFLOW_EDITOR_BIN: '/nonexistent/code',
-      LOCALFLOW_E2E_GO: join(userData, 'e2e-go')
+      SAIIFE_OPENCLAW_CONFIG: join(userData, 'openclaw.json'),
+      SAIIFE_LAZYGIT_BIN: '/nonexistent/lazygit',
+      SAIIFE_EDITOR_BIN: '/nonexistent/code',
+      SAIIFE_E2E_GO: join(userData, 'e2e-go')
     }
   })
 }
@@ -70,7 +70,7 @@ test('operator drives a granted environment and is denied cross-env', async () =
     await new Promise<void>((resolve) => server!.listen(0, '127.0.0.1', resolve))
     const pageUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`
 
-    const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+    const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
     app = await launchApp(userData)
 
     const win = await app.firstWindow()
@@ -83,29 +83,29 @@ test('operator drives a granted environment and is denied cross-env', async () =
       (cwd) =>
         (
           window as unknown as {
-            localflow: { createSession(a: string, c: string): Promise<Session> }
+            saiife: { createSession(a: string, c: string): Promise<Session> }
           }
-        ).localflow.createSession('claude', cwd),
+        ).saiife.createSession('claude', cwd),
       userData
     )
     const web1 = await win.evaluate(
       (url) =>
         (
           window as unknown as {
-            localflow: { createBrowserSession(u: string, e: number): Promise<Session> }
+            saiife: { createBrowserSession(u: string, e: number): Promise<Session> }
           }
-        ).localflow.createBrowserSession(url, 1),
+        ).saiife.createBrowserSession(url, 1),
       pageUrl
     )
     const term2 = await win.evaluate(
       (cwd) =>
         (
           window as unknown as {
-            localflow: {
+            saiife: {
               createSession(a: string, c: string, cmd: undefined, e: number): Promise<Session>
             }
           }
-        ).localflow.createSession('claude', cwd, undefined, 2),
+        ).saiife.createSession('claude', cwd, undefined, 2),
       userData
     )
     // De-risk note 2: prove the env-2 terminal genuinely lives on env 2 before

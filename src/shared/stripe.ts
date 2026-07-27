@@ -6,7 +6,7 @@
  *
  * NO raw Stripe request/response shape lives here — those are isolated in
  * `src/main/stripe/stripe-client.ts` (the API-version blast radius, §4.1). This
- * file holds ONLY localflow-facing, already-normalized vocabulary: money as a
+ * file holds ONLY saiife-facing, already-normalized vocabulary: money as a
  * MAJOR-unit `number` (via `minorToMajor`, §6.3), `currency` as an UPPERCASE ISO
  * 4217 string (so it compares equal to Shopify's `order.currency`), Stripe ids as
  * bare strings, and lowercase status enums — the exact types the (sibling-owned)

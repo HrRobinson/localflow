@@ -14,7 +14,7 @@ import { RESERVED_ENV_KEYS } from '../../src/main/hook-adapter'
 import { DEFAULT_CONSOLE_PREFS, type ConsolePrefs } from '../../src/shared/console'
 
 function tmpConfig(): string {
-  return join(mkdtempSync(join(tmpdir(), 'localflow-ar-')), 'config.json')
+  return join(mkdtempSync(join(tmpdir(), 'saiife-ar-')), 'config.json')
 }
 
 describe('agent config persistence', () => {

@@ -5,11 +5,11 @@ import { clampEnvironment } from '../../shared/environment'
  * The `flows` enablement block from config.json (config-as-code, like
  * `operator-config.ts` / `editor-config.ts`). Non-secret refs only — never a
  * token. Absent or `enabled:false` ⇒ the engine never starts (opt-in, off by
- * default), so localflow's "works with no flow configured" guarantee holds.
+ * default), so saiife's "works with no flow configured" guarantee holds.
  */
 export interface FlowsConfig {
   enabled: boolean
-  /** Default localflow environment (1-9) hosting flow-driven panes. */
+  /** Default saiife environment (1-9) hosting flow-driven panes. */
   environment: number
   /** RAM-safe cap on concurrent live agent panes (dev-machine memory note). */
   maxConcurrentPanes: number

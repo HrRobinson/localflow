@@ -56,7 +56,7 @@ mirroring how the Stripe spec names the webhook-receiver and money tracks.
 
 ## 1. Goal + MVP scope
 
-**Goal (one sentence):** Let a localflow user assemble, on the canvas, a support
+**Goal (one sentence):** Let a saiife user assemble, on the canvas, a support
 worker that wakes on a Zendesk ticket event, reads the ticket and its conversation
 through Zendesk's REST API, **composes them with Shopify order and Stripe payment
 context**, drafts a reply, routes on those facts via edge conditions, and performs
@@ -101,7 +101,7 @@ auto-sending**.
   (§7.3): a support worker whose reply draft is grounded in **both** the store
   order (Shopify) and the payment/refund state (Stripe), read into flow context and
   sent only behind a human peek→confirm.
-- **Single subdomain, single localflow environment.** Config-as-code `zendesk`
+- **Single subdomain, single saiife environment.** Config-as-code `zendesk`
   block in `config.json` (non-secret refs only); API token + webhook secret in the
   keychain.
 
@@ -198,17 +198,17 @@ Cloud ingress for webhooks is the same known pattern Shopify/Stripe already solv
 
 ## 3. The core loop → Zendesk primitives
 
-localflow's support loop is `trigger → read → route → draft → gate → act`. Each
+saiife's support loop is `trigger → read → route → draft → gate → act`. Each
 stage maps to a concrete Zendesk primitive and the concrete flow-engine mechanism
 that runs it:
 
-| Stage | Zendesk primitive | localflow / flow-engine mechanism |
+| Stage | Zendesk primitive | saiife / flow-engine mechanism |
 |---|---|---|
 | **trigger** | A verified Zendesk webhook (`ticket.created`, `ticket.updated`, `ticket.commentAdded`, `ticket.escalated`), fired by an Admin-Center trigger/automation, delivered to the **shared webhook receiver**. | The receiver verifies the `X-Zendesk-Webhook-Signature` (timestamp scheme, §7) → the connector normalizes the payload to a `SeedEvent` → `subscribe(triggerId, handler)` hands it to the engine, which `startRun`s the flow with the payload in trigger-node context (`trigger-subscriber.ts`, `flow-engine.ts`). |
 | **read** | `GET /tickets/{id}` · `/tickets/{id}/comments` · `/search.json` · `/users/{id}`. | An `action` node (`getTicket` / `getComments` / `searchTickets` / `getUser`) → `registry.invokeAction('zendesk', ref, params)` → the connector calls `zendesk-api.ts` → `zendesk-normalize.ts` maps it → the connector **resolves** it, which the action-runner writes to context under the node id. |
-| **route** | *(none — pure localflow)* | `selectEdges` evaluates edge conditions over the context the reads wrote, including **cross-connector** paths (`{{ticket.requesterEmail}}`, `{{order.orders.0.fulfillmentStatus}}`, `{{charge.charge.disputed}}` — §7.3). Deterministic value compares; **no LLM decides routing**. |
+| **route** | *(none — pure saiife)* | `selectEdges` evaluates edge conditions over the context the reads wrote, including **cross-connector** paths (`{{ticket.requesterEmail}}`, `{{order.orders.0.fulfillmentStatus}}`, `{{charge.charge.disputed}}` — §7.3). Deterministic value compares; **no LLM decides routing**. |
 | **draft** | *(agent — the reply text)* | The agent, prompted with the ticket thread + composed order/payment context, drafts the reply body — the same drafting posture the email spec uses. The draft is *proposed*, never sent, until the gate. |
-| **gate** | *(none — pure localflow)* | A `gate` node the author placed pauses the run `needs-you`; the human **peeks the exact reply** and approves in the cockpit. The public-reply mutation sits **downstream of the gate the author drew** (§9). |
+| **gate** | *(none — pure saiife)* | A `gate` node the author placed pauses the run `needs-you`; the human **peeks the exact reply** and approves in the cockpit. The public-reply mutation sits **downstream of the gate the author drew** (§9). |
 | **act** | `PUT /tickets/{id}` (`comment` public/private, `status`, `assignee`) · `PUT /tickets/{id}/tags`. | The gated `action` node (`replyToTicket` / `addInternalNote` / `setStatus` / `assignTicket` / `tagTicket`) → `invokeAction` → `zendesk-api.ts` mutation. **Failure = a rejected promise** (the pinned convention); the action-runner forwards the *real* Zendesk error. |
 
 **The authority is the graph the author drew, not the connector.** The connector
@@ -217,7 +217,7 @@ gates. A public reply with no gated path to it never sends.
 
 ---
 
-## 4. Architecture in localflow
+## 4. Architecture in saiife
 
 ### 4.1 Where it sits
 
@@ -225,7 +225,7 @@ A new **main-process module set** under `src/main/zendesk/`, mirroring
 `src/main/stripe/` (the closest sibling in shape) and `src/main/shopify/`. It is
 **opt-in**: with no `zendesk` config entry (and no stored token) the descriptor's
 `status()` returns `needs-config` and the engine refuses any Zendesk node before
-any network call — localflow's "works with no integration" guarantee is unchanged.
+any network call — saiife's "works with no integration" guarantee is unchanged.
 The connector is the live implementation behind the registry's pinned
 `invokeAction`/`subscribe`, registered via `registerConnector('zendesk', …)`.
 **All Zendesk API shapes are isolated in `zendesk-api.ts`** (the blast radius for
@@ -309,7 +309,7 @@ boundary):
 | `webhookSecret` | Webhook signing secret | **yes** | yes | string | Verifies `X-Zendesk-Webhook-Signature` (§7). From the webhook's "Show Signing Secret". Keychain only. |
 | `subdomain` | Zendesk subdomain | no | yes | string | `your-co` in `your-co.zendesk.com`. Non-secret ref; every call + the webhook origin key off it. Placeholder `your-co`. |
 | `agentEmail` | Agent email | no | yes | string | The email half of the Basic-auth pair; the identity replies are attributed to. Non-secret. |
-| `environment` | localflow environment (1-9) | no | yes | number | Which env hosts Zendesk work (same field/validation as Stripe's). |
+| `environment` | saiife environment (1-9) | no | yes | number | Which env hosts Zendesk work (same field/validation as Stripe's). |
 | `webhookUrl` | Ingress webhook URL | no | no | string | The tunnel/relay endpoint (§4.5). Placeholder `https://<tunnel>/zendesk/webhook`. |
 
 `status('zendesk')` reports `needs-config` until `apiToken`, `webhookSecret`,
@@ -606,7 +606,7 @@ customer-facing action gated: that is the ecom/support worker whole.
   `agentEmail` is **not** secret (it is half of a Basic pair whose secret half is
   the token) — it may appear in config, but the token half never does.
 - **"Product" fork (deferred, §13.1).** A distributable app uses **Zendesk OAuth**
-  — the per-subdomain admin authorizes localflow's OAuth client, minting a
+  — the per-subdomain admin authorizes saiife's OAuth client, minting a
   per-tenant `access_token` sent as `Authorization: Bearer <token>`. The keychain
   shape already supports per-key storage; the additive change is a
   `zendesk-oauth.ts` module and a per-subdomain config array. Same REST calls at
@@ -657,7 +657,7 @@ un-gated by the author (an internal note is not customer-facing), but it can nev
 become a public reply.
 
 **Optional deterministic backstop (phased — §13.2).** A *deterministic floor* under
-the author's gates, in the spirit of **lfguard** (`guard/`) but as a **support
+the author's gates, in the spirit of **saiifeguard** (`guard/`) but as a **support
 policy**: e.g. `{ publicReplyRequiresGate: true, autoSolveMax: 0 }` enforced inside
 the connector before the `zendesk-api` call — a `replyToTicket(public)` reached
 without a recorded approval **rejects** legibly. **Defense in depth**, not the
@@ -696,7 +696,7 @@ connector does not depend on the operator set landing first (it works under
 
 ## 11. Error handling
 
-localflow's principle (error-message-style memory; demonstrated in
+saiife's principle (error-message-style memory; demonstrated in
 `credential-store.ts` and `action-runner.ts`): **every failure is human-readable,
 actionable, and carries the real underlying exception. No silent catch. No bare
 "failed" / "not found".** A mutation signals failure by **rejecting** its promise
@@ -729,7 +729,7 @@ The connector **never** catches-and-drops. Where Zendesk already returns a preci
 
 ## 12. Testing strategy (offline / mockable — no live calls in CI)
 
-Testable **without a live Zendesk subdomain**, matching localflow's existing seams
+Testable **without a live Zendesk subdomain**, matching saiife's existing seams
 (pure modules, injected backends, fixture events). **No test ever performs a live
 Zendesk call**; CI has no Zendesk credentials.
 
@@ -792,7 +792,7 @@ Zendesk call**; CI has no Zendesk credentials.
      URL), the "operator onboarding friction" already flagged as a product pain. A
      guided "Connect Zendesk" wizard is the natural mitigation.
    - *Product*: a **distributable OAuth app** — per-subdomain admin authorizes
-     localflow's OAuth client, a per-tenant token array, a hosted webhook relay
+     saiife's OAuth client, a per-tenant token array, a hosted webhook relay
      (§4.5 phase 2). Changes auth (OAuth), tenancy (multi-subdomain), config, and
      onboarding. Recommendation: build MVP "for me", keep the token/config shapes
      multi-subdomain-ready (a per-tenant array is additive), and invest the
@@ -805,7 +805,7 @@ Zendesk call**; CI has no Zendesk credentials.
    post a public reply un-gated? Leaning **yes** (a customer-facing reply is
    higher-stakes than an internal note, and the gate is the product's whole promise)
    — but it's a product-safety call flagged for a decision before the backstop
-   phase. Whatever the default, it is **deterministic** (lfguard-style), never
+   phase. Whatever the default, it is **deterministic** (saiifeguard-style), never
    model-mediated.
 3. **`ticket.commentAdded` scope — requester replies only, or any comment?** The
    flagship trigger should fire on a **customer** reply, not on an agent's own
@@ -872,7 +872,7 @@ dogfoodable against a Zendesk trial subdomain.
   solve" template (owned/wired by the templates track, consuming §6 verbatim). This
   is the connector's headline value and the ecom/support worker completing itself.
 - **Phase 4 — deterministic support backstop:** the support-policy floor (§9),
-  lfguard-style, with the `publicReplyRequiresGate` default decided (§13.2).
+  saiifeguard-style, with the `publicReplyRequiresGate` default decided (§13.2).
 - **Phase 5 — product fork:** distributable Zendesk OAuth app, per-subdomain token
   isolation, a hosted webhook relay, and the guided "Connect Zendesk" onboarding
   wizard (§13.1).
@@ -887,7 +887,7 @@ dogfoodable against a Zendesk trial subdomain.
 
 ---
 
-## Appendix — reused localflow surfaces (by path)
+## Appendix — reused saiife surfaces (by path)
 
 - `src/shared/integrations.ts` — the pinned `IntegrationDescriptor` /
   `LiveConnector` / `IntegrationRegistry` this connector satisfies; `IntegrationId`
@@ -926,5 +926,5 @@ dogfoodable against a Zendesk trial subdomain.
 - `src/main/flow/flow-model.ts` — the `INTEGRATION_IDS` allow-list (edited, §6.0).
 - `src/main/index.ts` — constructs + `registerConnector`s the `ZendeskConnector`
   (§4.4), the Shopify/Stripe pattern verbatim.
-- `guard/` (lfguard) — the deterministic-guard posture the optional support backstop
+- `guard/` (saiifeguard) — the deterministic-guard posture the optional support backstop
   (§9) borrows (a policy floor under the author's gates, no model in the loop).

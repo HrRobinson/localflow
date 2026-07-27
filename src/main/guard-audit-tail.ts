@@ -47,7 +47,7 @@ export interface AuditTailOptions {
 export function startGuardAuditTail(opts: AuditTailOptions): () => void {
   let offset = existsSync(opts.path) ? statSync(opts.path).size : 0
   // This tailer only feeds the Console tab's guard-event mirror — enforcement
-  // lives in operator-guard.ts/lfguard itself and is unaffected if this stops
+  // lives in operator-guard.ts/saiifeguard itself and is unaffected if this stops
   // working. Still, a persistently broken tail (e.g. bad permissions on the
   // audit log) shouldn't be invisible forever. Warn once per failure kind
   // (not once per poll-tick, which would spam) so a real breakage surfaces.
@@ -77,7 +77,7 @@ export function startGuardAuditTail(opts: AuditTailOptions): () => void {
     }
   }
   // fs.watch fires on append; guard against missing file by watching the dir is
-  // overkill here — the file is created lazily by lfguard, so poll-on-watch.
+  // overkill here — the file is created lazily by saiifeguard, so poll-on-watch.
   let watcher: ReturnType<typeof watch> | null = null
   const arm = (): void => {
     try {

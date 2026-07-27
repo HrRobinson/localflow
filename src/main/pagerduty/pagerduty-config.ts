@@ -28,7 +28,7 @@ export interface PagerDutyConfig {
   region: PagerDutyRegion
   /** The PagerDuty user REST mutations are attributed to (`From:` header, §8). */
   fromEmail: string
-  /** localflow environment (1-9). */
+  /** saiife environment (1-9). */
   environment: number
   /** Default service id, e.g. "PXXXXXX". Optional; nodes may filter per-node. */
   serviceId?: string

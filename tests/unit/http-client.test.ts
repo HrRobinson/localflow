@@ -1,3 +1,5 @@
+import http from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { describe, it, expect, vi } from 'vitest'
 import {
   HttpClient,
@@ -169,6 +171,117 @@ describe('FetchHttpTransport — dial-time DNS-resolution SSRF guard', () => {
   })
 })
 
+/** ★ Pins the empirical finding for the "U+200B defeats `looksLikeSecretLiteral`"
+ *  investigation (`http-node-config.ts`'s guard trims with `String.trim()`,
+ *  which does not strip U+200B, category Cf). The open question was whether a
+ *  header carrying a leading U+200B ever reaches the wire through the REAL
+ *  transport — if it does, the guard's blind spot is exploitable; if the
+ *  platform itself refuses the header first, it is moot. It refuses: the
+ *  WHATWG Fetch `Headers` implementation requires every header name/value to
+ *  be ByteString-convertible (code points ≤ 255), and U+200B is 0x200B (8203),
+ *  so `fetch()` throws before a socket ever opens — for both a header VALUE
+ *  and a header NAME. Confirmed against a real loopback `node:http` server via
+ *  the real `FetchHttpTransport`, not a mock. See spec §4.1 for the recorded,
+ *  checked-and-closed note. */
+describe('FetchHttpTransport — U+200B in a header is refused by the platform before any socket', () => {
+  async function startLoopbackServer() {
+    const received: http.IncomingHttpHeaders[] = []
+    const server = http.createServer((req, res) => {
+      received.push(req.headers)
+      res.writeHead(200, { 'content-type': 'text/plain' })
+      res.end('ok')
+    })
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()))
+    const port = (server.address() as AddressInfo).port
+    return { server, received, port }
+  }
+
+  it('a header VALUE with a leading U+200B never reaches the wire — fetch() throws', async () => {
+    const { server, received, port } = await startLoopbackServer()
+    const transport = new FetchHttpTransport()
+    try {
+      await expect(
+        transport.send({
+          method: 'GET',
+          url: `http://127.0.0.1:${port}/`,
+          headers: { 'x-probe': '​sk_live_STOLEN' },
+          allowLocal: true
+        })
+      ).rejects.toThrow(/ByteString/i)
+      expect(received).toHaveLength(0)
+    } finally {
+      server.close()
+    }
+  })
+
+  it('a header NAME with a leading U+200B never reaches the wire — fetch() throws', async () => {
+    const { server, received, port } = await startLoopbackServer()
+    const transport = new FetchHttpTransport()
+    try {
+      await expect(
+        transport.send({
+          method: 'GET',
+          url: `http://127.0.0.1:${port}/`,
+          headers: { '​x-probe-name': 'plain-value' },
+          allowLocal: true
+        })
+      ).rejects.toThrow(/ByteString/i)
+      expect(received).toHaveLength(0)
+    } finally {
+      server.close()
+    }
+  })
+})
+
+/** ★ C1 (CRITICAL): `sendRaw`'s catch previously spliced `err.message` straight
+ *  into the rejection. undici's `Headers.append` embeds the ENTIRE offending
+ *  header value in its `TypeError` when the value carries an embedded LF/NUL
+ *  (confirmed directly: `new Headers().append('x', 'line1\nline2')` throws
+ *  `TypeError: Headers.append: "line1\nline2" is an invalid header value.`) —
+ *  so a withheld value chained into a header (a PEM private key, a
+ *  multi-line description) came back to the agent in the clear through this
+ *  one path, with no gate, no scrub, no upstream cooperation. This MUST drive
+ *  the REAL `FetchHttpTransport`: `MockHttpTransport` never validates
+ *  headers, so a synthetic `ECONNREFUSED` (as `api-send.test.ts` already
+ *  covers) never enters this path at all — which is exactly why the existing
+ *  suite missed it. */
+describe('HttpClient.sendRaw — C1: a transport error never carries request content', () => {
+  async function startLoopbackServer() {
+    const server = http.createServer((_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/plain' })
+      res.end('ok')
+    })
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()))
+    const port = (server.address() as AddressInfo).port
+    return { server, port }
+  }
+
+  it('a header value with an embedded LF (e.g. a chained PEM key) never reaches the reject message', async () => {
+    const { server, port } = await startLoopbackServer()
+    const STOLEN_MARKER =
+      '-----BEGIN PRIVATE KEY-----\nFAKE-STOLEN-PEM-MARKER\n-----END PRIVATE KEY-----'
+    try {
+      const client = new HttpClient({ transport: new FetchHttpTransport() })
+      let caught: Error | undefined
+      try {
+        await client.sendRaw(
+          req(`http://127.0.0.1:${port}/`, {
+            headers: { 'x-probe': STOLEN_MARKER },
+            allowLocal: true
+          })
+        )
+      } catch (err) {
+        caught = err as Error
+      }
+      expect(caught).toBeDefined()
+      expect(caught?.message).not.toContain('FAKE-STOLEN-PEM-MARKER')
+      expect(caught?.message).not.toContain('Headers.append')
+    } finally {
+      server.close()
+    }
+  })
+})
+
 describe('HttpClient — error mapping carries the real cause (§9)', () => {
   it('resolves the raw response on a 2xx', async () => {
     const t = new MockHttpTransport(() => ok({ status: 201 }))
@@ -200,5 +313,116 @@ describe('HttpClient — error mapping carries the real cause (§9)', () => {
     await expect(
       new HttpClient({ transport: t }).send(req('https://nope.invalid/x'))
     ).rejects.toThrow(/Couldn't reach nope\.invalid \(ENOTFOUND\)/)
+  })
+
+  it('falls back to err.cause.code for a real-fetch-shaped failure with no own err.code (C1 minor)', async () => {
+    // A real `fetch()` DNS failure never sets `err.code` itself — the Node
+    // error code lives one level down, on `err.cause.code` (verified:
+    // `fetch('https://no-such-host.invalid/')` throws with
+    // `err.code === undefined` and `err.cause.code === 'ENOTFOUND'`). Before
+    // this fallback, every real transport failure surfaced only the generic
+    // `transport error` label, never the actual code.
+    const t = new MockHttpTransport(() => {
+      throw Object.assign(new TypeError('fetch failed'), {
+        cause: Object.assign(new Error('getaddrinfo ENOTFOUND nope.invalid'), { code: 'ENOTFOUND' })
+      })
+    })
+    await expect(
+      new HttpClient({ transport: t }).send(req('https://nope.invalid/x'))
+    ).rejects.toThrow(/Couldn't reach nope\.invalid \(ENOTFOUND\)/)
+  })
+
+  it('still falls back to the contentless label when neither err.code nor err.cause.code exist', async () => {
+    const t = new MockHttpTransport(() => {
+      throw new Error('boom, no code anywhere')
+    })
+    await expect(
+      new HttpClient({ transport: t }).send(req('https://nope.invalid/x'))
+    ).rejects.toThrow(/Couldn't reach nope\.invalid \(transport error\)/)
+  })
+
+  it('the err.cause fallback never surfaces a header value: a real Headers.append failure still redacts', async () => {
+    // Confirms the C1 fix (surfacing `err.cause?.code`) does not reopen C1
+    // itself: a real header-validation TypeError from undici carries no
+    // `.code` and no `.cause` with a `.code`, so it must still fall through
+    // to the fixed, contentless label — never the embedded header value.
+    const server = http.createServer((_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/plain' })
+      res.end('ok')
+    })
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()))
+    const port = (server.address() as AddressInfo).port
+    const STOLEN_MARKER = 'FAKE-STOLEN-HEADER-VALUE\nLF-INJECTED'
+    try {
+      const client = new HttpClient({ transport: new FetchHttpTransport() })
+      let caught: Error | undefined
+      try {
+        await client.sendRaw(
+          req(`http://127.0.0.1:${port}/`, {
+            headers: { 'x-probe': STOLEN_MARKER },
+            allowLocal: true
+          })
+        )
+      } catch (err) {
+        caught = err as Error
+      }
+      expect(caught).toBeDefined()
+      expect(caught?.message).not.toContain('FAKE-STOLEN-HEADER-VALUE')
+      expect(caught?.message).not.toContain('Headers.append')
+    } finally {
+      server.close()
+    }
+  })
+})
+
+describe('HttpClient.sendRaw', () => {
+  const request = {
+    method: 'GET' as const,
+    url: 'https://api.test/x',
+    headers: {},
+    auth: { scheme: 'none' as const },
+    allowLocal: false
+  }
+
+  it('returns a non-2xx as a normal value instead of rejecting', async () => {
+    const transport = new MockHttpTransport(() => ({
+      status: 404,
+      headers: {},
+      body: '{"error":"no such charge"}'
+    }))
+    const res = await new HttpClient({ transport }).sendRaw(request)
+    expect(res.status).toBe(404)
+    expect(res.body).toBe('{"error":"no such charge"}')
+  })
+
+  it('returns a 429 as a normal value too', async () => {
+    const transport = new MockHttpTransport(() => ({
+      status: 429,
+      headers: { 'retry-after': '30' },
+      body: 'slow down'
+    }))
+    const res = await new HttpClient({ transport }).sendRaw(request)
+    expect(res.status).toBe(429)
+    expect(res.headers['retry-after']).toBe('30')
+  })
+
+  it('still enforces the SSRF guard before dialling', async () => {
+    const transport = new MockHttpTransport(() => ({ status: 200, headers: {}, body: '' }))
+    await expect(
+      new HttpClient({ transport }).sendRaw({ ...request, url: 'https://127.0.0.1/x' })
+    ).rejects.toThrow()
+    expect(transport.requests).toHaveLength(0)
+  })
+
+  it('still maps a transport failure to the legible reject', async () => {
+    const transport = new MockHttpTransport(() => {
+      throw Object.assign(new Error('boom'), { code: 'ECONNREFUSED' })
+    })
+    await expect(new HttpClient({ transport }).sendRaw(request)).rejects.toThrow(/ECONNREFUSED/)
+  })
+
+  it('send() still rejects on non-2xx (unchanged for the connector)', async () => {
+    const transport = new MockHttpTransport(() => ({ status: 500, headers: {}, body: 'nope' }))
+    await expect(new HttpClient({ transport }).send(request)).rejects.toThrow(/500/)
   })
 })

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make a localflow terminal pane's on-screen content machine-readable to the operator control API, make operator prompts actually submit, keep the `needs-you` status honest, and fix two terminal render bugs — so an external operator (openclaw) can *see* and *drive* a pane reliably.
+**Goal:** Make a saiife terminal pane's on-screen content machine-readable to the operator control API, make operator prompts actually submit, keep the `needs-you` status honest, and fix two terminal render bugs — so an external operator (openclaw) can *see* and *drive* a pane reliably.
 
 **Architecture:** Maintain a headless xterm.js terminal per pane in the main process, fed the same pty bytes as the renderer, and read the *rendered screen* from its buffer instead of regex-stripping a raw byte tail. Four smaller fixes ride along: two-write prompt submission, a `PostToolUse` transition that clears `needs-you` mid-turn, screen-replay on renderer view-return, and a terminal bottom-clipping CSS fix.
 
@@ -13,11 +13,11 @@
 - Conventional Commits, commitlint subject ≤ 50 chars. Every commit message ends with the trailer `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
 - `peek`/instant-exit/`output` must be **fail-safe**: if the headless terminal ever throws, fall back to the existing ANSI-strip path — reading pane content must never crash the main process or the control API.
 - Bounded memory: the headless terminal uses a modest fixed `scrollback` (1000 rows); one instance per live pane only, disposed on close.
-- No behavior change to lfguard, the operator grant/auth, or the guard verdict path.
+- No behavior change to saiifeguard, the operator grant/auth, or the guard verdict path.
 - Preserve existing pane/status semantics except the one intended `needs-you` fix.
 - New dependency limited to exactly `@xterm/headless` (`translateToString(true)` yields clean text — `@xterm/addon-serialize` is NOT added).
 
-## Toolchain commands (run from repo root `/Users/jonasrobinson/projects/localflow-termfix`)
+## Toolchain commands (run from repo root `/Users/jonasrobinson/projects/saiife-termfix`)
 
 - Run one test file: `npx vitest run tests/unit/<file>.test.ts`
 - Run one test by name: `npx vitest run tests/unit/<file>.test.ts -t "<name>"`
@@ -973,7 +973,7 @@ EOF
 - Consumes: `SessionManager.snapshot(id)` (Task 2, full screen with byte-tail fallback).
 - Produces:
   - IPC channel `session:snapshot` → `manager.snapshot(id)` (returns `string[]`).
-  - `window.localflow.snapshotSession(id: string): Promise<string[]>` (preload + `LocalflowApi` type).
+  - `window.saiife.snapshotSession(id: string): Promise<string[]>` (preload + `SaiifeApi` type).
 
 - [ ] **Step 1: Add the main-process IPC handler**
 
@@ -1019,14 +1019,14 @@ In `src/renderer/src/components/TerminalPane.tsx`, replace the mount effect (cur
     term.loadAddon(fit)
     term.open(hostRef.current)
     fit.fit()
-    window.localflow.resize(session.id, term.cols, term.rows)
-    const offData = window.localflow.onData((id, data) => {
+    window.saiife.resize(session.id, term.cols, term.rows)
+    const offData = window.saiife.onData((id, data) => {
       if (id === session.id) term.write(data)
     })
-    const onInput = term.onData((d) => window.localflow.write(session.id, d))
+    const onInput = term.onData((d) => window.saiife.write(session.id, d))
     const ro = new ResizeObserver(() => {
       fit.fit()
-      window.localflow.resize(session.id, term.cols, term.rows)
+      window.saiife.resize(session.id, term.cols, term.rows)
     })
     ro.observe(hostRef.current)
     return () => {
@@ -1056,25 +1056,25 @@ with:
     term.loadAddon(fit)
     term.open(hostRef.current)
     fit.fit()
-    window.localflow.resize(session.id, term.cols, term.rows)
+    window.saiife.resize(session.id, term.cols, term.rows)
     // Switching views unmounts the grid (App.tsx), so returning creates a
     // FRESH xterm whose onData only sees NEW pty bytes — the pane would be
     // blank until a keystroke provokes a redraw. Replay the pane's current
     // rendered screen (from the headless emulator in main) so it paints its
     // last frame immediately. Guarded against a mount that already tore down.
     let cancelled = false
-    void window.localflow.snapshotSession(session.id).then((lines) => {
+    void window.saiife.snapshotSession(session.id).then((lines) => {
       if (cancelled || termRef.current !== term) return
       if (lines.length > 0) term.write(lines.join('\r\n'))
       term.refresh(0, term.rows - 1)
     })
-    const offData = window.localflow.onData((id, data) => {
+    const offData = window.saiife.onData((id, data) => {
       if (id === session.id) term.write(data)
     })
-    const onInput = term.onData((d) => window.localflow.write(session.id, d))
+    const onInput = term.onData((d) => window.saiife.write(session.id, d))
     const ro = new ResizeObserver(() => {
       fit.fit()
-      window.localflow.resize(session.id, term.cols, term.rows)
+      window.saiife.resize(session.id, term.cols, term.rows)
     })
     ro.observe(hostRef.current)
     return () => {
@@ -1092,7 +1092,7 @@ with:
 - [ ] **Step 5: Typecheck (covers IPC/preload/api wiring)**
 
 Run: `npm run typecheck`
-Expected: no errors — `snapshotSession` is declared on `LocalflowApi`, implemented in preload, and consumed in `TerminalPane` with matching `Promise<string[]>` shape.
+Expected: no errors — `snapshotSession` is declared on `SaiifeApi`, implemented in preload, and consumed in `TerminalPane` with matching `Promise<string[]>` shape.
 
 - [ ] **Step 6: Lint**
 

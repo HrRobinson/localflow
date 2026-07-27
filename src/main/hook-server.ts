@@ -43,7 +43,7 @@ export function startHookServer(onEvent: (e: HookEvent) => void): Promise<HookEn
     if (
       req.method !== 'POST' ||
       req.url !== '/event' ||
-      !tokensMatch(req.headers['x-localflow-token'], token)
+      !tokensMatch(req.headers['x-saiife-token'], token)
     ) {
       res.writeHead(403)
       res.end()

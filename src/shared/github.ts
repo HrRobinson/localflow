@@ -6,7 +6,7 @@
  *
  * NO raw GitHub REST/GraphQL shape lives here — those are isolated in
  * `src/main/github/github-api.ts` (the API-version blast radius, §4.1). This
- * file holds ONLY localflow-facing, already-normalized vocabulary: numeric ids,
+ * file holds ONLY saiife-facing, already-normalized vocabulary: numeric ids,
  * lowercase state/conclusion enums, `labels` as a `string[]`, and `state:
  * 'merged'` distinguished from a plain `'closed'` — the exact types the
  * (sibling-owned) edge-condition operators of §10 expect.

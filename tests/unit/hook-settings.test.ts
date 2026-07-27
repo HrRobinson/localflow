@@ -18,7 +18,7 @@ describe('buildHookSettings', () => {
       const cmd = settings.hooks[name][0].hooks[0].command
       expect(settings.hooks[name][0].hooks[0].type).toBe('command')
       expect(cmd).toContain('http://127.0.0.1:4242/event')
-      expect(cmd).toContain('X-Localflow-Token: tok')
+      expect(cmd).toContain('X-Saiife-Token: tok')
       expect(cmd).toContain(`"paneId":"p1"`)
       expect(cmd).toContain(`"event":"${name}"`)
     }
@@ -27,35 +27,35 @@ describe('buildHookSettings', () => {
 
 describe('writeHookSettings', () => {
   it('writes valid JSON and returns the path', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'localflow-test-'))
+    const dir = mkdtempSync(join(tmpdir(), 'saiife-test-'))
     const file = writeHookSettings(dir, 'p2', 1234, 'tok2', null)
-    expect(file).toBe(join(dir, 'localflow-hooks-p2.json'))
+    expect(file).toBe(join(dir, 'saiife-hooks-p2.json'))
     const parsed = JSON.parse(readFileSync(file, 'utf8'))
     expect(parsed.hooks.Stop).toBeDefined()
   })
 
   it('writes the file with owner-only permissions (0600)', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'localflow-test-'))
+    const dir = mkdtempSync(join(tmpdir(), 'saiife-test-'))
     const file = writeHookSettings(dir, 'p3', 1234, 'tok3', null)
     expect(statSync(file).mode & 0o777).toBe(0o600)
   })
 
   it('throws when paneId attempts path traversal', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'localflow-test-'))
+    const dir = mkdtempSync(join(tmpdir(), 'saiife-test-'))
     expect(() => writeHookSettings(dir, '../escape', 1234, 'tok2', null)).toThrow()
   })
 })
 
 describe('removeHookSettings', () => {
   it('removes a previously written settings file', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'localflow-test-'))
+    const dir = mkdtempSync(join(tmpdir(), 'saiife-test-'))
     const file = writeHookSettings(dir, 'p4', 1234, 'tok4', null)
     removeHookSettings(dir, 'p4')
     expect(existsSync(file)).toBe(false)
   })
 
   it('never throws: missing file and unsafe paneId are no-ops', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'localflow-test-'))
+    const dir = mkdtempSync(join(tmpdir(), 'saiife-test-'))
     expect(() => removeHookSettings(dir, 'never-written')).not.toThrow()
     // A traversal-shaped id was never writable, so removal must not touch it.
     const outside = writeHookSettings(dir, 'p5', 1234, 'tok5', null)
@@ -83,7 +83,7 @@ describe('input validation', () => {
 
 describe('buildHookSettings PreToolUse', () => {
   const guard: ResolvedGuard = {
-    bin: '/g/lfguard',
+    bin: '/g/saiifeguard',
     auditLog: '/g/audit.jsonl',
     packs: ['cloud.gcloud'],
     seenDir: '/g/guard-seen'
@@ -101,7 +101,7 @@ describe('buildHookSettings PreToolUse', () => {
     }
     const entry = s.hooks.PreToolUse[0]
     expect(entry.matcher).toBe('Bash')
-    expect(entry.hooks[0].command).toContain("'/g/lfguard' check --hook-exit")
+    expect(entry.hooks[0].command).toContain("'/g/saiifeguard' check --hook-exit")
     expect(entry.hooks[0].command).toContain('--pack cloud.gcloud')
     expect(entry.hooks[0].command).toContain('--audit-tag pane1')
   })

@@ -211,10 +211,10 @@ const [eventRings, setEventRings] = useState<ConsoleRings>(emptyConsoleRings())
 useEffect(() => {
   if (!open) return
   let alive = true
-  void window.localflow.listConsole().then((snap) => {
+  void window.saiife.listConsole().then((snap) => {
     if (alive) setEventRings(ringsFromSnapshot(snap))
   })
-  const off = window.localflow.onConsoleEvent((e) =>
+  const off = window.saiife.onConsoleEvent((e) =>
     setEventRings((prev) => appendConsoleEvents(prev, Array.isArray(e) ? e : [e]))
   )
   return () => {

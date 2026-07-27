@@ -1,6 +1,6 @@
 # Operator-Readable Terminal & Working Operator Loop — Design
 
-**Goal:** Make a localflow terminal pane's on-screen content machine-readable to the operator control API, make operator prompts actually submit, keep the `needs-you` status honest, and fix two terminal render bugs — so an external operator (openclaw) can *see* and *drive* a pane reliably.
+**Goal:** Make a saiife terminal pane's on-screen content machine-readable to the operator control API, make operator prompts actually submit, keep the `needs-you` status honest, and fix two terminal render bugs — so an external operator (openclaw) can *see* and *drive* a pane reliably.
 
 **Architecture:** The root problem is that the operator's only content channel — `peek()` / the `output` control-API verb — regex-strips ANSI off a raw byte tail, which cannot resolve a redrawing TUI (it returns garbage like `246m`). We fix this by maintaining a **headless xterm.js terminal per pane in the main process**, fed the same pty bytes, and reading the *rendered screen* from its buffer. Four smaller fixes ride along: prompt submission, status honesty, and two renderer repaint/sizing bugs.
 
@@ -11,7 +11,7 @@
 - Conventional Commits, commitlint subject ≤ 50 chars.
 - `peek`/instant-exit/`output` must be **fail-safe**: if the headless terminal ever throws, fall back to the existing ANSI-strip path — reading pane content must never crash the main process or the control API.
 - Bounded memory: the headless terminal uses a modest fixed `scrollback` (1000 rows); one instance per live pane only.
-- No behavior change to lfguard, the operator grant/auth, or the guard verdict path.
+- No behavior change to saiifeguard, the operator grant/auth, or the guard verdict path.
 - Preserve existing pane/status semantics except the one intended `needs-you` fix.
 
 ---

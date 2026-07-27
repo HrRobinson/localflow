@@ -50,7 +50,7 @@ describe('buildCodexHookArgs', () => {
     expect(args[1]).toMatch(/^notify=/)
     const joined = args.join(' ')
     expect(joined).toContain('http://127.0.0.1:4242/event')
-    expect(joined).toContain('X-Localflow-Token: tok')
+    expect(joined).toContain('X-Saiife-Token: tok')
     expect(joined).toContain('\\"paneId\\":\\"p1\\"')
     expect(joined).toContain('\\"event\\":\\"Stop\\"')
     expect(joined).not.toContain('\\"event\\":\\"UserPromptSubmit\\"')
@@ -101,7 +101,7 @@ describe('buildCodexHookArgs', () => {
   })
 
   const guard: ResolvedGuard = {
-    bin: '/g/lfguard',
+    bin: '/g/saiifeguard',
     auditLog: '/g/audit.jsonl',
     packs: [],
     seenDir: '/g/guard-seen'

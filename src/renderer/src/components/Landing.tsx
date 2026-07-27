@@ -126,7 +126,7 @@ export default function Landing({
 
   useEffect(() => {
     let cancelled = false
-    void Promise.all([window.localflow.listAgents(), window.localflow.getLastAgent()]).then(
+    void Promise.all([window.saiife.listAgents(), window.saiife.getLastAgent()]).then(
       ([list, last]) => {
         if (cancelled) return
         setAgents(list)
@@ -160,7 +160,7 @@ export default function Landing({
   // that selection state.
   useEffect(() => {
     let cancelled = false
-    void window.localflow.listTemplates().then((list) => {
+    void window.saiife.listTemplates().then((list) => {
       if (!cancelled) setTemplates(list)
     })
     return () => {
@@ -173,7 +173,7 @@ export default function Landing({
   useEffect(() => {
     if (selectedAgentId !== 'worker') return
     let cancelled = false
-    void window.localflow.listFlows().then((list) => {
+    void window.saiife.listFlows().then((list) => {
       if (!cancelled) setWorkerFlows(list)
     })
     return () => {
@@ -185,10 +185,10 @@ export default function Landing({
   // agent-selection state above, fetched once on mount.
   useEffect(() => {
     let cancelled = false
-    void window.localflow.getDefaultCwd().then((dir) => {
+    void window.saiife.getDefaultCwd().then((dir) => {
       if (!cancelled) setCwd(dir)
     })
-    void window.localflow.getAllowTypedPaths().then((allow) => {
+    void window.saiife.getAllowTypedPaths().then((allow) => {
       if (!cancelled) setAllowTypedPaths(allow)
     })
     return () => {
@@ -197,7 +197,7 @@ export default function Landing({
   }, [])
 
   const chooseFolder = async (): Promise<void> => {
-    const dir = await window.localflow.chooseFolder()
+    const dir = await window.saiife.chooseFolder()
     if (dir) setCwd(dir)
   }
 

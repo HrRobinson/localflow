@@ -2,7 +2,7 @@ import type { ActivityEntry, SessionStatus } from '../../shared/types'
 import type { AgentActivityInput, LinearSessionState } from '../../shared/linear'
 
 /**
- * Pure mapping from localflow's status feed to a Linear `AgentActivity`
+ * Pure mapping from saiife's status feed to a Linear `AgentActivity`
  * (spec §4.5). Deliberately side-effect-free and clock-injected, mirroring
  * `state-machine.ts`'s purity so every mapping is exhaustively unit-testable
  * with no Linear workspace (spec §9).

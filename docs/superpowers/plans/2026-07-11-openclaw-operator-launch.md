@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Launch OpenClaw as an operator agent so localflow auto-grants the pane's environment and injects the control-API credential at spawn, revoking on close — zero manual wiring.
+**Goal:** Launch OpenClaw as an operator agent so saiife auto-grants the pane's environment and injects the control-API credential at spawn, revoking on close — zero manual wiring.
 
-**Architecture:** Add an `openclaw` agent preset that spawns like any other agent. In the `session:create` path, when `agentId === 'openclaw'`, grant the pane's environment (existing `OperatorGrantStore`), merge the grant's endpoint+token into the spawn spec's `env` (which `session-manager` already injects into the pty), and track the launch so the grant is revoked when the last launched OpenClaw session in that environment is gone — but only if the launch created the grant. The shipped `openclaw/skills/localflow/` skill + CLI are untouched (v1 injects exactly the two env vars they already read).
+**Architecture:** Add an `openclaw` agent preset that spawns like any other agent. In the `session:create` path, when `agentId === 'openclaw'`, grant the pane's environment (existing `OperatorGrantStore`), merge the grant's endpoint+token into the spawn spec's `env` (which `session-manager` already injects into the pty), and track the launch so the grant is revoked when the last launched OpenClaw session in that environment is gone — but only if the launch created the grant. The shipped `openclaw/skills/saiife/` skill + CLI are untouched (v1 injects exactly the two env vars they already read).
 
 **Tech Stack:** Electron main (TypeScript), node-pty, vitest (unit), Playwright `_electron` (e2e).
 
@@ -15,7 +15,7 @@
 - Work in the `feat/openclaw-launch` branch; `node_modules` is already installed — do NOT run `npm ci`.
 - **Public repo:** no personal notes / names in any committed file.
 - **Opt-in, revocable, never ambient** stays true: launching is an explicit user action; grants remain revocable; every pane stays human-drivable.
-- **Shipped skill unchanged:** do NOT modify `openclaw/skills/localflow/**`. v1 single-environment injection targets `LOCALFLOW_ENDPOINT` + `LOCALFLOW_TOKEN`, exactly what the CLI reads.
+- **Shipped skill unchanged:** do NOT modify `openclaw/skills/saiife/**`. v1 single-environment injection targets `SAIIFE_ENDPOINT` + `SAIIFE_TOKEN`, exactly what the CLI reads.
 - **Single-environment v1**, credential modelled as a grant set for additive multi later.
 - **Isolation unchanged:** the injected token is per-grant and env-scoped (from the shipped control API).
 
@@ -27,7 +27,7 @@
 - Modify: `src/shared/types.ts` (`AgentId` union)
 - Modify: `src/shared/agents.ts` (`AGENT_PRESETS`)
 - Modify: `src/main/index.ts` (`VALID_AGENTS`)
-- Modify: `src/main/agent-registry.ts` (mirror the `LOCALFLOW_CLAUDE_BIN` e2e override for openclaw)
+- Modify: `src/main/agent-registry.ts` (mirror the `SAIIFE_CLAUDE_BIN` e2e override for openclaw)
 - Test: `tests/unit/agents.test.ts` (create if absent; else extend)
 
 **Interfaces:**
@@ -93,7 +93,7 @@ const VALID_AGENTS: AgentId[] = ['claude', 'codex', 'gemini', 'openclaw', 'custo
 
 - [ ] **Step 6: Mirror the e2e bin override**
 
-`src/main/agent-registry.ts` has an env override that forces the `claude` preset's command for tests/e2e (`LOCALFLOW_CLAUDE_BIN`). Add the analogous `LOCALFLOW_OPENCLAW_BIN` override for the `openclaw` preset, following the exact same pattern already in that file (read the env var; if set, it wins as the resolved command for `openclaw`). Do not change the claude override.
+`src/main/agent-registry.ts` has an env override that forces the `claude` preset's command for tests/e2e (`SAIIFE_CLAUDE_BIN`). Add the analogous `SAIIFE_OPENCLAW_BIN` override for the `openclaw` preset, following the exact same pattern already in that file (read the env var; if set, it wins as the resolved command for `openclaw`). Do not change the claude override.
 
 - [ ] **Step 7: Full check + commit**
 
@@ -114,7 +114,7 @@ git commit -m "feat: openclaw agent preset"
 
 **Interfaces:**
 - Produces:
-  - `credentialEnv(endpoint: string, token: string): Record<string, string>` — `{ LOCALFLOW_ENDPOINT, LOCALFLOW_TOKEN }`.
+  - `credentialEnv(endpoint: string, token: string): Record<string, string>` — `{ SAIIFE_ENDPOINT, SAIIFE_TOKEN }`.
   - `class OperatorLaunchTracker` with `onLaunch(environment, sessionId, wasGrantedBefore): void`, `onClose(sessionId): number | null` (env to revoke, or null), `trackedIds(): string[]`.
 
 - [ ] **Step 1: Write the failing test**
@@ -128,8 +128,8 @@ import { credentialEnv, OperatorLaunchTracker } from '../../src/main/operator-la
 describe('credentialEnv', () => {
   it('flattens a grant to the shipped skill env vars', () => {
     expect(credentialEnv('http://127.0.0.1:5000', 'tok')).toEqual({
-      LOCALFLOW_ENDPOINT: 'http://127.0.0.1:5000',
-      LOCALFLOW_TOKEN: 'tok'
+      SAIIFE_ENDPOINT: 'http://127.0.0.1:5000',
+      SAIIFE_TOKEN: 'tok'
     })
   })
 })
@@ -172,14 +172,14 @@ Expected: FAIL — module not found.
 ```ts
 /**
  * Helpers for launching OpenClaw as an operator agent: flatten a grant to the
- * env the shipped skill reads, and track launched sessions so localflow revokes
+ * env the shipped skill reads, and track launched sessions so saiife revokes
  * a grant when the last launched OpenClaw session in an environment is gone —
  * but only if the launch created the grant (never one granted manually).
  */
 
 /** v1 single-environment credential → the env vars the shipped CLI reads. */
 export function credentialEnv(endpoint: string, token: string): Record<string, string> {
-  return { LOCALFLOW_ENDPOINT: endpoint, LOCALFLOW_TOKEN: token }
+  return { SAIIFE_ENDPOINT: endpoint, SAIIFE_TOKEN: token }
 }
 
 export class OperatorLaunchTracker {
@@ -319,7 +319,7 @@ git commit -m "feat: launch openclaw grants and injects creds"
 - Create: `tests/e2e/operator-launch.spec.ts`
 
 **Interfaces:**
-- Consumes: the app under `LOCALFLOW_E2E=1` with `LOCALFLOW_OPENCLAW_BIN` pointed at the fixture (Task 1's override); the launched session's injected env; Node `fetch` as a scripted control-API client.
+- Consumes: the app under `SAIIFE_E2E=1` with `SAIIFE_OPENCLAW_BIN` pointed at the fixture (Task 1's override); the launched session's injected env; Node `fetch` as a scripted control-API client.
 
 - [ ] **Step 1: Create the fixture**
 
@@ -330,7 +330,7 @@ Create `tests/fixtures/fake-openclaw.sh` (mark it executable — `chmod +x`):
 # Stands in for the `openclaw` binary in e2e. Writes the operator credential it
 # received via env to a marker file the test reads, then stays alive reading
 # stdin (like fake-claude.sh) until the pty closes.
-printf 'endpoint=%s\ntoken=%s\n' "$LOCALFLOW_ENDPOINT" "$LOCALFLOW_TOKEN" > "$PWD/openclaw-env-marker"
+printf 'endpoint=%s\ntoken=%s\n' "$SAIIFE_ENDPOINT" "$SAIIFE_TOKEN" > "$PWD/openclaw-env-marker"
 echo "fake-openclaw started"
 while IFS= read -r _line; do
   echo "fake-openclaw got input"
@@ -339,10 +339,10 @@ done
 
 - [ ] **Step 2: Write the e2e spec**
 
-Create `tests/e2e/operator-launch.spec.ts`, modelled on `tests/e2e/operator.spec.ts` and `smoke.spec.ts` (reuse the `launchApp` launch/teardown shape). Add `LOCALFLOW_OPENCLAW_BIN: join(here, '../fixtures/fake-openclaw.sh')` to the launch env. Structure (fill each step with real Playwright + `fetch`, using `expect.poll`/`toPass` for every async wait — NO `waitForTimeout` substitutes; close the app in a `finally`):
+Create `tests/e2e/operator-launch.spec.ts`, modelled on `tests/e2e/operator.spec.ts` and `smoke.spec.ts` (reuse the `launchApp` launch/teardown shape). Add `SAIIFE_OPENCLAW_BIN: join(here, '../fixtures/fake-openclaw.sh')` to the launch env. Structure (fill each step with real Playwright + `fetch`, using `expect.poll`/`toPass` for every async wait — NO `waitForTimeout` substitutes; close the app in a `finally`):
 
 ```ts
-// 1. Launch the app (LOCALFLOW_E2E=1, LOCALFLOW_OPENCLAW_BIN=fixture).
+// 1. Launch the app (SAIIFE_E2E=1, SAIIFE_OPENCLAW_BIN=fixture).
 // 2. Create an OpenClaw session in env 1 via the session:create IPC
 //    (createSession('openclaw', cwd, undefined, 1)); capture the returned id + cwd.
 // 3. expect.poll: read `<cwd>/openclaw-env-marker` until it exists; parse

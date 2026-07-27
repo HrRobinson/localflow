@@ -17,7 +17,7 @@ import type { RawCheckRun, RawIssue, RawPull } from './github-normalize'
  *    (keychain-backed), used ONLY to build the `Authorization` header, and is
  *    NEVER logged or returned (§8, §11).
  *  - Read methods return the RAW node; `github-normalize.ts` maps it to the
- *    pinned context shape. Write methods return a small localflow-shaped result.
+ *    pinned context shape. Write methods return a small saiife-shaped result.
  *  - Failure follows the pinned convention: every error path REJECTS with a
  *    legible, actionable message that carries the real GitHub cause — never the
  *    token (§11). The client honors `X-RateLimit-*` / `Retry-After` with capped
@@ -61,7 +61,7 @@ export interface GitHubApi {
   pull(repo: RepoRef, number: number): Promise<RawPull>
   checkRun(repo: RepoRef, id: number): Promise<RawCheckRun>
   searchIssues(query: string): Promise<{ items: RawIssue[]; total: number }>
-  // Gated writes (return small localflow-shaped results).
+  // Gated writes (return small saiife-shaped results).
   createComment(repo: RepoRef, number: number, body: string): Promise<{ id: number; url: string }>
   addLabels(repo: RepoRef, number: number, labels: string[]): Promise<{ labels: string[] }>
   createIssue(repo: RepoRef, input: CreateIssueInput): Promise<{ number: number; url: string }>
@@ -288,7 +288,7 @@ export class GitHubRestApi implements GitHubApi {
       Authorization: await this.auth.authHeader(),
       Accept: 'application/vnd.github+json',
       'X-GitHub-Api-Version': GITHUB_API_VERSION,
-      'User-Agent': 'localflow'
+      'User-Agent': 'saiife'
     }
     const req: GitHubRequest = { method, url, headers }
     if (opts.body !== undefined) {

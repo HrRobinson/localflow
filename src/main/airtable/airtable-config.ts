@@ -5,7 +5,7 @@ import type { AirtableConfig } from '../../shared/airtable'
  * validated AT THE BOUNDARY exactly like `parsePostHogConfig`: config.json is
  * user-edited, so only well-typed values are honored and any garbage DISABLES the
  * feature (returns `null`) rather than throwing. An absent/disabled block means
- * the connector never subscribes a poll — the opt-in posture localflow's "works
+ * the connector never subscribes a poll — the opt-in posture saiife's "works
  * with no integration" guarantee relies on (spec §7).
  *
  * Secrets are NOT here: the personal access token (and the phase-2 webhook MAC

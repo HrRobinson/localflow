@@ -1,12 +1,12 @@
-appId: dev.hrrobinson.localflow
-productName: localflow
+appId: dev.hrrobinson.saiife
+productName: saiife
 directories:
   output: dist
 files:
   - out/**
 extraResources:
-  - from: guard/target/release/lfguard
-    to: lfguard
+  - from: guard/target/release/saiifeguard
+    to: saiifeguard
 mac:
   target:
     - dmg

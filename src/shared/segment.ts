@@ -8,7 +8,7 @@
  *
  * NO raw Segment request/response shape lives here — those are isolated in
  * `src/main/segment/segment-client.ts` (the API blast radius). This file holds
- * ONLY localflow-facing, already-normalized vocabulary: the exact field types
+ * ONLY saiife-facing, already-normalized vocabulary: the exact field types
  * the (sibling-owned) edge-condition operators of §10 expect (strings coerced so
  * `exists`/`eq` are stable; `properties`/`traits` preserved as objects).
  */

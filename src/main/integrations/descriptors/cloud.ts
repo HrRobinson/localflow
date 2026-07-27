@@ -17,7 +17,7 @@ export const cloudDescriptor: IntegrationDescriptorDef = {
       secret: false,
       required: true,
       type: 'string',
-      placeholder: 'arn:aws:iam::<acct>:role/localflow-agent-sandbox'
+      placeholder: 'arn:aws:iam::<acct>:role/saiife-agent-sandbox'
     },
     {
       key: 'externalId',
@@ -50,7 +50,7 @@ export const cloudDescriptor: IntegrationDescriptorDef = {
     },
     {
       key: 'packs',
-      label: 'lfguard packs (comma-separated)',
+      label: 'saiifeguard packs (comma-separated)',
       secret: false,
       required: false,
       type: 'string[]'

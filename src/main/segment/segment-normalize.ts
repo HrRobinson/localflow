@@ -64,7 +64,7 @@ export function normalizeSegmentEvent(body: unknown): SegmentEventContext {
  *  - `type` equals `config.type` (default 'track'), else drop.
  *  - for a track, `name` equals `config.event`, else drop.
  *  - every `config.match` entry equals the corresponding property/trait, else drop.
- * No model in the loop — a deterministic value compare (the lfguard posture).
+ * No model in the loop — a deterministic value compare (the saiifeguard posture).
  */
 export function eventMatches(config: SegmentTriggerConfig, ctx: SegmentEventContext): boolean {
   const wantType: SegmentEventType = config.type ?? 'track'

@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-16
 **Status:** Draft (design), pending brainstorm + spec review
-**Feature:** Let localflow agents work an email inbox as a task queue — read/triage →
+**Feature:** Let saiife agents work an email inbox as a task queue — read/triage →
 draft/reply/act → surface status → **a human approves the draft before it sends**.
 Hard invariant: **never auto-send**. Every outbound message is a draft a human must
 approve with an explicit click.
@@ -14,8 +14,8 @@ providers YELLOW**; the loop is buildable on every one with a clean
 draft→*separate*-send gate; **Gmail is the cleanest first target**; the only real
 gate is OAuth verification, which own-inbox/testing-mode sidesteps entirely.
 
-> This spec is written to be built from directly by localflow's own agents. It
-> grounds every mechanism in localflow's *actual* architecture (paths cited inline)
+> This spec is written to be built from directly by saiife's own agents. It
+> grounds every mechanism in saiife's *actual* architecture (paths cited inline)
 > and reuses the existing peek/Approve `needs-you` gate rather than inventing a new
 > approval primitive. Sequencing note (from `design-scope-integrations.md`): Linear
 > (Direction 1) is the chosen *first* build; email pairs with that CRM direction and
@@ -28,10 +28,10 @@ gate is OAuth verification, which own-inbox/testing-mode sidesteps entirely.
 
 ### Goal
 
-Turn an inbox into a `working / needs-you / done` task queue that localflow agents
+Turn an inbox into a `working / needs-you / done` task queue that saiife agents
 work autonomously *up to the send boundary*. An agent may read, search, triage,
 label, archive, mark-read, and **draft** replies. It may never send. A drafted
-reply surfaces in localflow exactly like any other `needs-you` — a human peeks the
+reply surfaces in saiife exactly like any other `needs-you` — a human peeks the
 draft, clicks approve, and only then does a separate call actually send it. This
 reuses the existing draft-approval gate (`ApproveButton` + `session:peek`), not a
 bespoke email UI.
@@ -67,10 +67,10 @@ bespoke email UI.
 - New-message composition to arbitrary recipients (MVP is reply-in-thread only;
   richer compose is a later phase — narrower blast radius, and it keeps every draft
   anchored to an inbound task).
-- Any provider-side send that localflow initiates without a recorded human-approval
+- Any provider-side send that saiife initiates without a recorded human-approval
   event. There is deliberately no such code path (§5).
 - Deliverability engineering (SPF/DKIM/reputation) — inherited from the provider
-  since sends go through the user's own mailbox; explicitly not localflow's problem.
+  since sends go through the user's own mailbox; explicitly not saiife's problem.
 - A rich email-rendering pane. MVP surfaces the draft as peek text next to the
   Approve control, matching the existing agent-pane idiom, not an HTML mail viewer.
 
@@ -109,7 +109,7 @@ unpredictable "convince an enterprise admin to consent" that blocks Graph.
 
 ## 3. Core loop → email primitives
 
-The localflow status feed (`src/shared/types.ts`: `SessionStatus =
+The saiife status feed (`src/shared/types.ts`: `SessionStatus =
 'idle' | 'working' | 'needs-you' | 'running' | 'exited'`) maps directly onto an
 email task's lifecycle. Here is the loop, primitives named for Gmail first with the
 other providers' equivalents in brackets.
@@ -148,12 +148,12 @@ other providers' equivalents in brackets.
 
 The critical property, true for all three providers (§2 table): step (2)'s draft
 call and step (5)'s send call are **distinct** API calls. The gate lives in the seam
-between them. localflow's job is to make step (5) reachable *only* from step (4)'s
+between them. saiife's job is to make step (5) reachable *only* from step (4)'s
 human-approval event — never from an agent's own reasoning.
 
 ---
 
-## 4. Architecture in localflow
+## 4. Architecture in saiife
 
 ### 4.1 The email connector
 
@@ -172,7 +172,7 @@ naming families in `src/main/`):
 | `src/main/email/gmail-auth.ts` | Gmail OAuth2: authorization-code flow, refresh, token load/store **via keychain only** (§6). Never returns a token to any surface that logs or renders it. |
 | `src/main/email/watch-receiver.ts` | The inbound receiver: hosts the Pub/Sub pull/push endpoint (Gmail), the webhook (Graph), or the IDLE loop (IMAP) behind a common `onInbound(mailbox, cursor)` callback. Owns watch/subscription **renewal** and the reconciliation fallback poll. |
 | `src/main/email/mailbox-registry.ts` | The set of connected mailboxes (config + runtime state): account ref, provider id, scope grant state, in-scope labels/folders, label→status map, watch expiry, last cursor. Persists the non-secret parts to `config.json` / a sidecar; secrets stay in keychain (§6, §8). |
-| `src/main/email/task-router.ts` | Maps an inbound message/thread to a localflow pane: spawn an agent pane per thread, or route to a standing triage pane (§4.4). Bridges provider events → `SessionManager` / `PaneRegistry`. |
+| `src/main/email/task-router.ts` | Maps an inbound message/thread to a saiife pane: spawn an agent pane per thread, or route to a standing triage pane (§4.4). Bridges provider events → `SessionManager` / `PaneRegistry`. |
 | `src/main/email/draft-gate.ts` | The **send seam** (§5). The *only* module that calls a provider's `sendDraft`. Exposes one function invoked solely from the approval IPC handler. Records the approval event. Nothing else in the codebase imports a provider's send call. |
 | `src/shared/email.ts` | Shared view/DTO types for the renderer (draft peek payload, mailbox status), analogous to `src/shared/operator.ts`. |
 
@@ -288,7 +288,7 @@ bet.
 This is the load-bearing reuse. The existing control
 (`src/renderer/src/components/ApproveButton.tsx`) is *arm-then-confirm, never
 blind*: clicking it fetches a **peek** of the pane's recent output
-(`window.localflow.peekSession` → `session:peek` → `src/main/peek.ts`
+(`window.saiife.peekSession` → `session:peek` → `src/main/peek.ts`
 `extractPeekLines`) and shows it beside a confirm button; confirming writes Enter to
 the pane's pty. For email we keep the identical interaction and swap what "peek"
 returns and what "confirm" does:
@@ -325,7 +325,7 @@ new mail arrives in Gmail
   → agent reads thread (getThread), reasons, decides to reply
   → agent calls createReplyDraft → users.drafts.create → DraftRef (NO send)
   → agent signals turn-complete → hook → state-machine → pane status = needs-you
-  → localflow feed shows the pane as needs-you; user clicks Approve
+  → saiife feed shows the pane as needs-you; user clicks Approve
   → ApproveButton arms: peek IPC returns the DRAFT BODY (not pty tail)
   → user reads the exact outbound text, clicks "Send ⏎"
   → approval IPC → draft-gate.sendDraft (THE ONLY SEND CALLER)
@@ -339,7 +339,7 @@ new mail arrives in Gmail
 
 ## 5. The never-auto-send invariant
 
-**Statement:** localflow must have *no* code path that sends an email except one
+**Statement:** saiife must have *no* code path that sends an email except one
 gated behind an explicit, recorded human-approval event. An agent — however it
 reasons, whatever it is prompted or jailbroken to do — cannot cause a send.
 
@@ -374,7 +374,7 @@ This is enforced **structurally**, not by policy or prompt:
 
 5. **Approval is recorded, not ephemeral.** `draft-gate` records each approval event
    (draft id, mailbox, timestamp) before it calls `sendDraft`, so every send is
-   traceable to a human action. This mirrors localflow's existing guard-audit trail
+   traceable to a human action. This mirrors saiife's existing guard-audit trail
    posture (`src/main/guard-audit-tail.ts`) — an auditable "who approved this send"
    log, no email content or secrets in it.
 
@@ -433,7 +433,7 @@ transcript, a file, a commit, a log, a PR, or a message):
 - The OAuth *client secret* of the Cloud project (if a desktop client is used) is
   itself sensitive: stored in keychain / injected at build, never committed. For a
   desktop-app OAuth client Google treats the client secret as non-confidential (PKCE
-  is the real protection), but localflow still keeps it out of the repo and logs.
+  is the real protection), but saiife still keeps it out of the repo and logs.
 - The provider abstraction's auth is per-provider (`EmailProvider.authorize` /
   `ensureFresh`), each backed by its own keychain-stored credential; no shared global
   secret across mailboxes.
@@ -486,7 +486,7 @@ flags, `COPY`/`MOVE`.
 
 ## 8. Config & data model
 
-Config-as-code, consistent with localflow's existing `config.json`
+Config-as-code, consistent with saiife's existing `config.json`
 (user-editable, validated at the boundary — see `operator-config.ts`,
 `environment-names.ts`). **Secrets never appear here** (§6) — tokens are keychain
 references only.
@@ -500,7 +500,7 @@ mailboxes: [
     provider: "gmail",              // 'gmail' | 'graph' | 'imap'
     address: "me@example.com",      // display only; not a secret
     oauthAppRef: "gmail-desktop",   // which OAuth client/config to use (NOT the secret)
-    environment: 7,                  // which localflow environment hosts its panes
+    environment: 7,                  // which saiife environment hosts its panes
     inScope: {                       // which inbox/labels are worked
       labels: ["INBOX", "UNREAD"],  // Gmail label ids / Graph folder ids / IMAP folders
       query: "is:unread -category:promotions"   // optional provider search filter
@@ -516,7 +516,7 @@ mailboxes: [
 ]
 ```
 
-- **account** — id + address + which localflow environment its panes live in.
+- **account** — id + address + which saiife environment its panes live in.
 - **OAuth app ref** — *which* OAuth client/config, by name; the client secret and
   user tokens are in keychain, not here.
 - **label/folder → status mapping** — declares which labels mean "in scope" and an
@@ -534,7 +534,7 @@ Approval-audit records (§5) persist separately (append-only, like
 
 ## 9. Error handling
 
-localflow's error principle (from the trust-foundation work, `[[error-message-style]]`
+saiife's error principle (from the trust-foundation work, `[[error-message-style]]`
 / loud-and-legible): every failure surfaces a message that is **human-readable,
 actionable, and carries the real underlying error** — never silent, never a swallowed
 exception. The email layer has several failure modes that *must* be legible because
@@ -554,7 +554,7 @@ console-bus / guard-audit surfaces (`session-manager.ts` `emitNotice`,
 Cross-cutting rules:
 
 - **Real error attached.** The provider's actual error code/body is included
-  (sanitized of any secret) — mirrors lfguard's block reason and the control-API's
+  (sanitized of any secret) — mirrors saiifeguard's block reason and the control-API's
   "route + reason" logging. No generic "something went wrong."
 - **Reconcile is the safety net.** Any inbound-path failure (watch lapse, dropped
   Pub/Sub, IDLE drop) degrades to the periodic reconcile poll (§4.3) so mail is
@@ -608,7 +608,7 @@ Cross-cutting rules:
   mailbox is the operator's own Google account as a test user on an unverified Cloud
   project. Testing mode covers ~100 users with restricted scopes — enough to build,
   dogfood, and prove the whole loop. **No OAuth verification, no CASA, $0
-  verification cost, no admin gate.** Local-first, matches localflow/OpenClaw
+  verification cost, no admin gate.** Local-first, matches saiife/OpenClaw
   identity. Ceiling: ~100 users, and it's *your* inbox, not a distributable product.
 - **Product others install:** third parties connect their own mailboxes → Google
   restricted-scope **OAuth verification + annual CASA security assessment
@@ -684,7 +684,7 @@ createReply/send split). Loop code unchanged.
 scope decision, Decision 3); fresh compose to new recipients (with the same
 draft-approval gate); label-driven triage; the standing triage-pane strategy for
 high-volume inboxes; and — the public-product path — OAuth verification + CASA /
-admin-consent (Decision 1) if localflow goes distributable.
+admin-consent (Decision 1) if saiife goes distributable.
 
 **Sequencing reminder** (`design-scope-integrations.md`): Linear (Direction 1) is the
 chosen first integration build; email follows and pairs with it. Expect the Linear
@@ -693,7 +693,7 @@ until then.
 
 ---
 
-## Appendix — localflow modules this design reuses (by path)
+## Appendix — saiife modules this design reuses (by path)
 
 - `src/renderer/src/components/ApproveButton.tsx` — the draft-approval gate UI, reused
   verbatim (peek → confirm), with peek returning the draft body and confirm calling

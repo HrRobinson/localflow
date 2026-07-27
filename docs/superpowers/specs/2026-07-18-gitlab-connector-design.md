@@ -41,7 +41,7 @@ and the shared **SSRF guard** (`src/main/net/ssrf-guard.ts`).
 
 ## 1. Goal + MVP scope
 
-**Goal (one sentence):** Let a localflow user assemble, on the canvas, a dev-tool
+**Goal (one sentence):** Let a saiife user assemble, on the canvas, a dev-tool
 worker that wakes on a GitLab repo event (issue opened, MR opened, or a **failed
 pipeline**), reads the relevant issue / MR / pipeline facts through the GitLab
 REST API, routes on those facts via edge conditions, and — behind author-placed
@@ -76,7 +76,7 @@ shared SSRF guard on every call.
   shared-secret compare, **not HMAC** (§4.4, §5.2): `issue.opened`, `mr.opened`,
   `pipeline.failed`.
 - **The on-LAN no-tunnel ingress** — a self-hosted GitLab on the same LAN posts
-  webhooks **directly** to localflow's receiver with **no public tunnel** (§4.4).
+  webhooks **directly** to saiife's receiver with **no public tunnel** (§4.4).
   This is the open-core / local-first advantage the whole connector is built
   around.
 - **The pinned dev-tool vocabulary** (§6): three webhook-backed triggers, four
@@ -90,7 +90,7 @@ shared SSRF guard on every call.
   drew. `mergeMR` is gated the **same way as every other write** — a `gate` node
   the author places before it — because merging is irreversible, not because the
   connector adds a bespoke param check (§9).
-- **Single project, single localflow environment.** Config-as-code `gitlab` block
+- **Single project, single saiife environment.** Config-as-code `gitlab` block
   in `config.json` (non-secret refs only: `baseUrl`, `projectPath`, environment,
   webhook path); PAT + webhook secret in the keychain.
 
@@ -126,13 +126,13 @@ shared SSRF guard on every call.
 | Forge | API posture for trigger→read→act | Self-host / on-LAN | Verdict |
 |---|---|---|---|
 | **GitHub** | First-class REST + GraphQL; issues, PRs, checks; **HMAC-SHA256** webhooks (`X-Hub-Signature-256`); PAT + GitHub App. Largest install base. | GitHub Enterprise Server exists but is rare; the common case is cloud SaaS → needs a tunnel. | The parallel sibling (its own spec); the vocabulary source of truth this re-skins. |
-| **GitLab** | First-class **REST v4** (issues, MRs, pipelines, notes, labels); **PAT / OAuth**; webhooks with a **plain `X-Gitlab-Token` shared secret** (weaker than HMAC). Second-largest forge, dominant in **self-hosted** installs. | **Self-managed GitLab is the norm for a huge segment** — and a self-hosted instance on the user's LAN can webhook localflow with **no public tunnel**. | **Chosen (this spec).** Near-free re-skin of GitHub; the self-host / on-LAN story is a genuine open-core advantage. |
+| **GitLab** | First-class **REST v4** (issues, MRs, pipelines, notes, labels); **PAT / OAuth**; webhooks with a **plain `X-Gitlab-Token` shared secret** (weaker than HMAC). Second-largest forge, dominant in **self-hosted** installs. | **Self-managed GitLab is the norm for a huge segment** — and a self-hosted instance on the user's LAN can webhook saiife with **no public tunnel**. | **Chosen (this spec).** Near-free re-skin of GitHub; the self-host / on-LAN story is a genuine open-core advantage. |
 | **Gitea / Bitbucket** | Capable REST; smaller reach. | Gitea is self-host-first (fits the same on-LAN story). | Deferred; peer connectors later. |
 
 **GitLab-first-among-siblings rationale:** it is the **cheapest possible new
 connector** (the GitHub loop re-skinned), and it unlocks the one thing GitHub SaaS
 structurally cannot — a **fully local, no-tunnel** trigger path when the forge is a
-self-hosted instance on the same network as localflow. That is on-brand for a
+self-hosted instance on the same network as saiife. That is on-brand for a
 local-first, open-core product (memory: *Product integration directions*).
 
 ### 2.2 The GitLab REST API for trigger → read → act
@@ -212,16 +212,16 @@ Nothing in the loop is blocked or preview-gated.
 
 ## 3. The core loop → GitLab primitives
 
-localflow's dev-tool loop is `trigger → read → route → act (gated)`. Each stage
+saiife's dev-tool loop is `trigger → read → route → act (gated)`. Each stage
 maps to a concrete GitLab primitive and the concrete flow-engine mechanism:
 
-| Stage | GitLab primitive | localflow / flow-engine mechanism |
+| Stage | GitLab primitive | saiife / flow-engine mechanism |
 |---|---|---|
 | **trigger** | A verified webhook: `Issue Hook` / `Merge Request Hook` / `Pipeline Hook` (status `failed`), arriving via a public tunnel (SaaS) **or directly on the LAN** (self-host, §4.4). | The **shared** `webhook-receiver` verifies the `X-Gitlab-Token` (`token` scheme) → normalizes to a `SeedEvent` → the connector's `subscribe(triggerId, handler)` hands it to the engine, which `startRun`s the flow with the payload in trigger-node context (`trigger-subscriber.ts`, `flow-engine.ts`). |
 | **read** | REST `GET …/issues/:iid` / `…/merge_requests/:iid` / `…/pipelines/:id` / `…/issues?…`. | An `action` node (`getIssue` / `getMR` / `getPipeline` / `searchIssues`) → `registry.invokeAction('gitlab', ref, params)` → `gitlab-api.ts` (through the SSRF guard) → **resolves** the normalized result, which the action-runner writes to context under the node id. |
-| **route** | *(none — pure localflow)* | `selectEdges` evaluates edge conditions over the context the read wrote (`context.ts`). Today `field === equals`; soon the richer `FlowEdgeCondition` operators (§10) over e.g. `pipeline.status`. **No LLM decides routing.** |
+| **route** | *(none — pure saiife)* | `selectEdges` evaluates edge conditions over the context the read wrote (`context.ts`). Today `field === equals`; soon the richer `FlowEdgeCondition` operators (§10) over e.g. `pipeline.status`. **No LLM decides routing.** |
 | **fix** *(the flagship extra stage)* | *(none — a coding agent, driven via the operator control API)* | On the `pipeline.failed` path, a flow node drives a **coding-agent pane** (`POST /panes` → `POST /panes/:handle/prompt`, `control-api.ts:169,222`) to reproduce and fix the failure, then push a branch. Mirrors the Linear connector's pane-drive (§7). |
-| **gate** | *(none — pure localflow)* | A `gate` node the author placed pauses the run `needs-you`; the human approves in the cockpit. Every write node sits **downstream of the gate the author drew**; `mergeMR` **must** (§9). |
+| **gate** | *(none — pure saiife)* | A `gate` node the author placed pauses the run `needs-you`; the human approves in the cockpit. Every write node sits **downstream of the gate the author drew**; `mergeMR` **must** (§9). |
 | **act** | REST `…/notes` / `PUT …/issues/:iid` (labels) / `POST …/issues` / `POST …/merge_requests` / `PUT …/merge_requests/:iid/merge`. | The gated `action` node (`commentIssue` / `labelIssue` / `createIssue` / `openMR` / `mergeMR`) → `invokeAction` → `gitlab-api.ts` write. **Failure = a rejected promise** (the pinned convention); the action-runner forwards the *real* GitLab error. |
 
 **The authority is the graph the author drew, not the connector.** The connector
@@ -233,7 +233,7 @@ expected to place a `gate` node before it, same as any sensitive mutation (§9).
 
 ---
 
-## 4. Architecture in localflow
+## 4. Architecture in saiife
 
 ### 4.1 Where it sits
 
@@ -241,7 +241,7 @@ A new **main-process module set** under `src/main/gitlab/`, peer to
 `src/main/shopify/` and `src/main/woocommerce/`. It is **opt-in**: with no
 `gitlab` config entry (and no stored PAT) the descriptor's `status()` returns
 `needs-config` and the engine refuses any GitLab node (`action-runner.ts`) —
-localflow's "works with no integration" guarantee is unchanged.
+saiife's "works with no integration" guarantee is unchanged.
 
 The connector is, architecturally, the **live implementation behind the registry's
 pinned `invokeAction` / `subscribe`** (`integration-registry.ts:73-96`) for id
@@ -249,7 +249,7 @@ pinned `invokeAction` / `subscribe`** (`integration-registry.ts:73-96`) for id
 the **fix stage** it is *also* an **in-process operator client**: like the Linear
 connector, it does not reach into `SessionManager` privately — it drives panes
 through the **same control-API surface** OpenClaw uses (`src/main/control-api.ts`),
-so grants, lfguard, and per-environment isolation all apply (§7).
+so grants, saiifeguard, and per-environment isolation all apply (§7).
 
 ### 4.2 New modules (named)
 
@@ -297,9 +297,9 @@ the instance; where the instance lives decides the ingress:
   posture as Linear §4.4 / Shopify §4.4.
 
 - **Self-hosted on the LAN — NO tunnel (the open-core win).** When the GitLab
-  instance is a self-managed box **on the same network** as the localflow machine
-  (the common self-host case), it can reach localflow **directly**:
-  `http(s)://<localflow-lan-ip>:<port>/<unguessable-path>`. No public tunnel, no
+  instance is a self-managed box **on the same network** as the saiife machine
+  (the common self-host case), it can reach saiife **directly**:
+  `http(s)://<saiife-lan-ip>:<port>/<unguessable-path>`. No public tunnel, no
   third-party relay, no cloud round-trip — **the entire trigger path stays on the
   private network**. This is a real local-first advantage GitHub SaaS structurally
   cannot offer, and it is *why GitLab is worth a sibling connector*. Concretely:
@@ -323,7 +323,7 @@ Hook` to `status === 'failed'`, and responds **200 fast** — the run is started
 the response so GitLab's delivery-timeout never triggers a redelivery storm. A bad /
 oversized / forged / duplicate delivery is dropped and **never** seeds a run.
 
-### 4.5 Reused localflow surfaces
+### 4.5 Reused saiife surfaces
 
 - `src/shared/integrations.ts` — the pinned `IntegrationDescriptor` /
   `IntegrationRegistry` / `LiveConnector` this connector satisfies; `IntegrationId`
@@ -339,7 +339,7 @@ oversized / forged / duplicate delivery is dropped and **never** seeds a run.
 - `src/main/net/ssrf-guard.ts` — **shared** outbound guard; every `gitlab-api` call
   passes it; the self-host `baseUrl` uses the explicit-allow path (§5.1).
 - `src/main/control-api.ts` — the operator surface the fix loop drives (`POST
-  /panes`, `POST /panes/:handle/prompt`), with lfguard + grant isolation intact.
+  /panes`, `POST /panes/:handle/prompt`), with saiifeguard + grant isolation intact.
 - `src/main/flow/node-runners/action-runner.ts` — how `invokeAction` is called, the
   **reject = failure** convention, how the resolved value lands in context, the
   not-connected guard.
@@ -426,7 +426,7 @@ compensates with **posture**:
 - **IP allowlist on the LAN bind** — when bound beyond loopback (§4.4), the receiver
   accepts deliveries **only** from the configured GitLab instance IP (or the LAN
   CIDR). This is the strongest mitigation and is *why* the on-LAN bind is safe: the
-  forge and localflow share a trusted private segment.
+  forge and saiife share a trusted private segment.
 - **Timing-safe compare + dedup + fast-200**, exactly as the shared receiver does
   for every scheme.
 
@@ -579,7 +579,7 @@ connector's fix-PR loop and reusing the Linear connector's operator pane-drive.
    │   [fix: drive coding agent]          gitlab-fix over control-api:
    │        │  POST /panes {kind:'terminal', agentId:'claude', groupId:<env group>}
    │        │  POST /panes/:handle/prompt  "Pipeline <id> failed on <ref>@<sha>; reproduce,
-   │        │                               fix, push branch fix/pipeline-<id>."  (lfguard-gated pty)
+   │        │                               fix, push branch fix/pipeline-<id>."  (saiifeguard-gated pty)
    │        │  poll GET /panes/:handle/output until the agent reports a pushed branch
    │        ▼
    │   [action: openMR]                   invokeAction('gitlab','openMR',
@@ -615,7 +615,7 @@ Node-by-node against the engine:
    `control-api.ts`: `POST /panes` (terminal, an `OPERATOR_TERMINAL_AGENTS` agent —
    `control-api.ts:64`), then `POST /panes/:handle/prompt` with the failure context;
    it polls `GET /panes/:handle/output` until the agent reports a pushed fix branch.
-   Every prompt write passes **lfguard** (`control-api.ts:227`) and per-environment
+   Every prompt write passes **saiifeguard** (`control-api.ts:227`) and per-environment
    isolation — identical to the Linear connector's pane-drive, so destructive
    commands the agent might emit are still guarded.
 5. **`openMR`.** The connector calls `POST …/merge_requests` for the fix branch; a
@@ -649,7 +649,7 @@ boundary):
 | `webhookSecret` | Webhook secret token | **yes** | yes | string | Compared against `X-Gitlab-Token` (weak — §5.2). Keychain only. |
 | `baseUrl` | GitLab base URL | no | yes | string | `https://gitlab.com` (SaaS) or self-host `https://gitlab.internal.lan`. SSRF-guarded (§5.1). |
 | `projectPath` | Project (path or id) | no | yes | string | `group/project` or numeric id. Non-secret ref. |
-| `environment` | localflow environment (1-9) | no | yes | number | Which env hosts GitLab work + the fix-pane spawn. Same validation as Linear. |
+| `environment` | saiife environment (1-9) | no | yes | number | Which env hosts GitLab work + the fix-pane spawn. Same validation as Linear. |
 | `webhookPath` | Ingress webhook path | no | no | string | The unguessable receiver segment (§5.2). Placeholder `/gitlab/<random>`. |
 | `webhookUrl` | Ingress webhook URL | no | no | string | Tunnel (SaaS) or LAN address (self-host) the hook posts to (§4.4). |
 
@@ -689,8 +689,8 @@ protects every other sensitive write, not a bespoke connector-level rule. There 
 delivered trigger still fires **zero** GitLab writes on its own (the load-bearing
 authority guarantee, unchanged).
 
-**The fix stage inherits lfguard.** The coding-agent pane the fix loop drives writes
-through `POST /panes/:handle/prompt`, which is **already lfguard-gated**
+**The fix stage inherits saiifeguard.** The coding-agent pane the fix loop drives writes
+through `POST /panes/:handle/prompt`, which is **already saiifeguard-gated**
 (`control-api.ts:227`) — a destructive shell command the agent emits is blocked by
 the same guard OpenClaw operators hit. The connector adds no privileged path around
 it.
@@ -728,7 +728,7 @@ the connector works under the current `eq`-only routing, just less expressively.
 
 ## 11. Error handling
 
-localflow's principle (error-message-style memory; demonstrated in
+saiife's principle (error-message-style memory; demonstrated in
 `control-api.ts` and `action-runner.ts`): **every failure is human-readable,
 actionable, and carries the real underlying exception. No silent catch. No bare
 "failed" / "not found" 404-vibe.** A write signals failure by **rejecting** its
@@ -749,7 +749,7 @@ and surfaces it on the run.
 | **Issue/MR/pipeline not found (404)** | the iid/id that missed | Rejects: "GitLab has no <thing> '<id>' in `<projectPath>` (it may be from another project or was deleted)." — actionable, not a bare 404. |
 | **Rate-limit (429)** | `Retry-After` / `RateLimit-*` | `gitlab-api` retries honouring `Retry-After`; only after exhausting retries does it reject with "GitLab throttled the request (retry in ~Ns)". Self-host may send no header → capped exponential backoff (like the Woo client). Not swallowed. |
 | **MR not mergeable** (conflicts / pipeline pending) | GitLab's `merge_status` / message | Rejects with the true reason: "GitLab refused the merge: `cannot_be_merged` (source has conflicts with `main`)." Never a silent no-op. `mergeMR` has no separate gate-check failure mode — authority is the graph's `gate` node, not the connector (§9). |
-| **Fix-pane spawn refused** | control-API 400/403 (bad group / lfguard block) | Rejects with the control-API reason: "Couldn't start a fix agent in environment <n>: <control-api error>." The fix stage fails loudly, not silently. |
+| **Fix-pane spawn refused** | control-API 400/403 (bad group / saiifeguard block) | Rejects with the control-API reason: "Couldn't start a fix agent in environment <n>: <control-api error>." The fix stage fails loudly, not silently. |
 | **Ingress unreachable** | the unreachable `webhookUrl` | Startup/health check fails loudly: "GitLab webhook URL '<url>' is unreachable — no repo events will arrive." Never a silent dead trigger. |
 | **API version/path removed** | GitLab's error | Rejects: "GitLab API rejected `<path>` — the instance may be older/newer than expected." All shapes are in `gitlab-api.ts`, so the fix is one file. |
 
@@ -760,7 +760,7 @@ forwards **that**, never a vaguer mint.
 
 ## 12. Testing strategy (offline / mockable — no live calls in CI)
 
-Testable **without a live GitLab instance**, matching localflow's seams (pure
+Testable **without a live GitLab instance**, matching saiife's seams (pure
 modules, injected backends, fixture events):
 
 - **`GitLabApi` interface + `MockGitLabApi` seam.** `gitlab-api.ts` is written
@@ -796,7 +796,7 @@ modules, injected backends, fixture events):
 - **Fix-loop tests (offline)** — `gitlab-fix` drives a **fake control-API** (the
   router `handleRequest` is pure over its deps — `control-api.ts:125`): assert it
   `POST /panes` → `POST /panes/:handle/prompt` → polls `GET output` → calls `openMR`;
-  assert a control-API 403 (lfguard block) rejects with the §11 message. No socket.
+  assert a control-API 403 (saiifeguard block) rejects with the §11 message. No socket.
 - **Engine integration test (offline)** — wire the real `FlowEngine` + the registry
   with the GitLab connector over a `MockGitLabApi` and a fake control-API; inject a
   `pipeline.failed` `SeedEvent`; assert `getPipeline` writes context, the router
@@ -841,13 +841,13 @@ exercised only in manual dogfooding against a self-hosted dev instance.
    ask the user to invent them? Leaning: require the IP allowlist on LAN bind,
    auto-generate path+secret, show a one-line "shared-secret, keep the URL private"
    note.
-4. **`mergeMR` — graph-gate convention vs. also an lfguard-style backstop.** §9
+4. **`mergeMR` — graph-gate convention vs. also an saiifeguard-style backstop.** §9
    leaves `mergeMR` gated exactly like every other write, by the author's `gate`
    node — there is no connector-level check to fall back on. Is the graph-gate
    convention (plus every shipped template placing a `gate` before it) sufficient,
    or should there *also* be a deterministic backstop (e.g. refuse merges to a
    configurable protected-branch set regardless of the graph, in the spirit of
-   `guard/` lfguard)? Leaning: convention-only for MVP; protected-branch backstop as
+   `guard/` saiifeguard)? Leaning: convention-only for MVP; protected-branch backstop as
    a phased add.
 5. **Webhook subscription management — manual vs programmatic.** MVP can have the user
    create the Project Hook in GitLab (pointing at the tunnel/LAN URL with the token),
@@ -900,7 +900,7 @@ merging) and is dogfoodable against a self-hosted dev instance **with no tunnel*
 - **Phase 3 — `token`-scheme hardening + protected-branch backstop:** required IP
   allowlist on LAN bind, auto-generated path/secret, the UI shared-secret note
   (§13.3); the optional deterministic protected-branch merge backstop (§13.4),
-  lfguard-style.
+  saiifeguard-style.
 - **Phase 4 — richer conditions consumption:** once the conditions track lands
   `FlowEdgeCondition` (§10), verify the pinned fields drive `eq`/`contains`/`gte`/
   `truthy`/`exists` end-to-end; ship the "fix only main, only ≥1 failed job" template.
@@ -915,7 +915,7 @@ merging) and is dogfoodable against a self-hosted dev instance **with no tunnel*
 
 ---
 
-## Appendix — reused / satisfied localflow surfaces (by path)
+## Appendix — reused / satisfied saiife surfaces (by path)
 
 - `src/shared/integrations.ts` — the pinned `IntegrationDescriptor` /
   `IntegrationRegistry` / `LiveConnector` this connector satisfies; `IntegrationId` +
@@ -935,7 +935,7 @@ merging) and is dogfoodable against a self-hosted dev instance **with no tunnel*
   passes it; the self-host `baseUrl` uses the explicit per-connector allow (§5.1).
 - `src/main/control-api.ts` — the operator surface the fix loop drives (`POST /panes`
   `control-api.ts:169`, `POST /panes/:handle/prompt` `control-api.ts:222`), with
-  lfguard (`:227`) + grant isolation intact.
+  saiifeguard (`:227`) + grant isolation intact.
 - `src/main/flow/node-runners/action-runner.ts` — the `invokeAction` runner + the
   **reject = failure** convention every GitLab action honours; the not-connected
   guard.
@@ -952,7 +952,7 @@ merging) and is dogfoodable against a self-hosted dev instance **with no tunnel*
 - `docs/superpowers/specs/2026-07-17-{shopify,woocommerce}-connector-design.md` — the
   connector-module-shape + SSRF/secret/error-table/offline-test templates; the shared
   receiver + SSRF guard this spec consumes are the infra those connectors motivated.
-- `guard/` (lfguard) — the deterministic-guard posture the `mergeMR` mandate (§9) and
+- `guard/` (saiifeguard) — the deterministic-guard posture the `mergeMR` mandate (§9) and
   the phased protected-branch backstop (§13.4) borrow.
 </content>
 </invoke>

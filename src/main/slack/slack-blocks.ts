@@ -33,8 +33,8 @@ export function decodeCorrelation(value: string): { runId: string; nodeId: strin
 
 // ── Action ids on the Approve / Deny buttons ─────────────────────────────────
 
-export const APPROVE_ACTION_ID = 'localflow_approve'
-export const DENY_ACTION_ID = 'localflow_deny'
+export const APPROVE_ACTION_ID = 'saiife_approve'
+export const DENY_ACTION_ID = 'saiife_deny'
 
 // ── Builders (pure) ──────────────────────────────────────────────────────────
 

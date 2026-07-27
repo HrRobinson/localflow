@@ -17,16 +17,19 @@ interface Props {
     | 'activity'
     | 'cockpit'
     | 'integrations'
+    | 'apiclient'
     | 'flows'
   activeId: string | null
   environment: number
   grantedEnvs: Set<number>
+  apiGrantedEnvs: Set<number>
   onSwitchEnvironment: (n: number) => void
   onHome: () => void
   onEnvironment: () => void
   onActivity: () => void
   onCockpit: () => void
   onIntegrations: () => void
+  onApiClient: () => void
   onFlows: () => void
   onSettings: () => void
   onChanges: () => void
@@ -45,12 +48,14 @@ export default function Sidebar({
   activeId,
   environment,
   grantedEnvs,
+  apiGrantedEnvs,
   onSwitchEnvironment,
   onHome,
   onEnvironment,
   onActivity,
   onCockpit,
   onIntegrations,
+  onApiClient,
   onFlows,
   onSettings,
   onChanges,
@@ -64,7 +69,7 @@ export default function Sidebar({
   const [envNames, setEnvNames] = useState<Record<string, string>>({})
   useEffect(() => {
     let cancelled = false
-    void window.localflow.getEnvironmentNames().then((names) => {
+    void window.saiife.getEnvironmentNames().then((names) => {
       if (!cancelled) setEnvNames(names)
     })
     return () => {
@@ -111,7 +116,7 @@ export default function Sidebar({
       <div className="flex items-center gap-[9px] px-4 pt-4 pb-2.5">
         <Brand />
         <span className="font-mono text-[13px] font-semibold tracking-[0.02em] text-gray-200">
-          localflow
+          saiife
         </span>
       </div>
       <nav className="flex flex-col gap-0.5 p-2">
@@ -161,6 +166,13 @@ export default function Sidebar({
           Integrations
         </button>
         <button
+          className={`${navItemBase}${view === 'apiclient' ? ` ${navItemActive}` : ''}`}
+          onClick={onApiClient}
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          API
+        </button>
+        <button
           className={`${navItemBase}${view === 'flows' ? ` ${navItemActive}` : ''}`}
           onClick={onFlows}
           onMouseDown={(e) => e.preventDefault()}
@@ -207,6 +219,14 @@ export default function Sidebar({
                     data-environment={n}
                     data-granted="true"
                     title="An operator can drive this environment"
+                  />
+                )}
+                {apiGrantedEnvs.has(n) && (
+                  <span
+                    className="api-indicator bg-working ml-1 inline-block h-1.5 w-1.5 rounded-full align-middle"
+                    data-environment={n}
+                    data-api-granted="true"
+                    title="An agent can send API requests in this environment"
                   />
                 )}
                 <span className="text-[11px] text-gray-600">{envSessions.length || ''}</span>

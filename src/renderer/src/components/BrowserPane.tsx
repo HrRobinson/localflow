@@ -71,7 +71,7 @@ export default function BrowserPane({
       setCanGoBack(view.canGoBack())
       setCanGoForward(view.canGoForward())
       if (!editing) setBarValue(current)
-      void window.localflow.setSessionUrl(session.id, current)
+      void window.saiife.setSessionUrl(session.id, current)
     }
     view.addEventListener('did-navigate', onNavigate)
     view.addEventListener('did-navigate-in-page', onNavigate)
@@ -86,14 +86,14 @@ export default function BrowserPane({
   // is stable for the guest's life); unregistered on unmount / exit.
   useEffect(() => {
     if (!alive) {
-      window.localflow.unregisterBrowser(session.id)
+      window.saiife.unregisterBrowser(session.id)
       return
     }
     const view = viewRef.current
     if (!view) return
     const onReady = (): void => {
       try {
-        window.localflow.registerBrowser(session.id, view.getWebContentsId())
+        window.saiife.registerBrowser(session.id, view.getWebContentsId())
       } catch {
         /* guest not attached yet; a later dom-ready will catch it */
       }
@@ -101,7 +101,7 @@ export default function BrowserPane({
     view.addEventListener('dom-ready', onReady)
     return () => {
       view.removeEventListener('dom-ready', onReady)
-      window.localflow.unregisterBrowser(session.id)
+      window.saiife.unregisterBrowser(session.id)
     }
   }, [session.id, alive])
 
@@ -208,7 +208,7 @@ export default function BrowserPane({
           title="Open in system browser"
           onClick={() => {
             const current = viewRef.current?.getURL() ?? session.url
-            if (current) window.localflow.openExternal(current)
+            if (current) window.saiife.openExternal(current)
           }}
           onDoubleClick={(e) => e.stopPropagation()}
           onMouseDown={guard}

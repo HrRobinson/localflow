@@ -1,7 +1,7 @@
 # M5 — Session layers (session › panes) — design
 
 Date: 2026-07-13. Status: awaiting review.
-Supersedes the M5 section of `2026-07-06-localflow-v2-roadmap.md`.
+Supersedes the M5 section of `2026-07-06-saiife-v2-roadmap.md`.
 
 ## Goal
 

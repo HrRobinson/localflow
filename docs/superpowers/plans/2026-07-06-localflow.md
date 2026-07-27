@@ -1,10 +1,10 @@
-# localflow Implementation Plan
+# saiife Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** A macOS Electron app showing a grid of live terminal panes, each running a real `claude` CLI session, with hook-driven status colors (blue working / yellow needs-you / green idle / gray exited).
 
-**Architecture:** Electron main process spawns one PTY per session via node-pty and runs a localhost-only HTTP listener that receives status events from Claude Code hooks (injected per-session via `--settings`). The renderer (React + xterm.js) shows panes wired over a typed preload IPC bridge. Spec: `docs/superpowers/specs/2026-07-06-localflow-design.md`.
+**Architecture:** Electron main process spawns one PTY per session via node-pty and runs a localhost-only HTTP listener that receives status events from Claude Code hooks (injected per-session via `--settings`). The renderer (React + xterm.js) shows panes wired over a typed preload IPC bridge. Spec: `docs/superpowers/specs/2026-07-06-saiife-design.md`.
 
 **Tech Stack:** Electron, electron-vite, TypeScript (strict), React, @xterm/xterm, node-pty, Vitest, Playwright, electron-builder, commitlint + husky, GitHub Actions, release-please.
 
@@ -17,7 +17,7 @@
 - macOS-only for v1 (build targets, CI runners for e2e/build).
 - Node ≥ 20. License MIT. No telemetry.
 - Status colors: working=blue `#3b82f6`, needs-you=yellow `#eab308`, idle=green `#22c55e`, exited=gray `#6b7280`.
-- `claude` binary resolved from `LOCALFLOW_CLAUDE_BIN` env var, falling back to `claude` (tests use a fixture script).
+- `claude` binary resolved from `SAIIFE_CLAUDE_BIN` env var, falling back to `claude` (tests use a fixture script).
 
 ---
 
@@ -28,13 +28,13 @@
 - Create: `src/main/index.ts`, `src/preload/index.ts`, `src/renderer/index.html`, `src/renderer/src/main.tsx`, `src/renderer/src/App.tsx`, `src/renderer/src/env.d.ts`
 
 **Interfaces:**
-- Produces: a launchable Electron window titled "localflow"; `npm run dev`, `npm run build`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run check` all work.
+- Produces: a launchable Electron window titled "saiife"; `npm run dev`, `npm run build`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run check` all work.
 
 - [ ] **Step 1: Create package.json**
 
 ```json
 {
-  "name": "localflow",
+  "name": "saiife",
   "version": "0.1.0",
   "description": "Mission control for Claude Code sessions - one window, many agents, glanceable status.",
   "main": "./out/main/index.js",
@@ -163,7 +163,7 @@ function createWindow(): void {
   const win = new BrowserWindow({
     width: 1400,
     height: 900,
-    title: 'localflow',
+    title: 'saiife',
     webPreferences: {
       preload: join(__dirname, '../preload/index.cjs'),
       contextIsolation: true,
@@ -191,7 +191,7 @@ app.on('window-all-closed', () => {
 ```ts
 import { contextBridge } from 'electron'
 
-contextBridge.exposeInMainWorld('localflow', {})
+contextBridge.exposeInMainWorld('saiife', {})
 ```
 
 Note: electron-vite emits the preload as `index.cjs` when `"type": "module"` — if `npm run dev` logs a preload load error, check the emitted filename under `out/preload/` and match the `join(__dirname, '../preload/…')` path to it.
@@ -200,7 +200,7 @@ Note: electron-vite emits the preload as `index.cjs` when `"type": "module"` —
 ```html
 <meta charset="UTF-8" />
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'" />
-<title>localflow</title>
+<title>saiife</title>
 <div id="root"></div>
 <script type="module" src="/src/main.tsx"></script>
 ```
@@ -222,7 +222,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 `src/renderer/src/App.tsx`:
 ```tsx
 export default function App(): React.JSX.Element {
-  return <h1>localflow</h1>
+  return <h1>saiife</h1>
 }
 ```
 
@@ -234,7 +234,7 @@ export default function App(): React.JSX.Element {
 - [ ] **Step 5: Verify it runs and checks pass**
 
 Run: `npm run build` — Expected: builds main, preload, renderer without errors.
-Run: `npm run dev` briefly (then quit) — Expected: window opens titled "localflow" showing the heading.
+Run: `npm run dev` briefly (then quit) — Expected: window opens titled "saiife" showing the heading.
 Run: `npm run lint && npm run typecheck` — Expected: clean. (`npm test` fails with "no tests" until Task 3 — that's fine; don't run `check` yet.)
 
 - [ ] **Step 6: Commit**
@@ -408,7 +408,7 @@ git commit -m "feat: add session status state machine"
 
 **Interfaces:**
 - Consumes: `HookEvent`, `HookEventName` from `src/shared/types`.
-- Produces: `parseHookBody(raw: string): HookEvent | null`; `startHookServer(onEvent: (e: HookEvent) => void): Promise<HookEndpoint>` where `HookEndpoint = { port: number; token: string; close(): void }`. Server accepts only `POST /event` on `127.0.0.1` with header `X-Localflow-Token: <token>`; responds 204 on success, 403 bad token/route, 400 bad body.
+- Produces: `parseHookBody(raw: string): HookEvent | null`; `startHookServer(onEvent: (e: HookEvent) => void): Promise<HookEndpoint>` where `HookEndpoint = { port: number; token: string; close(): void }`. Server accepts only `POST /event` on `127.0.0.1` with header `X-Saiife-Token: <token>`; responds 204 on success, 403 bad token/route, 400 bad body.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -446,7 +446,7 @@ describe('startHookServer', () => {
 
     const ok = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Localflow-Token': endpoint.token },
+      headers: { 'Content-Type': 'application/json', 'X-Saiife-Token': endpoint.token },
       body
     })
     expect(ok.status).toBe(204)
@@ -454,14 +454,14 @@ describe('startHookServer', () => {
 
     const badToken = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Localflow-Token': 'wrong' },
+      headers: { 'Content-Type': 'application/json', 'X-Saiife-Token': 'wrong' },
       body
     })
     expect(badToken.status).toBe(403)
 
     const badBody = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Localflow-Token': endpoint.token },
+      headers: { 'Content-Type': 'application/json', 'X-Saiife-Token': endpoint.token },
       body: 'nope'
     })
     expect(badBody.status).toBe(400)
@@ -512,7 +512,7 @@ export function startHookServer(onEvent: (e: HookEvent) => void): Promise<HookEn
     if (
       req.method !== 'POST' ||
       req.url !== '/event' ||
-      req.headers['x-localflow-token'] !== token
+      req.headers['x-saiife-token'] !== token
     ) {
       res.writeHead(403)
       res.end()
@@ -562,7 +562,7 @@ git commit -m "feat: add localhost hook event listener"
 
 **Interfaces:**
 - Consumes: `HookEventName` from shared types.
-- Produces: `buildHookSettings(paneId: string, port: number, token: string): object` (Claude Code settings JSON with UserPromptSubmit/Notification/Stop hooks that `curl` the listener); `writeHookSettings(dir: string, paneId: string, port: number, token: string): string` (writes `localflow-hooks-<paneId>.json` into `dir`, returns the path).
+- Produces: `buildHookSettings(paneId: string, port: number, token: string): object` (Claude Code settings JSON with UserPromptSubmit/Notification/Stop hooks that `curl` the listener); `writeHookSettings(dir: string, paneId: string, port: number, token: string): string` (writes `saiife-hooks-<paneId>.json` into `dir`, returns the path).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -583,7 +583,7 @@ describe('buildHookSettings', () => {
       const cmd = settings.hooks[name][0].hooks[0].command
       expect(settings.hooks[name][0].hooks[0].type).toBe('command')
       expect(cmd).toContain('http://127.0.0.1:4242/event')
-      expect(cmd).toContain('X-Localflow-Token: tok')
+      expect(cmd).toContain('X-Saiife-Token: tok')
       expect(cmd).toContain(`"paneId":"p1"`)
       expect(cmd).toContain(`"event":"${name}"`)
     }
@@ -592,9 +592,9 @@ describe('buildHookSettings', () => {
 
 describe('writeHookSettings', () => {
   it('writes valid JSON and returns the path', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'localflow-test-'))
+    const dir = mkdtempSync(join(tmpdir(), 'saiife-test-'))
     const file = writeHookSettings(dir, 'p2', 1234, 'tok2')
-    expect(file).toBe(join(dir, 'localflow-hooks-p2.json'))
+    expect(file).toBe(join(dir, 'saiife-hooks-p2.json'))
     const parsed = JSON.parse(readFileSync(file, 'utf8'))
     expect(parsed.hooks.Stop).toBeDefined()
   })
@@ -619,7 +619,7 @@ export function buildHookSettings(paneId: string, port: number, token: string): 
   const hooks: Record<string, unknown> = {}
   for (const event of EVENTS) {
     const payload = JSON.stringify({ paneId, event })
-    const command = `curl -s -m 3 -X POST http://127.0.0.1:${port}/event -H 'Content-Type: application/json' -H 'X-Localflow-Token: ${token}' -d '${payload}'`
+    const command = `curl -s -m 3 -X POST http://127.0.0.1:${port}/event -H 'Content-Type: application/json' -H 'X-Saiife-Token: ${token}' -d '${payload}'`
     hooks[event] = [{ hooks: [{ type: 'command', command }] }]
   }
   return { hooks }
@@ -631,7 +631,7 @@ export function writeHookSettings(
   port: number,
   token: string
 ): string {
-  const file = join(dir, `localflow-hooks-${paneId}.json`)
+  const file = join(dir, `saiife-hooks-${paneId}.json`)
   writeFileSync(file, JSON.stringify(buildHookSettings(paneId, port, token), null, 2))
   return file
 }
@@ -712,7 +712,7 @@ describe('SessionManager', () => {
       return pty
     }
     mgr = new SessionManager({
-      settingsDir: mkdtempSync(join(tmpdir(), 'localflow-sm-')),
+      settingsDir: mkdtempSync(join(tmpdir(), 'saiife-sm-')),
       port: 9999,
       token: 'tok',
       claudeBin: 'fake-claude',
@@ -726,7 +726,7 @@ describe('SessionManager', () => {
     expect(spawnCalls[0].bin).toBe('fake-claude')
     expect(spawnCalls[0].cwd).toBe('/some/project')
     expect(spawnCalls[0].args[0]).toBe('--settings')
-    expect(spawnCalls[0].args[1]).toContain(`localflow-hooks-${info.id}.json`)
+    expect(spawnCalls[0].args[1]).toContain(`saiife-hooks-${info.id}.json`)
   })
 
   it('hook events drive status and notify listeners', () => {
@@ -758,7 +758,7 @@ describe('SessionManager', () => {
 
   it('spawn failure yields an exited session with an error message', () => {
     const failing = new SessionManager({
-      settingsDir: mkdtempSync(join(tmpdir(), 'localflow-sm-')),
+      settingsDir: mkdtempSync(join(tmpdir(), 'saiife-sm-')),
       port: 9999,
       token: 'tok',
       claudeBin: 'missing',
@@ -961,8 +961,8 @@ git commit -m "feat: add pty session manager"
 - Consumes: `SessionManager` (Task 6), `startHookServer` (Task 4), shared types.
 - Produces:
   - `loadSavedSessions(file: string): { id: string; cwd: string }[]` and `saveSessions(file: string, sessions: { id: string; cwd: string }[]): void`
-  - `LocalflowApi` on `window.localflow`: `createSession(cwd?: string): Promise<SessionInfo | null>` (no `cwd` → native folder picker; `null` if cancelled), `restartSession(id: string): Promise<SessionInfo>`, `killSession(id: string): Promise<void>`, `listSessions(): Promise<SessionInfo[]>`, `write(id, data): void`, `resize(id, cols, rows): void`, `onData(cb): () => void`, `onStatus(cb): () => void`
-  - Env behavior: `LOCALFLOW_USER_DATA` overrides userData path; `LOCALFLOW_E2E=1` writes `endpoint.json` (`{ port, token }`) into userData; `LOCALFLOW_CLAUDE_BIN` overrides the claude binary.
+  - `SaiifeApi` on `window.saiife`: `createSession(cwd?: string): Promise<SessionInfo | null>` (no `cwd` → native folder picker; `null` if cancelled), `restartSession(id: string): Promise<SessionInfo>`, `killSession(id: string): Promise<void>`, `listSessions(): Promise<SessionInfo[]>`, `write(id, data): void`, `resize(id, cols, rows): void`, `onData(cb): () => void`, `onStatus(cb): () => void`
+  - Env behavior: `SAIIFE_USER_DATA` overrides userData path; `SAIIFE_E2E=1` writes `endpoint.json` (`{ port, token }`) into userData; `SAIIFE_CLAUDE_BIN` overrides the claude binary.
 
 - [ ] **Step 1: Write the failing persistence test**
 
@@ -976,13 +976,13 @@ import { loadSavedSessions, saveSessions } from '../../src/main/persistence'
 
 describe('persistence', () => {
   it('round-trips sessions and tolerates a missing file', () => {
-    const file = join(mkdtempSync(join(tmpdir(), 'localflow-p-')), 'sessions.json')
+    const file = join(mkdtempSync(join(tmpdir(), 'saiife-p-')), 'sessions.json')
     expect(loadSavedSessions(file)).toEqual([])
     saveSessions(file, [{ id: 'a', cwd: '/x' }])
     expect(loadSavedSessions(file)).toEqual([{ id: 'a', cwd: '/x' }])
   })
   it('returns [] on corrupt file', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'localflow-p-'))
+    const dir = mkdtempSync(join(tmpdir(), 'saiife-p-'))
     const file = join(dir, 'sessions.json')
     saveSessions(file, [])
     require('node:fs').writeFileSync(file, 'garbage')
@@ -1033,7 +1033,7 @@ Run: `npm test` — Expected: PASS.
 ```ts
 import type { SessionInfo, SessionStatus } from './types'
 
-export interface LocalflowApi {
+export interface SaiifeApi {
   createSession(cwd?: string): Promise<SessionInfo | null>
   restartSession(id: string): Promise<SessionInfo>
   killSession(id: string): Promise<void>
@@ -1047,11 +1047,11 @@ export interface LocalflowApi {
 
 `src/preload/index.d.ts`:
 ```ts
-import type { LocalflowApi } from '../shared/api'
+import type { SaiifeApi } from '../shared/api'
 
 declare global {
   interface Window {
-    localflow: LocalflowApi
+    saiife: SaiifeApi
   }
 }
 
@@ -1063,10 +1063,10 @@ export {}
 `src/preload/index.ts` (full replacement):
 ```ts
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import type { LocalflowApi } from '../shared/api'
+import type { SaiifeApi } from '../shared/api'
 import type { SessionStatus } from '../shared/types'
 
-const api: LocalflowApi = {
+const api: SaiifeApi = {
   createSession: (cwd?: string) => ipcRenderer.invoke('session:create', cwd),
   restartSession: (id: string) => ipcRenderer.invoke('session:restart', id),
   killSession: (id: string) => ipcRenderer.invoke('session:kill', id),
@@ -1087,7 +1087,7 @@ const api: LocalflowApi = {
   }
 }
 
-contextBridge.exposeInMainWorld('localflow', api)
+contextBridge.exposeInMainWorld('saiife', api)
 ```
 
 - [ ] **Step 6: Wire the main process**
@@ -1101,8 +1101,8 @@ import { startHookServer } from './hook-server'
 import { SessionManager } from './session-manager'
 import { loadSavedSessions, saveSessions } from './persistence'
 
-if (process.env['LOCALFLOW_USER_DATA']) {
-  app.setPath('userData', process.env['LOCALFLOW_USER_DATA'])
+if (process.env['SAIIFE_USER_DATA']) {
+  app.setPath('userData', process.env['SAIIFE_USER_DATA'])
 }
 
 let win: BrowserWindow | null = null
@@ -1111,7 +1111,7 @@ function createWindow(): void {
   win = new BrowserWindow({
     width: 1400,
     height: 900,
-    title: 'localflow',
+    title: 'saiife',
     webPreferences: {
       preload: join(__dirname, '../preload/index.cjs'),
       contextIsolation: true,
@@ -1133,7 +1133,7 @@ app.whenReady().then(async () => {
   const sessionsFile = join(userData, 'sessions.json')
 
   const endpoint = await startHookServer((e) => manager.applyHookEvent(e))
-  if (process.env['LOCALFLOW_E2E'] === '1') {
+  if (process.env['SAIIFE_E2E'] === '1') {
     writeFileSync(
       join(userData, 'endpoint.json'),
       JSON.stringify({ port: endpoint.port, token: endpoint.token })
@@ -1144,7 +1144,7 @@ app.whenReady().then(async () => {
     settingsDir: userData,
     port: endpoint.port,
     token: endpoint.token,
-    claudeBin: process.env['LOCALFLOW_CLAUDE_BIN'] ?? 'claude'
+    claudeBin: process.env['SAIIFE_CLAUDE_BIN'] ?? 'claude'
   })
 
   manager.onData((id, data) => win?.webContents.send('session:data', id, data))
@@ -1210,7 +1210,7 @@ git commit -m "feat: wire sessions over typed ipc bridge"
 - Create: `tests/fixtures/fake-claude.sh`
 
 **Interfaces:**
-- Consumes: `window.localflow` (`LocalflowApi` from Task 7), `SessionInfo`, `SessionStatus`.
+- Consumes: `window.saiife` (`SaiifeApi` from Task 7), `SessionInfo`, `SessionStatus`.
 - Produces: pane DOM contract used by the e2e test — each pane root has `class="pane"`, `data-pane-id="<id>"`, `data-status="<status>"`; the new-session button has `class="new-session"`.
 
 - [ ] **Step 1: Create the test fixture**
@@ -1297,14 +1297,14 @@ export default function TerminalPane({
     term.loadAddon(fit)
     term.open(hostRef.current)
     fit.fit()
-    window.localflow.resize(session.id, term.cols, term.rows)
-    const offData = window.localflow.onData((id, data) => {
+    window.saiife.resize(session.id, term.cols, term.rows)
+    const offData = window.saiife.onData((id, data) => {
       if (id === session.id) term.write(data)
     })
-    const onInput = term.onData((d) => window.localflow.write(session.id, d))
+    const onInput = term.onData((d) => window.saiife.write(session.id, d))
     const ro = new ResizeObserver(() => {
       fit.fit()
-      window.localflow.resize(session.id, term.cols, term.rows)
+      window.saiife.resize(session.id, term.cols, term.rows)
     })
     ro.observe(hostRef.current)
     return () => {
@@ -1355,12 +1355,12 @@ export default function App(): React.JSX.Element {
   const [enlarged, setEnlarged] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
-    setSessions(await window.localflow.listSessions())
+    setSessions(await window.saiife.listSessions())
   }, [])
 
   useEffect(() => {
     void refresh()
-    const offStatus = window.localflow.onStatus((id, status) => {
+    const offStatus = window.saiife.onStatus((id, status) => {
       setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, status } : s)))
     })
     const onKey = (e: KeyboardEvent): void => {
@@ -1374,15 +1374,15 @@ export default function App(): React.JSX.Element {
   }, [refresh])
 
   const createSession = async (): Promise<void> => {
-    const created = await window.localflow.createSession()
+    const created = await window.saiife.createSession()
     if (created) await refresh()
   }
   const restart = async (id: string): Promise<void> => {
-    await window.localflow.restartSession(id)
+    await window.saiife.restartSession(id)
     await refresh()
   }
   const close = async (id: string): Promise<void> => {
-    await window.localflow.killSession(id)
+    await window.saiife.killSession(id)
     setEnlarged((cur) => (cur === id ? null : cur))
     await refresh()
   }
@@ -1390,7 +1390,7 @@ export default function App(): React.JSX.Element {
   return (
     <>
       <div className="toolbar">
-        <h1>localflow</h1>
+        <h1>saiife</h1>
         <button className="new-session" onClick={() => void createSession()}>
           + New session
         </button>
@@ -1416,7 +1416,7 @@ Add to the top of `src/renderer/src/main.tsx`: `import './styles.css'`
 
 - [ ] **Step 5: Manual verification with the fixture**
 
-Run: `LOCALFLOW_CLAUDE_BIN="$PWD/tests/fixtures/fake-claude.sh" npm run dev`
+Run: `SAIIFE_CLAUDE_BIN="$PWD/tests/fixtures/fake-claude.sh" npm run dev`
 Expected: click "+ New session", pick a folder → a pane appears with green (idle) border showing the fake-claude output; typing echoes into the pty; double-click header enlarges; Escape shrinks; close removes the pane. Then verify the real thing: `npm run dev` (no env var), create a session in a real project → actual Claude Code runs in the pane; submit a prompt → border turns blue, then yellow on a permission ask, green when the turn ends.
 
 - [ ] **Step 6: Checks and commit**
@@ -1436,7 +1436,7 @@ git commit -m "feat: terminal pane grid with status colors"
 - Create: `playwright.config.ts`, `tests/e2e/smoke.spec.ts`
 
 **Interfaces:**
-- Consumes: DOM contract from Task 8 (`.pane`, `data-pane-id`, `data-status`, `.new-session`), env behavior from Task 7 (`LOCALFLOW_E2E`, `LOCALFLOW_USER_DATA`, `LOCALFLOW_CLAUDE_BIN`, `endpoint.json`).
+- Consumes: DOM contract from Task 8 (`.pane`, `data-pane-id`, `data-status`, `.new-session`), env behavior from Task 7 (`SAIIFE_E2E`, `SAIIFE_USER_DATA`, `SAIIFE_CLAUDE_BIN`, `endpoint.json`).
 
 - [ ] **Step 1: Playwright config**
 
@@ -1465,21 +1465,21 @@ import { fileURLToPath } from 'node:url'
 const here = dirname(fileURLToPath(import.meta.url))
 
 test('panes render and hook events change status colors', async () => {
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   const app = await electron.launch({
     args: ['.'],
     env: {
       ...process.env,
-      LOCALFLOW_E2E: '1',
-      LOCALFLOW_USER_DATA: userData,
-      LOCALFLOW_CLAUDE_BIN: join(here, '../fixtures/fake-claude.sh')
+      SAIIFE_E2E: '1',
+      SAIIFE_USER_DATA: userData,
+      SAIIFE_CLAUDE_BIN: join(here, '../fixtures/fake-claude.sh')
     }
   })
   const win = await app.firstWindow()
   await expect(win.locator('.new-session')).toBeVisible()
 
   const info = await win.evaluate(
-    (cwd) => (window as unknown as { localflow: { createSession(c: string): Promise<{ id: string }> } }).localflow.createSession(cwd),
+    (cwd) => (window as unknown as { saiife: { createSession(c: string): Promise<{ id: string }> } }).saiife.createSession(cwd),
     userData
   )
   const pane = win.locator(`[data-pane-id="${info!.id}"]`)
@@ -1490,7 +1490,7 @@ test('panes render and hook events change status colors', async () => {
   const post = (event: string): Promise<Response> =>
     fetch(`http://127.0.0.1:${port}/event`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Localflow-Token': token },
+      headers: { 'Content-Type': 'application/json', 'X-Saiife-Token': token },
       body: JSON.stringify({ paneId: info!.id, event })
     })
 
@@ -1507,7 +1507,7 @@ test('panes render and hook events change status colors', async () => {
 
 Note: `createSession(cwd)` bypasses the folder-picker dialog because a `cwd` argument is provided (Task 7 behavior) — nothing blocks on a native dialog in CI.
 
-Gotcha: `App.tsx` refreshes its session list only after `createSession()` resolves *from the button click*. Because the e2e calls `window.localflow.createSession` directly, the pane appears only if the renderer re-lists. Fix as part of this task: in `App.tsx`'s `useEffect`, also poll once per second:
+Gotcha: `App.tsx` refreshes its session list only after `createSession()` resolves *from the button click*. Because the e2e calls `window.saiife.createSession` directly, the pane appears only if the renderer re-lists. Fix as part of this task: in `App.tsx`'s `useEffect`, also poll once per second:
 ```tsx
 const iv = setInterval(() => void refresh(), 1000)
 ```
@@ -1694,8 +1694,8 @@ Expected: on GitHub, the `ci` and `codeql` workflows run on main and pass (e2e r
 
 `electron-builder.yml`:
 ```yaml
-appId: dev.hrrobinson.localflow
-productName: localflow
+appId: dev.hrrobinson.saiife
+productName: saiife
 directories:
   output: dist
 files:
@@ -1760,7 +1760,7 @@ jobs:
 - [ ] **Step 4: Verify packaging locally, then commit**
 
 Run: `npm run package`
-Expected: `dist/mac-arm64/localflow.app` exists and launches (`open dist/mac-arm64/localflow.app`).
+Expected: `dist/mac-arm64/saiife.app` exists and launches (`open dist/mac-arm64/saiife.app`).
 
 ```bash
 git add -A
@@ -1782,7 +1782,7 @@ Expected: release-please opens a "chore(main): release 0.1.0"-style PR on GitHub
 - [ ] **Step 1: Write README.md**
 
 Sections (write real prose, not placeholders):
-- **localflow** — one-paragraph pitch: mission control for Claude Code sessions; grid of real terminals; glanceable status colors (blue working / yellow needs you / green done / gray exited).
+- **saiife** — one-paragraph pitch: mission control for Claude Code sessions; grid of real terminals; glanceable status colors (blue working / yellow needs you / green done / gray exited).
 - **How it works** — 3 bullets: real `claude` CLI in PTYs; status via Claude Code's own hooks POSTing to a localhost listener (random port, secret token, 127.0.0.1 only); no telemetry.
 - **Install** — download the `.dmg` from Releases (unsigned for now: right-click → Open on first launch), or build from source: `git clone`, `npm install`, `npm run dev`. Requires Node ≥ 20 and [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed.
 - **Usage** — + New session → pick folder; double-click header to enlarge, Escape to shrink; Restart resumes a dead session with `claude --continue`.
@@ -1793,7 +1793,7 @@ Sections (write real prose, not placeholders):
 - [ ] **Step 2: Write CONTRIBUTING.md**
 
 ```markdown
-# Contributing to localflow
+# Contributing to saiife
 
 Thanks for wanting to help! A few hard rules keep this repo pleasant.
 
@@ -1819,7 +1819,7 @@ Thanks for wanting to help! A few hard rules keep this repo pleasant.
 ## Dev setup
 
 Node ≥ 20. `npm install`, then `npm run dev`. To run the app without a real
-Claude session: `LOCALFLOW_CLAUDE_BIN="$PWD/tests/fixtures/fake-claude.sh" npm run dev`.
+Claude session: `SAIIFE_CLAUDE_BIN="$PWD/tests/fixtures/fake-claude.sh" npm run dev`.
 ```
 
 - [ ] **Step 3: Commit and push**

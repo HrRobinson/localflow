@@ -6,7 +6,7 @@ import type { SalesforceConfig } from '../../shared/salesforce'
  * validated at the boundary exactly like `parsePostHogConfig`: config.json is
  * user-edited, so only well-typed values are honored and any garbage DISABLES the
  * feature (returns `null`) rather than throwing. An absent/disabled block means
- * the connector never subscribes a poll — the opt-in posture localflow's "works
+ * the connector never subscribes a poll — the opt-in posture saiife's "works
  * with no integration" guarantee relies on (spec §4.1).
  *
  * Secrets are NOT here: the JWT private key / consumer secret live in the keychain

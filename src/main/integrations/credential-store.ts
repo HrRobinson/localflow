@@ -2,7 +2,7 @@ import { existsSync, readFileSync, writeFileSync, renameSync } from 'node:fs'
 import type { IntegrationId } from '../../shared/integrations'
 
 /**
- * The ONLY module in localflow that touches raw integration secret material.
+ * The ONLY module in saiife that touches raw integration secret material.
  * Get/set/clear behind Electron `safeStorage` (injected as `SecretBackend` so
  * tests never touch the real OS keychain). It never returns a secret across an
  * IPC boundary, into a log, or into config.json — the renderer-facing surface

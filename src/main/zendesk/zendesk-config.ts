@@ -14,7 +14,7 @@ export interface ZendeskConfig {
   /** The email half of the Basic-auth pair; the identity replies are attributed
    *  to. Non-secret. */
   agentEmail: string
-  /** localflow environment (1-9). */
+  /** saiife environment (1-9). */
   environment: number
   /** The tunnel/relay ingress URL (§4.5); optional in MVP (manual webhooks). */
   webhookUrl?: string

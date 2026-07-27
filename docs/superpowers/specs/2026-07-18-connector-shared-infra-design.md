@@ -9,7 +9,7 @@
 
 ## 1. Goal & scope
 
-localflow now ships five connectors (Linear, email, cloud, Shopify,
+saiife now ships five connectors (Linear, email, cloud, Shopify,
 WooCommerce) and roughly eight more are queued (Stripe, GitHub, HubSpot,
 Sentry, GitLab, Slack, …). Three security-critical pieces have been
 **copy-pasted per connector** and are drifting:
@@ -250,7 +250,7 @@ timestamp or one outside `toleranceSec` of `now()`, then HMAC over
 
 ```ts
 /**
- * localflow's cross-connector money vocabulary. Amounts are always in MAJOR
+ * saiife's cross-connector money vocabulary. Amounts are always in MAJOR
  * units (dollars, euros, yen) as a `number`, so conditions compare numerically
  * and consistently regardless of which connector produced them.
  *

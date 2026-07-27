@@ -2,7 +2,7 @@
 
 Status: **Draft — implementing directly per task, flagged items below need
 Jonas's confirmation.**
-Scope: one focused PR closing a dogfooding-friction gap — localflow forces a
+Scope: one focused PR closing a dogfooding-friction gap — saiife forces a
 native Finder dialog for every path (agent binary location, new-session
 working directory) with no way to type/paste, which is painful for dotfolder
 binaries (`~/.volta/bin/openclaw`) and blocks even trivial shell sessions on
@@ -12,7 +12,7 @@ Grounded against: `src/renderer/src/components/Settings.tsx` (agent
 launcher), `src/main/index.ts` (`agents:setPath`, `session:create`,
 `templates:create` — all three currently gate on `dialog.showOpenDialog`),
 `src/main/agent-registry.ts` (`AgentConfig`, `AgentRegistry.setPath`,
-`loadAgentConfig`/`saveAgentConfig`), `src/shared/api.ts` (`LocalflowApi`),
+`loadAgentConfig`/`saveAgentConfig`), `src/shared/api.ts` (`SaiifeApi`),
 `src/shared/urls.ts` (the existing pure-validator pattern this design
 copies), `src/main/session-manager.ts` (`list()` returns sessions in
 creation order — a `Map`'s insertion order — confirmed by Landing's own
@@ -141,16 +141,16 @@ it turns out to matter.
 `session:create`'s cwd handling changes from:
 
 ```
-let dir = process.env['LOCALFLOW_E2E'] === '1' ? cwd : undefined
+let dir = process.env['SAIIFE_E2E'] === '1' ? cwd : undefined
 if (!dir) { /* always open dialog in production */ }
 ```
 
 to: honor `cwd` whenever it's a non-empty string that survives
-`expandTypedPath(cwd, homedir())`, regardless of `LOCALFLOW_E2E`; only fall
+`expandTypedPath(cwd, homedir())`, regardless of `SAIIFE_E2E`; only fall
 back to the dialog if `cwd` is absent/invalid. This is a real (narrow)
-change to a previously-documented trust boundary — the `LocalflowApi`
+change to a previously-documented trust boundary — the `SaiifeApi`
 doc-comment said "the `cwd` parameter is honored only under
-`LOCALFLOW_E2E=1`; production always opens the folder picker" — because
+`SAIIFE_E2E=1`; production always opens the folder picker" — because
 Landing will now *always* send a resolved cwd (default or user-edited), so
 the dialog becomes a defensive fallback rather than the only path. This is
 safe under the same reasoning every other IPC boundary in this file already
@@ -183,7 +183,7 @@ under the agent/custom-command row:
 
 `create()` passes the resolved `cwd` through to `onCreate`, which now takes
 a third `cwd?: string` argument threaded through `App.tsx`'s `createSession`
-into `window.localflow.createSession(agentId, cwd, customCommand,
+into `window.saiife.createSession(agentId, cwd, customCommand,
 environment)`. The "New session" button stays disabled if cwd fails
 `looksLikeTypedPath` (only reachable when `allowTypedPaths` is on and the
 user has hand-edited it into an invalid state).

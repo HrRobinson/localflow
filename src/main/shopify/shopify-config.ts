@@ -14,7 +14,7 @@ export interface ShopifyConfig {
   shopDomain: string
   /** Admin API version; defaults to the pinned `DEFAULT_API_VERSION`. */
   apiVersion: string
-  /** localflow environment (1-9). */
+  /** saiife environment (1-9). */
   environment: number
   /** The tunnel/relay ingress URL (§4.4); optional in MVP (manual webhooks). */
   webhookUrl?: string

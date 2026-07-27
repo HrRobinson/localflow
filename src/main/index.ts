@@ -31,6 +31,7 @@ import { PaneDriver } from './flow/pane-driver'
 import type { ApprovalPort } from './flow/types'
 import { AgentRegistry, whichViaLoginShell } from './agent-registry'
 import { resolveShellPath } from './resolve-shell-path'
+import { readRenamedEnv } from './legacy-names'
 import { resolveGuardBinary } from './guard-binary'
 import { makeOperatorGuard } from './operator-guard'
 import { resolveOptInPackArgs } from '../shared/guard-packs'
@@ -59,8 +60,15 @@ import { WebviewBrowserControl } from './browser-control'
 import { CaptureStore } from './capture-store'
 import { WatchpointRegistry } from './watchpoints'
 import { ConsoleEventBus } from './console-bus'
-import { toStatusEvent, toOperatorEvent, toCaptureEvent, toGuardEvent } from '../shared/console'
+import {
+  toStatusEvent,
+  toOperatorEvent,
+  toCaptureEvent,
+  toGuardEvent,
+  toMigrationEvent
+} from '../shared/console'
 import type { ConsolePrefs } from '../shared/console'
+import { describeMigration, migrateLegacyUserData } from './userdata-migration'
 import { startGuardAuditTail } from './guard-audit-tail'
 import { CredentialStore } from './integrations/credential-store'
 import { IntegrationRegistry } from './integrations/integration-registry'
@@ -86,6 +94,22 @@ import { loadIntegrationsConfig } from './integrations/integration-config'
 import { HttpConnector } from './http/http-connector'
 import { HttpClient, FetchHttpTransport } from './http/http-client'
 import { HttpTokenStore } from './http/http-token-store'
+import { ApiGrantStore } from './api-client/api-grant'
+import { ApiGrantBinding } from './api-client/grant-binding'
+import { ApiSender } from './api-client/send'
+import { CollectionSecretStore } from './api-client/collection-secrets'
+import { CollectionStore } from './api-client/collection-store'
+import { ResponseStore } from './api-client/response-store'
+import { toCollectionView, validateCollection } from './api-client/collection-validate'
+import type {
+  ApiGrantResult,
+  ApiGrantStatus,
+  ClearCollectionSecretResult,
+  CollectionView,
+  RemoveCollectionResult,
+  SetCollectionSecretResult,
+  UpsertCollectionResult
+} from '../shared/api-client'
 import { StripeConnector } from './stripe/stripe-connector'
 import {
   StripeApiClient,
@@ -161,8 +185,25 @@ import {
   type KeyAction
 } from '../shared/keybindings'
 
-if (process.env['LOCALFLOW_USER_DATA']) {
-  app.setPath('userData', process.env['LOCALFLOW_USER_DATA'])
+/**
+ * True when the userData path was pointed somewhere else by the test/e2e
+ * override. The one-off legacy carry-over MUST NOT run in that case: it would
+ * copy a real installation's data into a scratch fixture directory.
+ */
+const userDataOverridden = Boolean(process.env['SAIIFE_USER_DATA'])
+if (userDataOverridden) {
+  app.setPath('userData', process.env['SAIIFE_USER_DATA'] as string)
+}
+
+// Playwright's Electron harness always forces `--password-store=basic`, and on
+// Linux that "basic" store is encryption-stub-only — `safeStorage` reports
+// unavailable, which would make every e2e run through `CollectionSecretStore`
+// (and the keychain-backed stores it mirrors) fail for reasons that have
+// nothing to do with the app itself. Ask for the real D-Bus Secret Service
+// backend under test instead; production launches are never given that switch,
+// so this has no effect outside the harness.
+if (process.env['SAIIFE_E2E'] === '1') {
+  app.commandLine.appendSwitch('password-store', 'gnome-libsecret')
 }
 
 /**
@@ -212,7 +253,7 @@ function createWindow(): void {
   win = new BrowserWindow({
     width: 1400,
     height: 900,
-    title: 'localflow',
+    title: 'saiife',
     webPreferences: {
       preload: join(__dirname, '../preload/index.mjs'),
       contextIsolation: true,
@@ -241,7 +282,7 @@ function createWindow(): void {
 
 /**
  * Electron's default application menu binds cmd+w to Close Window, cmd+h
- * to Hide and cmd+m to Minimize. localflow owns those as in-app pane keys
+ * to Hide and cmd+m to Minimize. saiife owns those as in-app pane keys
  * (close-pane, focus-left, enlarge-toggle), so the menu must not carry
  * those accelerators.
  */
@@ -257,7 +298,7 @@ function buildAppMenu(): void {
         // Not role: 'hide' — Electron treats `accelerator: undefined` on a
         // role item as omitted and applies the role default (Cmd+H), which
         // must stay free for the in-app focus-left key.
-        { label: 'Hide localflow', click: () => app.hide() },
+        { label: 'Hide saiife', click: () => app.hide() },
         { role: 'hideOthers' },
         { role: 'unhide' },
         { type: 'separator' },
@@ -301,14 +342,30 @@ app.whenReady().then(async () => {
   }
 
   const userData = app.getPath('userData')
+
+  // The product rename moves Electron's userData directory (it is derived from
+  // productName), so carry the previous release's whole tree across BEFORE any
+  // store below reads or creates a file in the new one. Never throws; a failure
+  // logs and startup continues with a fresh config.
+  const migrationSummary = describeMigration(
+    migrateLegacyUserData({
+      newDir: userData,
+      platform: process.platform,
+      env: process.env,
+      home: homedir(),
+      overridden: userDataOverridden
+    })
+  )
+  console.log(`userData: ${migrationSummary}`)
+
   const sessionsFile = join(userData, 'sessions.json')
   let keybindings = loadOrCreateKeybindings(join(userData, 'keybindings.json'))
 
   const registry = new AgentRegistry(
     join(userData, 'config.json'),
     undefined,
-    process.env['LOCALFLOW_CLAUDE_BIN'],
-    process.env['LOCALFLOW_OPENCLAW_BIN']
+    readRenamedEnv(process.env, 'SAIIFE_CLAUDE_BIN'),
+    readRenamedEnv(process.env, 'SAIIFE_OPENCLAW_BIN')
   )
 
   // Integrations Hub: the CredentialStore (secrets → safeStorage-encrypted
@@ -500,7 +557,7 @@ app.whenReady().then(async () => {
   )
 
   // Slack connector: the CROSS-CUTTING control connector whose headline export is
-  // localflow's FIRST real ApprovalPort (§3) — wired over the stub below. The
+  // saiife's FIRST real ApprovalPort (§3) — wired over the stub below. The
   // live Socket-Mode WS + Web API HTTPS transport are DEFERRED (foundation
   // slice), exactly like Shopify's live transport: the descriptor, block-kit
   // builders, approval port, connector dispatch, and Events-path verifier are all
@@ -564,7 +621,7 @@ app.whenReady().then(async () => {
   )
 
   // Discord connector: the SECOND cross-cutting control connector, whose headline
-  // export is localflow's SECOND real ApprovalPort (§3) — a peer of Slack's,
+  // export is saiife's SECOND real ApprovalPort (§3) — a peer of Slack's,
   // against the SAME seam, no engine change. Like Slack the live Gateway WS + REST
   // HTTPS transport are DEFERRED (foundation slice): the descriptor, component
   // builders, approval port, connector dispatch, and gateway core are all in place
@@ -633,7 +690,7 @@ app.whenReady().then(async () => {
       api: new PagerDutyHttpApi({
         transport: deferredPagerDutyTransport(),
         reveal: deferredPagerDutyReveal,
-        fromEmail: 'pagerduty-deferred@localflow.invalid'
+        fromEmail: 'pagerduty-deferred@saiife.invalid'
       })
     })
   )
@@ -756,7 +813,7 @@ app.whenReady().then(async () => {
   void hostedTokens
   const hostedBindings = new WebhookBindingRegistry()
   const hostedControlApi = new HttpControlApi({
-    baseUrl: 'https://hosted.localflow.invalid',
+    baseUrl: 'https://hosted.saiife.invalid',
     accountToken: () => hostedTokens.revealToken()
   })
   void hostedControlApi
@@ -778,7 +835,7 @@ app.whenReady().then(async () => {
   void hostedIngressClient
   // The live Pub/Sub source, constructed behind the seam but never drained here.
   const hostedIngressSource = new GcpPubSubIngressSource({
-    subscription: 'projects/localflow-hosted/subscriptions/deferred',
+    subscription: 'projects/saiife-hosted/subscriptions/deferred',
     token: async () => {
       throw new Error('Hosted ingress drain token minting is not wired yet (design O-1/O-3).')
     }
@@ -789,7 +846,7 @@ app.whenReady().then(async () => {
   ensureThemesSeeded(themesDir)
 
   const endpoint = await startHookServer((e) => manager.applyHookEvent(e))
-  if (process.env['LOCALFLOW_E2E'] === '1') {
+  if (process.env['SAIIFE_E2E'] === '1') {
     writeFileSync(
       join(userData, 'endpoint.json'),
       JSON.stringify({ port: endpoint.port, token: endpoint.token }),
@@ -872,6 +929,9 @@ app.whenReady().then(async () => {
   // the feed is deliberately not persisted across restarts (spec "Out of scope").
   const activity = new Map<number, ActivityEntry[]>()
   const consoleBus = new ConsoleEventBus()
+  // The carry-over ran long before the bus existed (it must precede every store
+  // read); replay its one-line outcome now so it is visible in the drawer.
+  consoleBus.emit(toMigrationEvent(migrationSummary))
 
   // One append path for the per-environment action log: cap, store, push live.
   const pushActivity = (env: number, entry: ActivityEntry): void => {
@@ -891,9 +951,28 @@ app.whenReady().then(async () => {
   })
   const watchpoints = new WatchpointRegistry()
 
+  // The agent API client (design 2026-07-23). Same split as everywhere else:
+  // `.enc` sidecar behind safeStorage for keychain material, plain JSON for the
+  // non-secret collection data. `apiGrantBinding` records which pane holds each
+  // environment's grant so its DELETION (not pty exit) can revoke it.
+  const apiCollections = new CollectionStore({ file: join(userData, 'api-collections.json') })
+  const apiSecrets = new CollectionSecretStore({
+    backend: safeStorage,
+    file: join(userData, 'api-secrets.enc')
+  })
+  const apiResponses = new ResponseStore({})
+  const apiSender = new ApiSender({
+    collections: apiCollections,
+    secrets: apiSecrets,
+    client: new HttpClient({ transport: new FetchHttpTransport() }),
+    responses: apiResponses
+  })
+  const apiGrants = new ApiGrantStore()
+  const apiGrantBinding = new ApiGrantBinding()
+
   // Extracted so the Flow Engine's PaneDriver can drive panes through the SAME
   // control-API router (handleRequest) — the engine is an operator client, not a
-  // privileged SessionManager caller, so the capability boundary + lfguard guard
+  // privileged SessionManager caller, so the capability boundary + saiifeguard guard
   // apply to flow work identically.
   const controlDeps: ControlDeps = {
     registry: paneRegistry,
@@ -912,7 +991,13 @@ app.whenReady().then(async () => {
     onActivity: pushActivity,
     onCapture: (cap) => consoleBus.emit(toCaptureEvent(cap)),
     guard: operatorGuard,
-    onGuardBlock: (r, env) => consoleBus.emit(toGuardEvent(r, env))
+    onGuardBlock: (r, env) => consoleBus.emit(toGuardEvent(r, env)),
+    apiClient: {
+      grants: apiGrants,
+      sender: apiSender,
+      collections: apiCollections,
+      responses: apiResponses
+    }
   }
   const control = await startControlServer(controlDeps)
   consoleBus.subscribe((event) => sendToWindow('console:event', event))
@@ -934,7 +1019,7 @@ app.whenReady().then(async () => {
   // Opt-in and inert by default: the `flows` config block is off unless a user
   // turns it on, so with no flow configured nothing subscribes and nothing runs.
   // The engine drives panes only as an OPERATOR CLIENT — via the PaneDriver over
-  // the same control-API router grants + lfguard already gate.
+  // the same control-API router grants + saiifeguard already gate.
   const flowsFile = join(userData, 'flows.json')
   const flowConfigFile = join(userData, 'config.json')
   const flowsConfig = loadFlowsConfig(flowConfigFile)
@@ -1029,12 +1114,12 @@ app.whenReady().then(async () => {
   const launchTracker = new OperatorLaunchTracker()
 
   // Grant/revoke mirrored into an EXISTING OpenClaw config (the block the
-  // manual setup documents): grant writes skills.entries.localflow.env,
+  // manual setup documents): grant writes skills.entries.saiife.env,
   // revoke removes exactly that entry. Missing file → no-op (never created);
   // any failure is NON-FATAL — the grant/revoke itself always proceeds, with
   // a console warning + an operator:activity entry. Token values are never
   // logged. The env override keeps e2e runs away from a real ~/.openclaw.
-  const openclawConfig = process.env['LOCALFLOW_OPENCLAW_CONFIG'] ?? defaultOpenclawConfig()
+  const openclawConfig = process.env['SAIIFE_OPENCLAW_CONFIG'] ?? defaultOpenclawConfig()
   const reportSkillEnv = (env: number, verb: 'write' | 'remove', result: SkillEnvResult): void => {
     if (result.ok) return
     console.warn(`openclaw config skill-env ${verb} failed: ${result.reason} (${openclawConfig})`)
@@ -1074,6 +1159,93 @@ app.whenReady().then(async () => {
       env: credentialEnv(`http://127.0.0.1:${control.port}`, token),
       register: (paneId: string) => launchTracker.onLaunch(environment, paneId, wasGranted)
     }
+  }
+
+  /**
+   * Mint an API grant for one environment and hand it to a pane as process env.
+   *
+   * The token reaches the agent ONLY as `SAIIFE_API_TOKEN` on that pane —
+   * deliberately distinct from the operator's `SAIIFE_TOKEN`, because reusing
+   * that variable would hand every operator-aware agent an API capability by
+   * accident. It is never returned over IPC.
+   *
+   * `updateSpecEnv` only mutates the stored spec, so a RUNNING pane must be
+   * restarted for the variables to land — same constraint the openclaw re-grant
+   * in `session:restart` works around. `restart(id, false)` keeps the agent's
+   * resume args, so a coding agent resumes rather than losing its conversation.
+   */
+  const grantApiAccess = (
+    environment: number,
+    paneId: string,
+    collectionIds: string[]
+  ): ApiGrantResult => {
+    const pane = manager.get(paneId)
+    if (!pane || pane.kind !== 'terminal') {
+      return { ok: false, reason: 'that pane is not a terminal pane in this environment' }
+    }
+    if (pane.environment !== environment) {
+      return { ok: false, reason: 'that pane belongs to a different environment' }
+    }
+    // Refuse double-granting: if this pane holds an operator grant, granting API
+    // access would restart it and — under the opt-in operatorRevokeOnExit flag —
+    // silently revoke that operator grant. A pane is an operator XOR an API
+    // client, never both. (Decided with Jonas 2026-07-24.)
+    if (launchTracker.trackedIds().includes(paneId)) {
+      return {
+        ok: false,
+        reason: 'that pane is an operator — grant API access to a different pane'
+      }
+    }
+    if (collectionIds.length === 0) {
+      return { ok: false, reason: 'choose at least one collection — an empty grant does nothing' }
+    }
+    for (const id of collectionIds) {
+      if (!apiCollections.get(id, environment)) {
+        return { ok: false, reason: 'unknown collection' }
+      }
+    }
+
+    // A second grant MOVES the capability: ApiGrantStore mints one token per
+    // environment, so revoke first to guarantee a fresh mint with this scope
+    // (re-granting an existing environment would otherwise keep the old scope).
+    apiGrants.revoke(environment)
+    const token = apiGrants.grant(environment, collectionIds)
+    const endpoint = `http://127.0.0.1:${control.port}`
+    manager.updateSpecEnv(paneId, { SAIIFE_API_ENDPOINT: endpoint, SAIIFE_API_TOKEN: token })
+    apiGrantBinding.bind(environment, paneId, collectionIds)
+
+    if (pane.status !== 'exited') {
+      try {
+        // restart() only accepts an already-exited session — close the live
+        // pty first (synchronous status flip) so the restart below succeeds.
+        //
+        // Known interaction: this close fires an exit, and under the
+        // non-default `operatorRevokeOnExit` flag, `launchTracker.onPtyExit`
+        // would revoke a launch-owned OPERATOR grant on this same pane as a
+        // side effect — and it is NOT re-minted, since we restart directly
+        // rather than going through `session:restart`'s operator re-grant. A
+        // proper guard belongs with the renderer plan where this path
+        // becomes user-reachable; there's no surface or test harness for it
+        // yet.
+        manager.closeTerminal(paneId)
+        manager.restart(paneId, false)
+      } catch (err) {
+        // Never leave a live token that no pane holds.
+        apiGrants.revoke(environment)
+        apiGrantBinding.unbind(environment)
+        return {
+          ok: false,
+          reason: `couldn't restart the pane to inject the credential — ${(err as Error).message}`
+        }
+      }
+    }
+    return { ok: true, endpoint, paneId }
+  }
+
+  const revokeApiAccess = (environment: number): void => {
+    apiGrants.revoke(environment)
+    apiGrantBinding.unbind(environment)
+    apiResponses.clearEnvironment(environment)
   }
 
   ipcMain.on('browser:register', (_e, handle: string, webContentsId: number) => {
@@ -1156,6 +1328,19 @@ app.whenReady().then(async () => {
     // window exists (flushed on did-finish-load), so a cold-start save failure
     // still reaches the user instead of being permanently muted.
     persistenceNotices.report(result.ok ? null : result.error)
+  })
+
+  // Revoke an API grant when the pane holding it is DELETED (not merely exited).
+  // Mirrors the operator grant's own default reconciliation directly above:
+  // when a bound pane's id is no longer in the session list, its grant dies.
+  // A restart is an exit, not a deletion, so grantApiAccess's own close+restart
+  // is deliberately untouched by this.
+  manager.onSessionsChanged(() => {
+    const currentIds = new Set(manager.list().map((s) => s.id))
+    for (const env of apiGrantBinding.environments()) {
+      const record = apiGrantBinding.get(env)
+      if (record && !currentIds.has(record.paneId)) revokeApiAccess(env)
+    }
   })
 
   const savedState = loadSavedState(sessionsFile)
@@ -1263,9 +1448,32 @@ app.whenReady().then(async () => {
   ipcMain.handle('session:closeTerminal', (_e, id: string) => manager.closeTerminal(id))
   ipcMain.handle('session:delete', (_e, id: string) => manager.deleteSession(id))
   ipcMain.handle('session:rename', (_e, id: string, name: string) => manager.rename(id, name))
-  ipcMain.handle('session:setEnvironment', (_e, id: string, environment: number) =>
-    manager.setEnvironment(id, environment)
-  )
+  ipcMain.handle('session:setEnvironment', (_e, id: string, environment: number) => {
+    // A grouped pane drags its whole group along (SessionManager.setEnvironment),
+    // so every member's grant is at risk, not just `id`'s. Capture the group
+    // membership before the move — group membership itself doesn't change here,
+    // so before/after is equivalent, but this keeps the intent explicit.
+    const before = manager.get(id)
+    const movedIds = before?.groupId
+      ? manager
+          .list()
+          .filter((s) => s.groupId === before.groupId)
+          .map((s) => s.id)
+      : [id]
+    const result = manager.setEnvironment(id, environment)
+    if (result) {
+      // The grant is scoped to the OLD environment (ApiGrantStore.resolve
+      // still keys off it), so revoke it there — re-minting for the new
+      // environment is NOT correct, its collections are a different scope
+      // and a silent re-grant would be a surprise. Moving a pane must never
+      // let it keep acting as an API client for the environment it left.
+      for (const env of apiGrantBinding.environments()) {
+        const record = apiGrantBinding.get(env)
+        if (record && movedIds.includes(record.paneId)) revokeApiAccess(env)
+      }
+    }
+    return result
+  })
   ipcMain.handle('group:create', (_e, name: string, environment: number) =>
     typeof name === 'string' && name.trim().length > 0
       ? manager.createGroup(name, environment)
@@ -1320,7 +1528,7 @@ app.whenReady().then(async () => {
       if (!template) return null
       // Dir-picking logic copied verbatim from session:create — dialog
       // unless under the e2e harness, which passes an explicit cwd.
-      let dir = process.env['LOCALFLOW_E2E'] === '1' ? cwd : undefined
+      let dir = process.env['SAIIFE_E2E'] === '1' ? cwd : undefined
       if (!dir) {
         const result = await dialog.showOpenDialog(win!, {
           properties: ['openDirectory', 'createDirectory'],
@@ -1422,9 +1630,9 @@ app.whenReady().then(async () => {
     // the configured command is unusable — report the editor unavailable.
     const editorBin = splitCommandLine(editorCommand)?.[0] || null
     const [lazygitPath, editorPath] = await Promise.all([
-      resolveTool('lazygit', process.env['LOCALFLOW_LAZYGIT_BIN']),
+      resolveTool('lazygit', readRenamedEnv(process.env, 'SAIIFE_LAZYGIT_BIN')),
       editorBin
-        ? resolveTool(editorBin, process.env['LOCALFLOW_EDITOR_BIN'])
+        ? resolveTool(editorBin, readRenamedEnv(process.env, 'SAIIFE_EDITOR_BIN'))
         : Promise.resolve<string | null>(null)
     ])
     capsCache = {
@@ -1437,7 +1645,10 @@ app.whenReady().then(async () => {
   ipcMain.handle('git:openLazygit', async (_e, id: string) => {
     const s = manager.get(id)
     if (!s || s.kind !== 'terminal' || !s.cwd) return null
-    const lazygitPath = await resolveTool('lazygit', process.env['LOCALFLOW_LAZYGIT_BIN'])
+    const lazygitPath = await resolveTool(
+      'lazygit',
+      readRenamedEnv(process.env, 'SAIIFE_LAZYGIT_BIN')
+    )
     if (!lazygitPath) return null
     // Reuse the custom-agent plumbing verbatim: a durable custom session running
     // lazygit (by resolved absolute path — a GUI app's env lacks the login PATH)
@@ -1450,7 +1661,7 @@ app.whenReady().then(async () => {
     if (!s || s.kind !== 'terminal' || !s.cwd) return false
     const launch = editorLaunch(loadEditorCommand(join(userData, 'config.json')), s.cwd)
     if (!launch) return false
-    const resolved = await resolveTool(launch.bin, process.env['LOCALFLOW_EDITOR_BIN'])
+    const resolved = await resolveTool(launch.bin, readRenamedEnv(process.env, 'SAIIFE_EDITOR_BIN'))
     if (!resolved) return false
     try {
       // External, detached, fire-and-forget process — never a pane. stdio
@@ -1564,7 +1775,7 @@ app.whenReady().then(async () => {
     }
     // Under e2e, expose the grant to the scripted control-API client on disk
     // (mirrors the hook server's endpoint.json handshake).
-    if (process.env['LOCALFLOW_E2E'] === '1') {
+    if (process.env['SAIIFE_E2E'] === '1') {
       writeFileSync(join(userData, `operator-grant-${env}.json`), JSON.stringify(info), {
         mode: 0o600
       })
@@ -1647,7 +1858,7 @@ app.whenReady().then(async () => {
   ipcMain.on('console:setPrefs', (_e, prefs: ConsolePrefs) => registry.setConsolePrefs(prefs))
 
   ipcMain.handle('guard:getPacks', () => registry.getGuardPacks())
-  // Security-relevant setting (which lfguard packs are enforced): a bare
+  // Security-relevant setting (which saiifeguard packs are enforced): a bare
   // ipcMain.on fire-and-forget here would mean a config.json write failure
   // (disk full, permission revoked) left the renderer's checkbox showing a
   // pack as enabled while it was never persisted — surfaced instead as a
@@ -1692,6 +1903,153 @@ app.whenReady().then(async () => {
   ipcMain.handle('integrations:clearSecret', (_e, id: IntegrationId, key?: string) =>
     integrationRegistry.clearSecret(id, typeof key === 'string' ? key : undefined)
   )
+
+  // ── Agent API client curation ───────────────────────────────────────────────
+  // The renderer never receives secret material: collection views carry
+  // `hasSecret`, and `setCollectionSecret` echoes presence only.
+  const collectionViewsFor = (environment: number): CollectionView[] =>
+    apiCollections
+      .list(environment)
+      .map((c) =>
+        toCollectionView(
+          c,
+          c.auth.secretRef !== undefined && apiSecrets.has(c.id, c.auth.secretRef)
+        )
+      )
+
+  ipcMain.handle('apiClient:listCollections', (_e, environment: number): CollectionView[] =>
+    collectionViewsFor(clampEnvironment(environment))
+  )
+
+  ipcMain.handle(
+    'apiClient:upsertCollection',
+    (_e, environment: number, raw: unknown): UpsertCollectionResult => {
+      const env = clampEnvironment(environment)
+      // The id is minted main-side on create and never trusted from the payload.
+      // It is immutable because the keychain key is derived from it — deriving
+      // it from the name would orphan every stored credential on rename.
+      const existing =
+        typeof raw === 'object' && raw !== null && typeof (raw as { id?: unknown }).id === 'string'
+          ? apiCollections.get((raw as { id: string }).id, env)
+          : undefined
+      const id = existing?.id ?? randomUUID()
+
+      const validated = validateCollection(raw, env, id)
+      if (!validated.ok) return { ok: false, reason: validated.reason }
+      apiCollections.upsert(validated.collection)
+      const secretRef = validated.collection.auth.secretRef
+      return {
+        ok: true,
+        view: toCollectionView(
+          validated.collection,
+          secretRef !== undefined && apiSecrets.has(id, secretRef)
+        )
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'apiClient:removeCollection',
+    (_e, environment: number, id: string): RemoveCollectionResult => {
+      if (typeof id !== 'string' || id.length === 0)
+        return { ok: false, reason: 'id must be a string' }
+      const env = clampEnvironment(environment)
+      // Scoped lookup first (same pattern as upsertCollection): a caller in
+      // this environment must not be able to touch a foreign collection —
+      // not even to learn it exists.
+      if (!apiCollections.get(id, env)) return { ok: false, reason: 'unknown collection' }
+      // Refuse while a live grant covers it: the agent would otherwise start
+      // getting `unknown collection` with no way to learn why.
+      for (const e of apiGrantBinding.environments()) {
+        const record = apiGrantBinding.get(e)
+        if (record?.collectionIds.includes(id)) {
+          return { ok: false, reason: 'a live API grant covers this collection — revoke it first' }
+        }
+      }
+      apiCollections.remove(id, env)
+      // Deleting a collection must not orphan its credential ciphertext —
+      // ids are randomUUID() and never reused, so anything left behind under
+      // this id is unreachable forever.
+      apiSecrets.clear(id)
+      return { ok: true }
+    }
+  )
+
+  ipcMain.handle(
+    'apiClient:setCollectionSecret',
+    (
+      _e,
+      environment: number,
+      collectionId: string,
+      secretRef: string,
+      value: string
+    ): SetCollectionSecretResult => {
+      if (
+        typeof collectionId !== 'string' ||
+        typeof secretRef !== 'string' ||
+        typeof value !== 'string'
+      ) {
+        return { ok: false, reason: 'collectionId, secretRef and value must be strings' }
+      }
+      if (value.length === 0) return { ok: false, reason: 'the credential cannot be empty' }
+      const env = clampEnvironment(environment)
+      if (!apiCollections.get(collectionId, env)) return { ok: false, reason: 'unknown collection' }
+      try {
+        apiSecrets.set(collectionId, secretRef, value)
+      } catch (err) {
+        return { ok: false, reason: (err as Error).message }
+      }
+      return { ok: true, hasSecret: true }
+    }
+  )
+
+  ipcMain.handle(
+    'apiClient:clearCollectionSecret',
+    (
+      _e,
+      environment: number,
+      collectionId: string,
+      secretRef?: string
+    ): ClearCollectionSecretResult => {
+      if (typeof collectionId !== 'string')
+        return { ok: false, reason: 'collectionId must be a string' }
+      const env = clampEnvironment(environment)
+      if (!apiCollections.get(collectionId, env)) return { ok: false, reason: 'unknown collection' }
+      apiSecrets.clear(collectionId, typeof secretRef === 'string' ? secretRef : undefined)
+      return { ok: true }
+    }
+  )
+
+  ipcMain.handle(
+    'apiClient:grant',
+    (_e, environment: number, paneId: string, collectionIds: unknown): ApiGrantResult => {
+      if (typeof paneId !== 'string' || paneId.length === 0) {
+        return { ok: false, reason: 'paneId must be a string' }
+      }
+      if (!Array.isArray(collectionIds) || collectionIds.some((c) => typeof c !== 'string')) {
+        return { ok: false, reason: 'collectionIds must be an array of strings' }
+      }
+      return grantApiAccess(clampEnvironment(environment), paneId, collectionIds as string[])
+    }
+  )
+
+  ipcMain.handle('apiClient:revoke', (_e, environment: number): void =>
+    revokeApiAccess(clampEnvironment(environment))
+  )
+
+  ipcMain.handle('apiClient:status', (_e, environment: number): ApiGrantStatus => {
+    const env = clampEnvironment(environment)
+    const record = apiGrantBinding.get(env)
+    const granted = apiGrants.isGranted(env)
+    return granted && record
+      ? {
+          environment: env,
+          granted: true,
+          paneId: record.paneId,
+          collectionIds: record.collectionIds
+        }
+      : { environment: env, granted: false }
+  })
 
   // --- Flow Canvas (sub-project #3) → real Engine (#2) + Hub registry (#1) ----
   // The canvas palette reads the REAL Integrations Hub registry (resolved

@@ -26,7 +26,7 @@ export interface AgentConfig {
   theme?: string
   /** Bottom console drawer prefs: height, open state, last filter (M6). */
   console?: ConsolePrefs
-  /** Enabled command-guard packs, applied globally (lfguard G2). */
+  /** Enabled command-guard packs, applied globally (saiifeguard G2). */
   guard?: { packs: string[] }
   /**
    * When true, every Finder-picker-only path input (agent "Set path…",

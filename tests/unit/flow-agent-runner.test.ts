@@ -88,12 +88,12 @@ describe('runAgent', () => {
     const h = deps({
       driver: {
         createTerminal: async () => ({ ok: true, handle: 'h1' }),
-        prompt: async () => ({ ok: false, error: '403 ⛔ lfguard blocked rm -rf' })
+        prompt: async () => ({ ok: false, error: '403 ⛔ saiifeguard blocked rm -rf' })
       }
     })
     const out = await runAgent(h.deps, agentNode(), {})
     expect(out.status).toBe('failed')
-    expect(out.message).toMatch(/lfguard blocked/)
+    expect(out.message).toMatch(/saiifeguard blocked/)
   })
 
   it('a node missing its agent ref is misconfigured (no drive attempted)', async () => {

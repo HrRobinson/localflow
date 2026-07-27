@@ -1,5 +1,5 @@
 /**
- * localflow's cross-connector money vocabulary. Amounts are always in MAJOR
+ * saiife's cross-connector money vocabulary. Amounts are always in MAJOR
  * units (dollars, euros, yen) as a `number`, so conditions compare numerically
  * and consistently regardless of which connector produced them.
  *

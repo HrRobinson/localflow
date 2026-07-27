@@ -74,7 +74,7 @@ so the chip reads "browser" and no agent-path logic ever runs for them.
 `<webview>` tag participates in DOM layout, so the existing grid, enlarge,
 focus ring, and overlay behaviors work unchanged; `WebContentsView` floats in
 main-process window coordinates and would require continuous bounds-syncing
-and z-order workarounds around enlarged panes and popovers. localflow is not
+and z-order workarounds around enlarged panes and popovers. saiife is not
 multi-frame-perf-sensitive; webview's known drawbacks don't bite here.
 
 Security posture — **stricter than the app window**:
@@ -88,7 +88,7 @@ Security posture — **stricter than the app window**:
     geolocation, …).
   - `will-navigate` → allow only `http:`/`https:` targets; deny others.
   - `setWindowOpenHandler` → `shell.openExternal` for `http:`/`https:`,
-    deny everything else. New tabs/popups never open inside localflow.
+    deny everything else. New tabs/popups never open inside saiife.
 - URL validation at every boundary that accepts a URL (create, navigate,
   persist): `http:`/`https:` only, parsed with `new URL`; scheme-less input
   is normalized to `https://` at the UI layer before validation.

@@ -7,7 +7,7 @@
  *
  * Read methods return the RAW Stripe object (minor-unit integers, lowercase
  * currency, unix timestamps); `stripe-normalize.ts` maps it to the pinned context
- * shape (§6.3). Mutation methods return a small localflow-shaped result that
+ * shape (§6.3). Mutation methods return a small saiife-shaped result that
  * becomes the action node's context output. Every request sends
  * `Authorization: Bearer <restrictedKey>` and a `Stripe-Version`; mutations add an
  * `Idempotency-Key`; a `429` backs off honoring `Retry-After`. Failure follows the
@@ -68,7 +68,7 @@ export interface RawSubscription {
   items?: { data?: { price?: { unit_amount?: number | null } | null }[] | null } | null
 }
 
-// ── Mutation inputs / results (localflow-shaped; amounts here are MINOR) ──────
+// ── Mutation inputs / results (saiife-shaped; amounts here are MINOR) ──────
 
 export interface CreateRefundInput {
   chargeId: string

@@ -114,7 +114,7 @@ export function buildExpiredMessage(req: ApprovalRequest): DiscordMessageBody {
 /** The "no longer active" card for an unknown/stale tap (§11). Button-less. */
 export function buildStaleMessage(): DiscordMessageBody {
   return {
-    content: 'This approval is no longer active (the run has ended or localflow restarted).',
+    content: 'This approval is no longer active (the run has ended or saiife restarted).',
     components: []
   }
 }
@@ -252,9 +252,9 @@ export function parseInteractionEvent(raw: unknown): DiscordInteractionPayload |
   return payload
 }
 
-/** The normalized `/localflow` command payload the control bridge consumes. */
+/** The normalized `/saiife` command payload the control bridge consumes. */
 export interface DiscordCommandPayload {
-  /** the command name WITHOUT the leading slash, e.g. "localflow". */
+  /** the command name WITHOUT the leading slash, e.g. "saiife". */
   name: string
   /** the joined args after the subcommand chain / options. */
   text: string

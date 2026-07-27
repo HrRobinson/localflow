@@ -1,3 +1,4 @@
+node_modules
 node_modules/
 out/
 dist/
@@ -7,3 +8,4 @@ playwright-report/
 test-results/
 .claude/
 guard/target/
+.superpowers/

@@ -195,7 +195,7 @@ from a templated/JSON field) — the common real case — while `status ==
 
 ## 5. Error handling (all deterministic, legible)
 
-localflow's principle (error-message-style memory; demonstrated in
+saiife's principle (error-message-style memory; demonstrated in
 `flow-model.ts` where `parseFlowGraphResult` "carries a specific, loud reason
 naming the offending field"): **no silent catch, no bare "invalid", every
 message names the offending edge/field and is actionable.** Conditions add
@@ -263,7 +263,7 @@ existing pipeline.
 
 ## 7. Testing strategy (all offline, pure)
 
-Matches localflow's existing seams — pure functions, injected context, fixture
+Matches saiife's existing seams — pure functions, injected context, fixture
 graphs. New/extended files: `tests/unit/flow-context.test.ts`,
 `tests/unit/flow-model.test.ts`, `tests/unit/flow-reducer.test.ts`,
 `tests/unit/flow-validate.test.ts`.
@@ -380,7 +380,7 @@ flow.
 
 ---
 
-## Appendix — reused localflow surfaces (by path + line)
+## Appendix — reused saiife surfaces (by path + line)
 
 - `src/shared/flows.ts:21-26` — `FlowEdge` (the pinned shape being upgraded);
   `:38` `VALID_NODE_TYPES` (the pattern `VALID_CONDITION_OPS` mirrors);

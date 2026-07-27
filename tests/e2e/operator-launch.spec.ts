@@ -8,7 +8,7 @@ const here = dirname(fileURLToPath(import.meta.url))
 
 /**
  * Same launch shape as operator.spec.ts/smoke.spec.ts, plus
- * LOCALFLOW_OPENCLAW_BIN pointed at the fake-openclaw fixture — the only
+ * SAIIFE_OPENCLAW_BIN pointed at the fake-openclaw fixture — the only
  * addition this spec needs on top of the shared launchApp shape (Task 1's
  * bin-override plumbing in AgentRegistry/index.ts).
  */
@@ -21,16 +21,16 @@ function launchApp(userData: string): Promise<ElectronApplication> {
     args: ['.'],
     env: {
       ...process.env,
-      LOCALFLOW_E2E: '1',
-      LOCALFLOW_USER_DATA: userData,
-      LOCALFLOW_CLAUDE_BIN: join(here, '../fixtures/fake-claude.sh'),
-      LOCALFLOW_OPENCLAW_BIN: join(here, '../fixtures/fake-openclaw.sh'),
+      SAIIFE_E2E: '1',
+      SAIIFE_USER_DATA: userData,
+      SAIIFE_CLAUDE_BIN: join(here, '../fixtures/fake-claude.sh'),
+      SAIIFE_OPENCLAW_BIN: join(here, '../fixtures/fake-openclaw.sh'),
       // Keep the skill-env auto-writer away from any real ~/.openclaw config;
       // this path never exists, so the writer no-ops.
-      LOCALFLOW_OPENCLAW_CONFIG: join(userData, 'openclaw.json'),
-      LOCALFLOW_LAZYGIT_BIN: '/nonexistent/lazygit',
-      LOCALFLOW_EDITOR_BIN: '/nonexistent/code',
-      LOCALFLOW_E2E_GO: join(userData, 'e2e-go')
+      SAIIFE_OPENCLAW_CONFIG: join(userData, 'openclaw.json'),
+      SAIIFE_LAZYGIT_BIN: '/nonexistent/lazygit',
+      SAIIFE_EDITOR_BIN: '/nonexistent/code',
+      SAIIFE_E2E_GO: join(userData, 'e2e-go')
     }
   })
 }
@@ -52,8 +52,8 @@ function makeClient(endpoint: string, token: string) {
 
 test('openclaw launch grants, injects credentials, and revokes on close', async () => {
   let app: ElectronApplication | undefined
-  const userData = mkdtempSync(join(tmpdir(), 'localflow-e2e-'))
-  const projectDir = mkdtempSync(join(tmpdir(), 'localflow-openclaw-proj-'))
+  const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
+  const projectDir = mkdtempSync(join(tmpdir(), 'saiife-openclaw-proj-'))
 
   try {
     app = await launchApp(userData)
@@ -66,7 +66,7 @@ test('openclaw launch grants, injects credentials, and revokes on close', async 
       (args) =>
         (
           window as unknown as {
-            localflow: {
+            saiife: {
               createSession(
                 a: string,
                 c: string,
@@ -75,7 +75,7 @@ test('openclaw launch grants, injects credentials, and revokes on close', async 
               ): Promise<Session | null>
             }
           }
-        ).localflow.createSession('openclaw', args.cwd, undefined, args.env),
+        ).saiife.createSession('openclaw', args.cwd, undefined, args.env),
       { cwd: projectDir, env: 1 }
     )
     expect(created).not.toBeNull()
@@ -115,8 +115,8 @@ test('openclaw launch grants, injects credentials, and revokes on close', async 
     await win.evaluate(
       (id) =>
         (
-          window as unknown as { localflow: { deleteSession(id: string): Promise<void> } }
-        ).localflow.deleteSession(id),
+          window as unknown as { saiife: { deleteSession(id: string): Promise<void> } }
+        ).saiife.deleteSession(id),
       created!.id
     )
     await expect

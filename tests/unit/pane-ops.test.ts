@@ -43,7 +43,7 @@ describe('addCompanionPane', () => {
   beforeEach(() => {
     const spawnFn: SpawnFn = () => new FakePty()
     mgr = new SessionManager({
-      settingsDir: mkdtempSync(join(tmpdir(), 'localflow-pane-ops-')),
+      settingsDir: mkdtempSync(join(tmpdir(), 'saiife-pane-ops-')),
       port: 9999,
       token: 'tok',
       spawnFn
@@ -153,7 +153,7 @@ describe('addCompanionPane openclaw grant (user path)', () => {
       return new FakePty()
     }
     const mgr = new SessionManager({
-      settingsDir: mkdtempSync(join(tmpdir(), 'localflow-pane-ops-oc-')),
+      settingsDir: mkdtempSync(join(tmpdir(), 'saiife-pane-ops-oc-')),
       port: 9999,
       token: 'tok',
       spawnFn
@@ -169,11 +169,11 @@ describe('addCompanionPane openclaw grant (user path)', () => {
       }
     }
     // Spawns happen in creation order; map a pane to its captured env by
-    // matching the injected LOCALFLOW_TOKEN, else fall back to insertion order.
+    // matching the injected SAIIFE_TOKEN, else fall back to insertion order.
     const spawnEnvOf = (paneId: string): Record<string, string> | undefined => {
       const s = mgr.get(paneId)
       for (const env of spawnEnvs.values()) {
-        if (env?.['LOCALFLOW_TOKEN'] && env['LOCALFLOW_TOKEN'] === grants.grant(s!.environment)) {
+        if (env?.['SAIIFE_TOKEN'] && env['SAIIFE_TOKEN'] === grants.grant(s!.environment)) {
           return env
         }
       }
@@ -197,8 +197,8 @@ describe('addCompanionPane openclaw grant (user path)', () => {
     expect(companion).not.toBeNull()
     expect(grants.isGranted(3)).toBe(true)
     const env = spawnEnvOf(companion!.id)
-    expect(env?.['LOCALFLOW_ENDPOINT']).toBe(`http://127.0.0.1:${PORT}`)
-    expect(env?.['LOCALFLOW_TOKEN']).toBe(grants.grant(3))
+    expect(env?.['SAIIFE_ENDPOINT']).toBe(`http://127.0.0.1:${PORT}`)
+    expect(env?.['SAIIFE_TOKEN']).toBe(grants.grant(3))
   })
 
   it('registers the launch so the created grant is revoked when the pane closes', () => {
@@ -266,7 +266,7 @@ describe('operatorCreatePane', () => {
   beforeEach(() => {
     const spawnFn: SpawnFn = () => new FakePty()
     mgr = new SessionManager({
-      settingsDir: mkdtempSync(join(tmpdir(), 'localflow-pane-ops-')),
+      settingsDir: mkdtempSync(join(tmpdir(), 'saiife-pane-ops-')),
       port: 9999,
       token: 'tok',
       spawnFn

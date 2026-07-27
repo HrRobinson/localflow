@@ -112,9 +112,9 @@ alive, remove the record from the in-memory map entirely, notify listeners
 
 | Renderer call | IPC channel | Main handler |
 |---|---|---|
-| `window.localflow.closeTerminal(id)` | `session:closeTerminal` | `manager.closeTerminal(id)` |
-| `window.localflow.deleteSession(id)` | `session:delete` | `manager.deleteSession(id)` |
-| `window.localflow.renameSession(id, name)` | `session:rename` | `manager.rename(id, name)` |
+| `window.saiife.closeTerminal(id)` | `session:closeTerminal` | `manager.closeTerminal(id)` |
+| `window.saiife.deleteSession(id)` | `session:delete` | `manager.deleteSession(id)` |
+| `window.saiife.renameSession(id, name)` | `session:rename` | `manager.rename(id, name)` |
 
 `killSession`/`session:kill` are removed (renamed to `deleteSession`/
 `session:delete` — single-app, no external consumers of the old name to
@@ -260,7 +260,7 @@ click:
   - **Rename persists across relaunch:** rename a session from Overview
     (double-click name, type, Enter), assert the new name renders
     immediately in both Overview and the sidebar, close and relaunch
-    Electron against the same `LOCALFLOW_USER_DATA` dir, assert the
+    Electron against the same `SAIIFE_USER_DATA` dir, assert the
     renamed session still shows the new name (proves the write landed in
     `sessions.json`, not just React state).
 

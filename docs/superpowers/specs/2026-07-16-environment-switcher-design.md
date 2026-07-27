@@ -4,7 +4,7 @@ Date: 2026-07-16. Status: approved design.
 
 ## Problem
 
-localflow has 9 virtual environments (`ENVIRONMENT_MIN..ENVIRONMENT_MAX`,
+saiife has 9 virtual environments (`ENVIRONMENT_MIN..ENVIRONMENT_MAX`,
 `src/shared/environment.ts`), used as per-project/customer containers.
 Switching between them today works via `cmd+1`..`cmd+9` (`environment-N`
 keybinding actions dispatched to `switchEnvironment` in `App.tsx`), which is

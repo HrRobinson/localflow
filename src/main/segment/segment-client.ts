@@ -14,7 +14,7 @@ import { randomUUID } from 'node:crypto'
  * and NEVER the write key (§8, §11).
  */
 
-// ── Write inputs / result (localflow-shaped) ─────────────────────────────────
+// ── Write inputs / result (saiife-shaped) ─────────────────────────────────
 
 export interface TrackInput {
   event: string

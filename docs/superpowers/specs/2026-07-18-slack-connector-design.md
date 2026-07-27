@@ -7,13 +7,13 @@ highest-leverage connector: it is the human-in-the-loop surface for **every**
 worker, not just its own vertical.
 **Feature:** A **Slack connector** that plugs into the merged flow-builder
 (integration registry + hybrid flow engine + drag-drop canvas) as an
-`IntegrationDescriptor`, **and** — uniquely — supplies localflow's first real
+`IntegrationDescriptor`, **and** — uniquely — supplies saiife's first real
 `ApprovalPort`. A worker hits a gate → the connector posts a Block Kit message
 with Approve / Deny buttons → the user taps (on their phone) → the tap resolves
 `ApprovalPort.requestApproval(req): Promise<boolean>` `true`/`false` → the gated
 action runs or the run cleanly stops. It also **notifies** (`postMessage`), lets
 a run **converse** (`replyInThread`), and exposes a **control surface**
-(`/localflow run|status|stop`) to seed and query flow runs from chat.
+(`/saiife run|status|stop`) to seed and query flow runs from chat.
 
 This connector satisfies the **pinned** `IntegrationDescriptor` /
 `IntegrationRegistry` / `LiveConnector` contract in `src/shared/integrations.ts`
@@ -36,9 +36,9 @@ every connector benefits from without knowing Slack exists.
 
 ## 1. Goal + MVP scope
 
-**Goal (one sentence):** Let a localflow user approve or deny any worker's gate
+**Goal (one sentence):** Let a saiife user approve or deny any worker's gate
 from Slack on their phone, receive run notifications and converse with a run in a
-thread, and drive runs with `/localflow run|status|stop` — with the bot token,
+thread, and drive runs with `/saiife run|status|stop` — with the bot token,
 app token, and signing secret in the OS keychain, **never** rendered, and every
 send/mutation flowing through the flow engine's gates.
 
@@ -71,10 +71,10 @@ send/mutation flowing through the flow engine's gates.
 - **The pinned Slack vocabulary (§6):** three triggers (`message.received`,
   `slash.command`, `approval.responded`), three actions (`postMessage`,
   `postApproval`, `replyInThread`), and the trigger/context payload shapes.
-- **The control surface:** the reserved `/localflow run|status|stop` slash command
+- **The control surface:** the reserved `/saiife run|status|stop` slash command
   (`slack-control-bridge.ts`) seeds/queries/stops flow runs against the engine —
   openclaw's chat-control, upgraded and gated.
-- **Single workspace, single localflow environment.** Config-as-code `slack` block
+- **Single workspace, single saiife environment.** Config-as-code `slack` block
   in `config.json` (non-secret refs only); the three secrets in the keychain.
 
 ### Out of scope (MVP) — explicitly deferred
@@ -110,7 +110,7 @@ approval round-trip are all buildable today on GA Slack APIs.
 | **Socket Mode** | The app opens an **outbound** WebSocket via `apps.connections.open` (app-level token, `connections:write`). Events, slash commands, **and interaction (button) payloads** all arrive over that socket; the app `ack`s each on the wire. | **None.** Pure outbound — dodges NAT, tunnels, relays entirely. | **Chosen default** for the local / self-host tier. |
 | **Events API** | Slack **HTTP POSTs** events to a public **Request URL**, and posts interaction payloads to a separate **Interactivity Request URL**. Each is signature-verified (`X-Slack-Signature` = `v0=` + HMAC-SHA256 over `v0:{ts}:{body}`, 5-min tolerance). | **Yes** — a public URL (tunnel/relay), the same problem Shopify/Linear/Woo confront. | Spec'd (§4.4); for users who already run HTTPS ingress. |
 
-**Why Socket Mode is the recommended default.** localflow is a **local-first
+**Why Socket Mode is the recommended default.** saiife is a **local-first
 desktop app** on a laptop behind NAT (the dev-machine memory: an 8 GB Apple-silicon
 Mac). Every other connector needs a public URL for its triggers and must document a
 tunnel/relay as a v1 prerequisite. Slack is the **one connector that does not** —
@@ -162,7 +162,7 @@ rate-limit/reconnect handling.
 
 ## 3. The unique value: the approval round-trip as a first-class `ApprovalPort`
 
-localflow's gate seam is already pinned (`src/main/flow/types.ts`):
+saiife's gate seam is already pinned (`src/main/flow/types.ts`):
 
 ```ts
 export interface ApprovalRequest { runId: string; nodeId: string; prompt: string; peek: string[] }
@@ -219,7 +219,7 @@ the gated action (refund / send / apply) runs. (Deny → resolve(false) → clea
 
 ---
 
-## 4. Architecture in localflow
+## 4. Architecture in saiife
 
 ### 4.1 Where it sits
 
@@ -230,7 +230,7 @@ with no `slack` config entry (and no stored tokens) the descriptor's `status()`
 returns `needs-config`, the engine refuses any Slack node
 (`action-runner.ts`), and — critically — the `ApprovalPort` **falls back to the
 safe-reject stub** so a gate without Slack configured still stops cleanly rather
-than hanging. localflow's "works with no integration" guarantee is unchanged.
+than hanging. saiife's "works with no integration" guarantee is unchanged.
 
 Architecturally the connector is **the live implementation behind the registry's
 pinned `invokeAction`/`subscribe`** (registered via `registerConnector('slack',…)`,
@@ -248,7 +248,7 @@ into the `FlowEngine` at startup (§4.3). All Slack API shapes are isolated in
 | `src/main/slack/slack-socket.ts` | **Socket Mode** client. Opens the outbound WS via `apps.connections.open`, receives `events_api` / `slash_commands` / `interactive` envelopes, `ack`s each, and transparently reconnects on `disconnect` (refresh) frames. Emits a normalized `SlackInbound`. **No signature verification** — the socket is authenticated at open. This is the zero-ingress path (§2.1). Behind a `SocketTransport` interface for a mock (§12). |
 | `src/main/slack/slack-events-server.ts` | The **Events API** path (alt to Socket Mode). Consumes the **shared** `src/main/webhooks/webhook-receiver.ts` with Slack's `WebhookVerifier` (§4.4); handles the one-time `url_verification` challenge; emits the same normalized `SlackInbound`. Only mounted when `mode: 'events'`. |
 | `src/main/slack/slack-approval-port.ts` | **The headline.** Implements `ApprovalPort` (`flow/types.ts`). `requestApproval` posts an approval message via `slack-client`, parks a resolver in a pending `Map<"{runId}:{nodeId}", {resolve,messageRef,timer}>`, and returns the promise. An inbound `block_actions` interaction (routed from the transport) resolves it `true`/`false`, `chat.update`s the message, and clears the entry. Enforces the liveness timeout (§7.3) and idempotency (§7.2). **Connector-agnostic** — knows only `ApprovalRequest`, not Shopify/email/cloud. |
-| `src/main/slack/slack-control-bridge.ts` | The reserved **`/localflow`** slash command handler: `run <flow>` (startRun by flow name), `status [run]` (query `RunSnapshot`s), `stop <run>` (request stop). Holds a narrow **engine control seam** (start/query/stop) injected at startup — openclaw's chat-control, upgraded and gated. Non-`/localflow` slash commands flow to the `slash.command` trigger instead. |
+| `src/main/slack/slack-control-bridge.ts` | The reserved **`/saiife`** slash command handler: `run <flow>` (startRun by flow name), `status [run]` (query `RunSnapshot`s), `stop <run>` (request stop). Holds a narrow **engine control seam** (start/query/stop) injected at startup — openclaw's chat-control, upgraded and gated. Non-`/saiife` slash commands flow to the `slash.command` trigger instead. |
 | `src/main/slack/slack-blocks.ts` | **Pure** Block Kit builders: `buildApprovalMessage(req)`, `buildResolvedMessage(req, decidedBy, approved)`, `buildNotifyMessage(text, blocks?)`; and the pure **parse** of a raw interaction/event/slash payload → a typed `SlackInbound` / `ApprovalDecision`. Unit-testable in isolation (the correctness boundary for correlation). |
 | `src/main/slack/slack-token-store.ts` | Keychain-backed token access — a **thin wrapper over the hub's `CredentialStore`** (`revealForConnector('slack', 'botToken'|'appToken'|'signingSecret')`). Reuses the existing keychain sidecar; opens no second one. Named to grep distinctly (asserts no IPC/renderer caller — the `revealForConnector` discipline). |
 | `src/main/slack/slack-config.ts` | Reads the non-secret `slack` refs (default channel, mode, ingress url, environment) — the `integration-config.ts` validate-at-the-boundary pattern. Holds only Slack-specific coercion (e.g. channel-id vs channel-name normalization). |
@@ -312,7 +312,7 @@ under `src/main/slack/`.
 Both modes normalize to the same `SlackInbound`, so `slack-connector.ts`,
 `slack-approval-port.ts`, and `slack-control-bridge.ts` are transport-agnostic.
 
-### 4.5 Reused localflow surfaces
+### 4.5 Reused saiife surfaces
 
 - `src/shared/integrations.ts` — the pinned `IntegrationDescriptor` /
   `IntegrationRegistry` / `LiveConnector` this connector satisfies; `IntegrationId`
@@ -354,7 +354,7 @@ boundary):
 | `signingSecret` | Signing secret | **yes** | no* | string | Verifies `X-Slack-Signature`. Required **when `mode: 'events'`**. Keychain only. |
 | `defaultChannel` | Approvals / notify channel | no | yes | string | Channel id/name where approvals + notifications post by default (an action may override per-node). |
 | `mode` | Ingress mode | no | no | string | `'socket'` (default) or `'events'`. Drives which secret + transport is required. |
-| `environment` | localflow environment (1-9) | no | yes | number | Which env hosts Slack work (same field/validation as the others). |
+| `environment` | saiife environment (1-9) | no | yes | number | Which env hosts Slack work (same field/validation as the others). |
 | `eventsUrl` | Events request URL | no | no | string | The public ingress for `mode: 'events'` only. Placeholder `https://<tunnel>/slack/events`. |
 
 *The two `no*` secrets are **conditionally required by `mode`**: `status()` treats
@@ -398,7 +398,7 @@ they iterate the array.
 | trigger id | label | source | note |
 |---|---|---|---|
 | `message.received` | Message received | A Slack `message` event (Socket Mode or Events) in a channel the bot is in / mentioned in. | Wakes a flow on an inbound chat message (payload §6.3). The chat analog of the email trigger. |
-| `slash.command` | Slash command | A **non-`/localflow`** slash command the app owns (e.g. a user-defined `/deploy`). | The reserved `/localflow` command is control (§4.2, `slack-control-bridge`), **not** this trigger. |
+| `slash.command` | Slash command | A **non-`/saiife`** slash command the app owns (e.g. a user-defined `/deploy`). | The reserved `/saiife` command is control (§4.2, `slack-control-bridge`), **not** this trigger. |
 | `approval.responded` | Approval responded | An approval button was tapped (the `block_actions` interaction the `ApprovalPort` also consumes). | Fires **in addition** to resolving the gate — lets a flow log/notify on the decision. Payload carries `{ runId, nodeId, approved, decidedBy }`. |
 
 ### 6.2 Actions
@@ -441,7 +441,7 @@ export interface SlackMessagePayload {
   threadTs?: string      // present when the message is in a thread
 }
 
-/** slash.command trigger payload (non-/localflow commands). */
+/** slash.command trigger payload (non-/saiife commands). */
 export interface SlackSlashPayload {
   command: string        // e.g. "/deploy"
   text: string           // the args after the command
@@ -605,7 +605,7 @@ tap. A per-gate approver allow-list (only certain Slack user ids may resolve a g
 gate; others' taps are rejected with an ephemeral "not an approver") is phase 2
 (§13.5) — the interaction payload already carries `decidedBy` to enforce it.
 
-**Control-surface authority.** `/localflow run|status|stop` (§4.2) can start and stop
+**Control-surface authority.** `/saiife run|status|stop` (§4.2) can start and stop
 runs. It is gated by workspace membership (only the installed workspace can reach the
 app) and — as a phased item — the same approver allow-list. `run` starts a flow the
 user already authored; `stop` requests a stop (never force-kills mid-action). The
@@ -632,7 +632,7 @@ interactivity.
 
 ## 11. Error handling
 
-localflow's principle (error-message-style memory; demonstrated in
+saiife's principle (error-message-style memory; demonstrated in
 `credential-store.ts` and `action-runner.ts`): **every failure is human-readable,
 actionable, and carries the real underlying exception. No silent catch. No bare
 "failed" / "not found".** An action signals failure by **rejecting** with that
@@ -649,9 +649,9 @@ message; the action-runner prefixes it and surfaces it on the run.
 | **Stale / replayed request** (Events mode, ts outside 5-min) | the timestamp skew | 401; dropped; never resolves a gate (guards interaction replay). |
 | **Duplicate interaction / redelivery** | the interaction id | Idempotent no-op (§7.2) — the pending entry is already gone; no second resolve, no second action. |
 | **Approval timeout** (no tap before `approvalTimeoutSec`) | the elapsed time | Not an error: the port `chat.update`s "Expired" and **resolves `false`** → the run ends `rejected` cleanly (§7.3). Surfaced on the feed, not as a failure. |
-| **Interaction for an unknown/stale gate** (run already finished, or app restarted losing the in-memory map) | the key that missed | The port `chat.update`s "This approval is no longer active (the run has ended or localflow restarted)." and drops the tap. No phantom resolve. |
+| **Interaction for an unknown/stale gate** (run already finished, or app restarted losing the in-memory map) | the key that missed | The port `chat.update`s "This approval is no longer active (the run has ended or saiife restarted)." and drops the tap. No phantom resolve. |
 | **`status('slack') !== 'connected'`** | the derived reason (missing token / decrypt error / disabled / wrong-mode secret) | The action-runner fails the Slack node *before* any call: "Flow needs Slack connected — action '<id>' can't run. Connect it in Settings." And the `ApprovalPort` uses the safe-reject stub so gates stop cleanly (§4.1). |
-| **`/localflow` control error** (unknown flow, bad run id) | the name/id that missed | The bridge replies **ephemerally** in Slack: "No flow named '<x>' — try `/localflow status` to list runs." Never a silent drop. |
+| **`/saiife` control error** (unknown flow, bad run id) | the name/id that missed | The bridge replies **ephemerally** in Slack: "No flow named '<x>' — try `/saiife status` to list runs." Never a silent drop. |
 
 The connector **never** catches-and-drops. Where Slack returns a precise `error`
 code, the connector forwards *that* rather than minting a vaguer one — the
@@ -661,7 +661,7 @@ action-runner's job is only to prefix it with the node/action.
 
 ## 12. Testing strategy (offline / mockable — no live calls in CI)
 
-Testable **without a live Slack workspace**, matching localflow's existing seams
+Testable **without a live Slack workspace**, matching saiife's existing seams
 (pure modules, injected backends, fixture payloads):
 
 - **`SlackApi` interface + `MockSlackApi` seam.** `slack-client.ts` is written
@@ -700,7 +700,7 @@ Testable **without a live Slack workspace**, matching localflow's existing seams
   the gate records `{ approved:true }` and the approve edge runs; repeat with **Deny**
   → assert the run ends `rejected` cleanly. Deterministic via the engine's injected
   `now()` (`flow-engine.ts:34`).
-- **`/localflow` control-bridge test** — with a fake engine seam: assert
+- **`/saiife` control-bridge test** — with a fake engine seam: assert
   `run <flow>` starts a run, `status` lists snapshots, `stop <run>` requests a stop,
   and an unknown flow yields the ephemeral legible error.
 - **Token-store test** — `revealForConnector` round-trip via a fake `SecretBackend`;
@@ -745,7 +745,7 @@ only in manual dogfooding against a development workspace.
    leave-pending-forever vs a per-gate override. Both are product-safety calls;
    whatever is chosen, an unanswered gate must **never hang a worker** (§7.3).
 5. **Per-approver authorization.** MVP trusts any channel member to tap. An allow-list
-   (only certain Slack user ids may resolve a given gate / drive `/localflow`) is a
+   (only certain Slack user ids may resolve a given gate / drive `/saiife`) is a
    phase-2 safety upgrade; the `decidedBy` field is already carried to enforce it.
    Flagged because the *default* (open vs restricted) is a product-security call.
 6. **Encoding the mode-conditional secret requirement.** `appToken` (socket) vs
@@ -788,7 +788,7 @@ connector's gates, not just Slack's own actions.
   `postMessage`. "For me" fork. Single workspace, single environment.
 - **Phase 2 — full vocabulary + control:** `postApproval` / `replyInThread` actions;
   `message.received` / `slash.command` / `approval.responded` triggers; the
-  `/localflow run|status|stop` control bridge; per-approver allow-list (§13.5).
+  `/saiife run|status|stop` control bridge; per-approver allow-list (§13.5).
 - **Phase 3 — Events API path:** `slack-events-server.ts` on the shared
   `webhook-receiver` with `slackVerifier`, the interactivity URL, `url_verification`
   — for the HTTPS-ingress tier (§13.1, §13.2).
@@ -803,7 +803,7 @@ connector's gates, not just Slack's own actions.
 
 ---
 
-## Appendix — reused localflow surfaces (by path)
+## Appendix — reused saiife surfaces (by path)
 
 - `src/shared/integrations.ts` — the pinned `IntegrationDescriptor` /
   `IntegrationRegistry` / `LiveConnector` this connector satisfies; `IntegrationId`

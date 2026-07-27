@@ -37,8 +37,8 @@ jobs:
       - uses: actions/setup-node@v7
         with: { node-version: 20, cache: npm }
       - run: npm ci
-      # The guard e2e tests exercise the REAL lfguard binary, which the app
-      # resolves at runtime from guard/target/release/lfguard (unpackaged).
+      # The guard e2e tests exercise the REAL saiifeguard binary, which the app
+      # resolves at runtime from guard/target/release/saiifeguard (unpackaged).
       # `npm run e2e` builds only the Electron app, so build the Rust binary
       # first — same step `npm run package` runs in the ci build job.
       - run: npm run build:guard

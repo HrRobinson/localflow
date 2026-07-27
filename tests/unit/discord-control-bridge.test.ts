@@ -7,7 +7,7 @@ import type {
 import type { DiscordCommandPayload } from '../../src/main/discord/discord-components'
 
 const cmd = (text: string): DiscordCommandPayload => ({
-  name: 'localflow',
+  name: 'saiife',
   text,
   channelId: 'C1',
   userId: 'U1',

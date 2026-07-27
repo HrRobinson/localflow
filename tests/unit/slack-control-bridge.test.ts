@@ -7,7 +7,7 @@ import {
 import type { SlackSlashPayload } from '../../src/shared/slack'
 
 const slash = (text: string): SlackSlashPayload => ({
-  command: '/localflow',
+  command: '/saiife',
   text,
   channel: 'C1',
   user: 'U1',

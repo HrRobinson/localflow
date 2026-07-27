@@ -26,7 +26,7 @@ export interface CloudCredentialRequest {
   roleArn?: string
   /** AWS: confused-deputy mitigation (non-secret). */
   externalId?: string
-  /** e.g. `localflow-<paneId>-<taskShortId>` — stamped into CloudTrail. */
+  /** e.g. `saiife-<paneId>-<taskShortId>` — stamped into CloudTrail. */
   sessionName: string
   /** Capped to the MVP 900–1800s window. */
   durationSeconds: number

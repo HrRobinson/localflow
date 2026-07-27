@@ -8,7 +8,7 @@ import type { AgentId } from '../../shared/types'
  * reach into `SessionManager` privately to spawn/drive panes. It obtains the
  * environment's operator grant and calls the SAME `handleRequest` router
  * (documented pure over its inputs, so no socket is needed), so the capability
- * boundary (`OPERATOR_TERMINAL_AGENTS`), the lfguard prompt guard, and
+ * boundary (`OPERATOR_TERMINAL_AGENTS`), the saiifeguard prompt guard, and
  * per-environment isolation all apply to flow work identically (design §2.1).
  *
  * A rejected drive carries the router's OWN status + error body (a single
@@ -50,7 +50,7 @@ export class PaneDriver {
     return { ok: true, handle }
   }
 
-  /** POST /panes/:handle/prompt. The write is guarded by lfguard exactly like
+  /** POST /panes/:handle/prompt. The write is guarded by saiifeguard exactly like
    *  any operator prompt; a guard block returns 403 with the canonical deny
    *  message, which the caller surfaces verbatim. */
   async prompt(environment: number, handle: string, text: string): Promise<DriveResult<object>> {

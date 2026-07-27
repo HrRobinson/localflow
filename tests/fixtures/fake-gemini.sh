@@ -1,9 +1,9 @@
 #!/bin/sh
-# Stands in for the gemini CLI in e2e. Reads the settings file localflow
+# Stands in for the gemini CLI in e2e. Reads the settings file saiife
 # pointed at via GEMINI_CLI_SYSTEM_SETTINGS_PATH (see
 # src/main/gemini-hooks.ts) and runs each hook's command, simulating
 # BeforeAgent -> Notification(ToolPermission) -> AfterAgent once the
-# LOCALFLOW_E2E_GO marker file appears (or after a plain delay when run
+# SAIIFE_E2E_GO marker file appears (or after a plain delay when run
 # standalone). Does NOT validate that a real `gemini` binary uses this settings
 # shape or this notification field name/casing — see the manual
 # verification checklist in
@@ -20,15 +20,15 @@ unescape() {
   sed 's/\\\\/@@BKSL@@/g; s/\\"/"/g; s/@@BKSL@@/\\/g'
 }
 
-# Deterministic e2e synchronization: if LOCALFLOW_E2E_GO is set (the test
+# Deterministic e2e synchronization: if SAIIFE_E2E_GO is set (the test
 # sets it in the app env; SessionManager.spawn passes process env through
 # to the pty), wait for that marker file to exist before starting the hook
 # sequence — the test creates it only after its own must-come-first
 # assertions are done, so no status-order race is possible by construction.
 # Unset (running the fixture standalone), fall back to a plain delay.
 wait_for_go() {
-  if [ -n "${LOCALFLOW_E2E_GO:-}" ]; then
-    until [ -f "$LOCALFLOW_E2E_GO" ]; do sleep 0.1; done
+  if [ -n "${SAIIFE_E2E_GO:-}" ]; then
+    until [ -f "$SAIIFE_E2E_GO" ]; do sleep 0.1; done
   else
     sleep 2.5
   fi

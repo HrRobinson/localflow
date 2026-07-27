@@ -7,9 +7,12 @@ import {
   type OperatorStatus,
   type Watchpoint
 } from '../../../shared/operator'
+import type { SessionInfo } from '../../../shared/types'
+import type { ApiGrantStatus, CollectionView } from '../../../shared/api-client'
 
 interface Props {
   environment: number
+  sessions: SessionInfo[]
 }
 
 /**
@@ -18,11 +21,11 @@ interface Props {
  * cockpit REFLECTS the operator; it never owns OpenClaw's sessions, and the panes
  * stay human-drivable regardless. Captures (Layer 4) render below the log.
  */
-export default function Cockpit({ environment }: Props): React.JSX.Element {
+export default function Cockpit({ environment, sessions }: Props): React.JSX.Element {
   const [status, setStatus] = useState<OperatorStatus | null>(null)
 
   const reload = useCallback(async (): Promise<void> => {
-    setStatus(await window.localflow.operatorStatus(environment))
+    setStatus(await window.saiife.operatorStatus(environment))
   }, [environment])
 
   useEffect(() => {
@@ -32,7 +35,7 @@ export default function Cockpit({ environment }: Props): React.JSX.Element {
 
   // Append live activity for THIS environment without a full refetch.
   useEffect(() => {
-    return window.localflow.onOperatorActivity((env, entry: ActivityEntry) => {
+    return window.saiife.onOperatorActivity((env, entry: ActivityEntry) => {
       if (env !== environment) return
       setStatus((cur) =>
         cur ? { ...cur, connected: true, activity: [...cur.activity, entry].slice(-200) } : cur
@@ -45,8 +48,8 @@ export default function Cockpit({ environment }: Props): React.JSX.Element {
 
   const reloadSub = useCallback(async (): Promise<void> => {
     const [c, w] = await Promise.all([
-      window.localflow.listCaptures(environment),
-      window.localflow.listWatchpoints(environment)
+      window.saiife.listCaptures(environment),
+      window.saiife.listWatchpoints(environment)
     ])
     setCaptures(c)
     setWatchpoints(w)
@@ -70,7 +73,7 @@ export default function Cockpit({ environment }: Props): React.JSX.Element {
     setWpKinds((cur) => (cur.includes(kind) ? cur.filter((k) => k !== kind) : [...cur, kind]))
 
   const registerWatchpoint = async (): Promise<void> => {
-    const wp = await window.localflow.registerWatchpoint(
+    const wp = await window.saiife.registerWatchpoint(
       environment,
       wpWorkflow.trim(),
       wpStep.trim(),
@@ -83,16 +86,50 @@ export default function Cockpit({ environment }: Props): React.JSX.Element {
   }
 
   const grant = async (): Promise<void> => {
-    await window.localflow.grantOperator(environment)
+    await window.saiife.grantOperator(environment)
     await reload()
   }
   const revoke = async (): Promise<void> => {
-    await window.localflow.revokeOperator(environment)
+    await window.saiife.revokeOperator(environment)
     await reload()
   }
 
   const granted = status?.granted ?? false
   const connected = status?.connected ?? false
+
+  const [apiStatus, setApiStatus] = useState<ApiGrantStatus | null>(null)
+  const [apiCollections, setApiCollections] = useState<CollectionView[]>([])
+  const [pickedCollections, setPickedCollections] = useState<string[]>([])
+  const [pickedPane, setPickedPane] = useState('')
+  const [apiNotice, setApiNotice] = useState<string | null>(null)
+
+  const reloadApi = useCallback(async (): Promise<void> => {
+    setApiStatus(await window.saiife.apiGrantStatus(environment))
+    setApiCollections(await window.saiife.listCollections(environment))
+  }, [environment])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial fetch on mount / environment change
+    void reloadApi()
+  }, [reloadApi])
+
+  const apiGranted = apiStatus?.granted ?? false
+  const apiPaneName =
+    sessions.find((s) => s.id === apiStatus?.paneId)?.name ?? apiStatus?.paneId ?? ''
+  const pickedPaneName = sessions.find((s) => s.id === pickedPane)?.name
+
+  const grantApi = async (): Promise<void> => {
+    const res = await window.saiife.grantApiAccess(environment, pickedPane, pickedCollections)
+    if (!res.ok) setApiNotice(res.reason)
+    else {
+      setApiNotice(null)
+      await reloadApi()
+    }
+  }
+  const revokeApi = async (): Promise<void> => {
+    await window.saiife.revokeApiAccess(environment)
+    await reloadApi()
+  }
 
   return (
     <div className="cockpit-view flex min-h-0 flex-1 flex-col">
@@ -125,6 +162,68 @@ export default function Cockpit({ environment }: Props): React.JSX.Element {
           endpoint: {status.endpoint}
         </div>
       )}
+      <div className="api-access flex flex-none flex-col gap-2 border-b border-white/[0.07] px-3 py-2 text-[12px]">
+        <div className="flex items-center gap-2">
+          <span className="api-status font-semibold">
+            {apiGranted
+              ? `API granted · ${apiStatus?.collectionIds?.length ?? 0} collection(s)` +
+                (apiPaneName ? ` · ${apiPaneName}` : '')
+              : 'No API grant'}
+          </span>
+          <span className="text-gray-500">· env {environment}</span>
+        </div>
+        {apiGranted ? (
+          <button
+            className="api-grant-toggle self-start rounded-md border border-white/10 bg-white/[0.07] px-2.5 py-1 text-gray-200 hover:bg-white/[0.13]"
+            onClick={() => void revokeApi()}
+            onMouseDown={(e) => e.preventDefault()}
+          >
+            Revoke API access
+          </button>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              multiple
+              className="api-collection-select bg-surface rounded-md border border-white/[0.14] px-2 py-1 text-[11px]"
+              value={pickedCollections}
+              onChange={(e) =>
+                setPickedCollections([...e.target.selectedOptions].map((o) => o.value))
+              }
+            >
+              {apiCollections.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            <select
+              className="api-pane-select bg-surface rounded-md border border-white/[0.14] px-2 py-1 text-[11px]"
+              value={pickedPane}
+              onChange={(e) => setPickedPane(e.target.value)}
+            >
+              <option value="">choose a pane…</option>
+              {sessions
+                .filter((s) => s.environment === environment && s.kind === 'terminal')
+                .map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+            </select>
+            <button
+              className="api-grant-toggle rounded-md border border-white/10 bg-white/[0.07] px-2.5 py-1 text-gray-200 hover:bg-white/[0.13] disabled:opacity-40"
+              onClick={() => void grantApi()}
+              onMouseDown={(e) => e.preventDefault()}
+              disabled={pickedPane === '' || pickedCollections.length === 0}
+            >
+              {pickedPaneName
+                ? `Grant API access (restarts ${pickedPaneName})`
+                : 'Grant API access (restarts the pane)'}
+            </button>
+          </div>
+        )}
+        {apiNotice && <span className="api-notice text-red-400">{apiNotice}</span>}
+      </div>
       <div className="operator-activity min-h-0 flex-1 overflow-auto px-3 py-2 font-mono text-[11px]">
         {(status?.activity.length ?? 0) === 0 ? (
           <div className="cockpit-empty text-gray-500">No operator activity yet.</div>
@@ -228,7 +327,7 @@ export default function Cockpit({ environment }: Props): React.JSX.Element {
                     <button
                       className="capture-resume text-idle cursor-pointer rounded border border-white/10 px-1.5"
                       onClick={() =>
-                        void window.localflow.resumeCapture(environment, c.id, true).then(reloadSub)
+                        void window.saiife.resumeCapture(environment, c.id, true).then(reloadSub)
                       }
                       onMouseDown={(e) => e.preventDefault()}
                     >
@@ -237,9 +336,7 @@ export default function Cockpit({ environment }: Props): React.JSX.Element {
                     <button
                       className="capture-stop cursor-pointer rounded border border-white/10 px-1.5 text-gray-400"
                       onClick={() =>
-                        void window.localflow
-                          .resumeCapture(environment, c.id, false)
-                          .then(reloadSub)
+                        void window.saiife.resumeCapture(environment, c.id, false).then(reloadSub)
                       }
                       onMouseDown={(e) => e.preventDefault()}
                     >

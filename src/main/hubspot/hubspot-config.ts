@@ -4,7 +4,7 @@
  * is user-edited, so only well-typed values are honored and any garbage DISABLES
  * the feature (returns `null`) rather than throwing. An absent/disabled block
  * means the connector never subscribes and the descriptor's `status()` reports
- * `needs-config` — the opt-in posture localflow's "works with no integration"
+ * `needs-config` — the opt-in posture saiife's "works with no integration"
  * guarantee relies on.
  *
  * Secrets are NOT here: the private-app token and the webhook app client secret
@@ -19,7 +19,7 @@ export interface HubspotConfig {
   enabled: true
   /** CRM API base (defaults to api.hubapi.com when unset/garbage). */
   apiBase: string
-  /** Which localflow environment (1-9) hosts HubSpot work. */
+  /** Which saiife environment (1-9) hosts HubSpot work. */
   environment: number
   /** Non-secret portal (hub) id ref, when supplied. */
   portalId?: string

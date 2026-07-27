@@ -26,7 +26,7 @@ export interface LinearConfig {
   enabled: true
   /** Linear org id — a reference, not a secret (spec §7). */
   workspaceId: string
-  /** Which localflow environment (1-9) hosts Linear work. */
+  /** Which saiife environment (1-9) hosts Linear work. */
   environment: number
   /** The agent Linear-driven panes spawn as; within `LINEAR_TERMINAL_AGENTS`. */
   agentId: AgentId

@@ -5,7 +5,7 @@
 # terminal pane is mounted to render the pty's echo) and/or the terminal
 # text. Exits when the pty closes (read fails), replacing the old sleep.
 #
-# LOCALFLOW_E2E_RESUME_DEAD_ARG (optional, groups.spec.ts's resume
+# SAIIFE_E2E_RESUME_DEAD_ARG (optional, groups.spec.ts's resume
 # dead-end test only): when set and one of argv equals it exactly (e.g.
 # "--continue" — claude's own resumeArgs, see shared/agents.ts's preset),
 # exit immediately instead of reading stdin, simulating a resumed
@@ -14,10 +14,22 @@
 # spawn was itself a resume attempt), driving the "Start fresh" primary
 # overlay. Unset — the default for every other spec — this is a no-op and
 # the fixture behaves exactly as before.
+#
+# SAIIFE_E2E_DUMP_ENV (optional, api-client.spec.ts's chaining e2e only):
+# when set, print this pane's own SAIIFE_API_ENDPOINT/SAIIFE_API_TOKEN to
+# stdout. This is not a new leak surface — it is the exact channel a live
+# agent already has in this pane (SKILL.md declares both as its env), so a
+# harness reading the terminal's own displayed output is only doing what a
+# human glancing at the pane already could. Unset — the default for every
+# other spec — this is a no-op.
 echo "fake-claude started in $PWD with args: $@"
-if [ -n "${LOCALFLOW_E2E_RESUME_DEAD_ARG:-}" ]; then
+if [ -n "${SAIIFE_E2E_DUMP_ENV:-}" ]; then
+  echo "SAIIFE_API_ENDPOINT=${SAIIFE_API_ENDPOINT:-}"
+  echo "SAIIFE_API_TOKEN=${SAIIFE_API_TOKEN:-}"
+fi
+if [ -n "${SAIIFE_E2E_RESUME_DEAD_ARG:-}" ]; then
   for arg in "$@"; do
-    if [ "$arg" = "$LOCALFLOW_E2E_RESUME_DEAD_ARG" ]; then
+    if [ "$arg" = "$SAIIFE_E2E_RESUME_DEAD_ARG" ]; then
       echo "fake-claude resume died instantly"
       exit 1
     fi

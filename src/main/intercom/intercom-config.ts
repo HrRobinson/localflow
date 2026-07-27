@@ -13,7 +13,7 @@ import { baseUrlForRegion } from './intercom-api'
 export interface IntercomConfig {
   /** Intercom hosting region; selects the API base URL. Defaults 'us'. */
   region: IntercomRegion
-  /** localflow environment (1-9). */
+  /** saiife environment (1-9). */
   environment: number
   /** The tunnel/relay ingress URL (§4.4); optional in MVP (manual webhooks). */
   webhookUrl?: string

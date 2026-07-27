@@ -18,6 +18,7 @@
 
 ### Bug Fixes
 
+* **deps:** match react-dom to react 19.2.8 ([#131](https://github.com/HrRobinson/localflow/issues/131)) ([b4fe578](https://github.com/HrRobinson/localflow/commit/b4fe57857c764b2c63fa42e42a2e2ecc85294445))
 * operator-readable terminal + submit loop ([#98](https://github.com/HrRobinson/localflow/issues/98)) ([d1b23e2](https://github.com/HrRobinson/localflow/commit/d1b23e2d4b0797da074c20d67780f2dbb734d1a1))
 
 ## [1.11.0](https://github.com/HrRobinson/localflow/compare/v1.10.0...v1.11.0) (2026-07-17)

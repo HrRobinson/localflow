@@ -18,6 +18,17 @@ updates:
           - electron-vite
           - vitest
           - '@vitest/*'
+      # react and react-dom must move together: React 19 compares the two at
+      # mount and throws (error #527) when they differ, so a solo bump leaves
+      # the renderer dead — #127 bumped react alone and every e2e test failed
+      # on a missing selector because #root never mounted. The @types packages
+      # ride along to keep typings in step with the runtime.
+      react:
+        patterns:
+          - react
+          - react-dom
+          - '@types/react'
+          - '@types/react-dom'
     ignore:
       # typescript majors >=7 are blocked: typescript-eslint's supported
       # range pins typescript <6.1.0 upstream.

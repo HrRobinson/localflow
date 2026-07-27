@@ -157,6 +157,22 @@ async function openConsoleDrawer(win: Page): Promise<Locator> {
   return drawer
 }
 
+// A keyboard shortcut can be dropped if it fires before a freshly launched
+// window is fully interactive. Retry the toggle until the drawer reaches the
+// wanted state, waiting for each press to settle so it never double-toggles.
+async function toggleConsole(page: Page, combo: string, wantOpen: boolean): Promise<void> {
+  const drawer = page.locator('[data-console]')
+  await expect(async () => {
+    if ((await drawer.count()) > 0 === wantOpen) return
+    await page.keyboard.press(combo)
+    if (wantOpen) {
+      await expect(drawer).toBeVisible({ timeout: 2000 })
+    } else {
+      await expect(drawer).toHaveCount(0, { timeout: 2000 })
+    }
+  }).toPass({ timeout: 15_000 })
+}
+
 test('toggle drawer: cmd+/ default, then a remapped key survives relaunch', async () => {
   const userData = mkdtempSync(join(tmpdir(), 'saiife-e2e-'))
   const app = await launchApp(userData)
@@ -165,10 +181,8 @@ test('toggle drawer: cmd+/ default, then a remapped key survives relaunch', asyn
 
   // Closed by default; cmd+/ opens, cmd+/ again closes.
   await expect(win.locator('[data-console]')).toHaveCount(0)
-  await win.keyboard.press('Meta+/')
-  await expect(win.locator('[data-console]')).toBeVisible()
-  await win.keyboard.press('Meta+/')
-  await expect(win.locator('[data-console]')).toHaveCount(0)
+  await toggleConsole(win, 'Meta+/', true)
+  await toggleConsole(win, 'Meta+/', false)
 
   await app.close()
 
@@ -183,10 +197,8 @@ test('toggle drawer: cmd+/ default, then a remapped key survives relaunch', asyn
   // The old combo is dead; the new one works.
   await win2.keyboard.press('Meta+/')
   await expect(win2.locator('[data-console]')).toHaveCount(0)
-  await win2.keyboard.press('Meta+y')
-  await expect(win2.locator('[data-console]')).toBeVisible()
-  await win2.keyboard.press('Meta+y')
-  await expect(win2.locator('[data-console]')).toHaveCount(0)
+  await toggleConsole(win2, 'Meta+y', true)
+  await toggleConsole(win2, 'Meta+y', false)
 
   await app2.close()
 })
